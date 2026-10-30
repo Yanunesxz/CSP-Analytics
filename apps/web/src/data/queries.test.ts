@@ -429,6 +429,24 @@ describe('funilChegada', () => {
     expect(fu.coorte).toHaveLength(4);
     expect(fu.coorte[3]).toMatchObject({ mes: '2026-10', leads: 5 });
   });
+
+  it('do 1º pedido em diante só conta quem tem o carimbo do pedido (a mesma regra de cliente novo)', () => {
+    const semCarimbo: Dados = {
+      ...dados,
+      leads: [
+        ...dados.leads,
+        lead({ id: 'l8', brandId: 'cs', source: 'site', stage: 'first_order', createdAt: iso('2026-10-20') }),
+      ],
+    };
+    expect(funilChegada(semCarimbo, f(), agora).etapas.map((e) => e.total)).toEqual([6, 4, 3, 1, 0]);
+  });
+
+  it('coorte com os 4 meses certos também no dia 31 e no fim de março', () => {
+    const meses = (instante: string) => funilChegada(dados, f(), new Date(instante)).coorte.map((m) => m.mes);
+    expect(meses('2026-10-31T15:00:00-03:00')).toEqual(['2026-07', '2026-08', '2026-09', '2026-10']);
+    expect(meses('2027-03-30T15:00:00-03:00')).toEqual(['2026-12', '2027-01', '2027-02', '2027-03']);
+    expect(meses('2026-12-31T15:00:00-03:00')).toEqual(['2026-09', '2026-10', '2026-11', '2026-12']);
+  });
 });
 
 describe('custoPorClienteNovo', () => {
@@ -521,6 +539,21 @@ describe('leadsPorOrigem, instagram, seoGeo', () => {
     expect(s.geo.sessoes.atual).toBeNull();
     expect(s.geo.leadsPorAssistente.atual).toBe(1);
     expect(s.seo.serie).toHaveLength(30);
+  });
+
+  it('posição média ponderada pelas impressões; sem impressões é null, nunca 0', () => {
+    const comSeo: Dados = {
+      ...dados,
+      seoDaily: [
+        { date: '2026-10-10', brandId: 'cs', impressions: 300, clicks: 9, position: 4 },
+        { date: '2026-10-11', brandId: 'cs', impressions: 100, clicks: 1, position: 12 },
+        { date: '2026-09-10', brandId: 'cs', impressions: 0, clicks: 0, position: 7 },
+      ],
+    };
+    const s = seoGeo(comSeo, f(), agora);
+    expect(s.seo.posicaoMedia.atual).toBe(6);
+    expect(s.seo.posicaoMedia.anterior).toBeNull();
+    expect(s.seo.posicaoMedia.variacao).toBeNull();
   });
 });
 

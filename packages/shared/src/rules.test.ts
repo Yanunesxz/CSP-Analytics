@@ -81,8 +81,12 @@ describe('permissoes', () => {
 
   it('rotas protegidas apontam para ações que existem', () => {
     expect(ROTAS_PROTEGIDAS['/trafego']).toBe('ver_trafego_ia');
+    expect(ROTAS_PROTEGIDAS['/leads']).toBe('ver_leads');
+    expect(ROTAS_PROTEGIDAS['/conectores']).toBe('ver_conectores');
     expect(pode('owner', ROTAS_PROTEGIDAS['/diagnostico']!)).toBe(true);
     expect(pode('traffic_manager', ROTAS_PROTEGIDAS['/diagnostico']!)).toBe(false);
+    // O dono abre todas as rotas protegidas
+    expect(Object.values(ROTAS_PROTEGIDAS).every((acao) => pode('owner', acao))).toBe(true);
   });
 });
 

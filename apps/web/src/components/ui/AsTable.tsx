@@ -11,9 +11,12 @@ export interface AsTableProps {
   /** Cada linha: primeira célula é texto, as demais são números já formatados (ou "—"). */
   linhas: Array<Array<ReactNode>>;
   legenda?: string;
+  /** Índices das colunas que são texto, não número (ex.: "Detalhe"): alinham à esquerda e quebram linha. */
+  texto?: number[];
 }
 
-export function AsTable({ colunas, linhas, legenda }: AsTableProps) {
+export function AsTable({ colunas, linhas, legenda, texto = [] }: AsTableProps) {
+  const ehNumero = (coluna: number) => coluna > 0 && !texto.includes(coluna);
   return (
     <details className="yn-as-table">
       <summary>Ver como tabela</summary>
@@ -23,7 +26,7 @@ export function AsTable({ colunas, linhas, legenda }: AsTableProps) {
           <thead>
             <tr>
               {colunas.map((c, i) => (
-                <th key={c} className={i === 0 ? undefined : 'yn-num'} scope="col">
+                <th key={c} className={ehNumero(i) ? 'yn-num' : undefined} scope="col">
                   {c}
                 </th>
               ))}
@@ -33,7 +36,7 @@ export function AsTable({ colunas, linhas, legenda }: AsTableProps) {
             {linhas.map((linha, i) => (
               <tr key={i}>
                 {linha.map((celula, j) => (
-                  <td key={j} className={j === 0 ? undefined : 'yn-num'}>
+                  <td key={j} className={ehNumero(j) ? 'yn-num' : undefined}>
                     {celula}
                   </td>
                 ))}

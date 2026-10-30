@@ -158,8 +158,10 @@ Outros exports do store: `useDados(): Dados` (bruto), `store.recomecar()`, `stor
 
 `Metrica = { atual: number | null; anterior: number | null; variacao: number | null }`. Métrica sem base é `null`
 (nunca 0 nem NaN); contagem sobre tabela vazia é `null`, sobre tabela com linhas é 0 ou mais. Utilidades exportadas:
-`filtrarPeriodo(linhas, campo, { inicio, fim })`, `filtrarMarca`, `metrica`, `razao`, `soma`, `contagem`, `ETAPAS`.
-Dinheiro sempre em centavos.
+`filtrarPeriodo(linhas, campo, { inicio, fim })`, `filtrarMarca`, `metrica`, `razao`, `soma`, `contagem`, `ETAPAS`,
+e as regras de lead e de cliente novo: `leadsFiltrados(dados, filtros)`, `chegouAoPedido(lead)` e
+`clientesNovos(leads, janela)` (um por cliente, no dia do 1º pedido). Use essas, nunca uma cópia: nenhuma regra em
+dois lugares. Dinheiro sempre em centavos.
 
 ## 6. Componentes — `src/components/ui` (importe de `'../../components/ui'`)
 
@@ -170,20 +172,31 @@ Dinheiro sempre em centavos.
 | `GraficoBarras` | `titulo; descricao?; itens: { rotulo, valor, cor?, tom?, detalhe? }[]; formato?; maximo?; estado?; rotuloValor?` (`.yn-bars`) |
 | `GraficoColunas` | `titulo; descricao?; colunas: { rotulo, valor, cor?, tom? }[]; formato?; maximo?; altura?; estado?; rotuloValor?` (`.yn-columns`) |
 | `Tabela<T>` | `colunas: { chave, titulo, numerica?, valor?(linha), render?(linha), ordenavel? }[]; linhas: T[]; chaveDaLinha(linha); empilhar?` (cards no celular) `; ordenacaoInicial?: { chave, direcao }; legenda?; vazio?: ReactNode; selecionada?(linha)` |
-| `BarraDeFiltros` | `rapidos?: { chave, valor, rotulo, contagem?, cor? }[]` (até 5 chips `aria-pressed`); `campos?: ('canal' \| 'campanha' \| 'operador' \| 'origem' \| 'representante')[]` (padrão canal, operador, origem) `; opcoes?: { campanhas?, representantes? }` (`{ valor, rotulo }[]`, vindos dos dados) `; semPeriodo?; semComparacao?`. Período + "Comparar com o anterior", botão "Filtros" com `.yn-drawer`, chips ativos com "Remover filtro X", "Limpar filtros", "Meus filtros" (localStorage `meus-filtros`). |
-| `Tela<T>` | `resultado: Resultado<T>; vazio?: { titulo?, texto?, icone?, acao? }; esqueleto?: 'tela' \| 'kpis' \| 'grafico' \| 'tabela' \| 'texto'; aoTentarDeNovo?; children: (dados, estado: 'ok' \| 'sem-dados') => ReactNode` |
+| `BarraDeFiltros` | `rapidos?: { chave, valor, rotulo, contagem?, cor? }[]` (até 5 chips `aria-pressed`); `campos?: ('canal' \| 'campanha' \| 'operador' \| 'origem' \| 'representante')[]` (padrão canal, operador, origem) `; opcoes?: { campanhas?, representantes? }` (`{ valor, rotulo }[]`, vindos dos dados) `; semPeriodo?; semComparacao?`. Período + "Comparar com o anterior", botão "Filtros" com `.yn-drawer` (só quando `campos` não é vazio), chips ativos com "Remover filtro X", "Limpar filtros" (uma gravação só; no painel, volta também o período), "Meus filtros" (localStorage `meus-filtros`). |
+| `Tela<T>` | `resultado: Resultado<T>; vazio?: { titulo?, texto?, icone?, acao? }` (`acao: null` tira o link "Ver conectores") `; erroTexto?; esqueleto?: 'tela' \| 'kpis' \| 'grafico' \| 'tabela' \| 'texto'; aoTentarDeNovo?; children: (dados, estado: 'ok' \| 'sem-dados') => ReactNode` |
 | `Vazio` | `titulo; texto?; icone?; erro?; codigo?; aoTentarDeNovo?; acao?` (`.yn-empty`, `data-state="error"` + "Tentar de novo") |
 | `Esqueleto` | `variante?: 'texto' \| 'kpis' \| 'grafico' \| 'tabela' \| 'tela'; quantidade?` |
 | `Badge` | `lista + codigo` (ex.: `lista="actionStatus" codigo={a.status}`) ou `tom + children` |
 | `ChipSerie` | `lista + codigo` (brand, platform, operator, leadSource, geoSource) ou `rotulo + cor`; `pressionado?; aoClicar?; contagem?`. `PontoDeSerie({ cor })` para o ponto sozinho. |
 | `Meter` | `rotulo; valor; maximo; esperado?; formato?; legenda?; estado?: 'behind' \| 'ahead' \| 'done'` (`.yn-meter`) |
 | `Ranking` | `itens: { id, rotulo, valor (formatado), iniciais?, cor?, atual? }[]; rotulo?` |
-| `AsTable` | `colunas: string[]; linhas: ReactNode[][]; legenda?` — "Ver como tabela" para um gráfico próprio |
+| `AsTable` | `colunas: string[]; linhas: ReactNode[][]; legenda?; texto?: number[]` — "Ver como tabela" para um gráfico próprio. A 1ª coluna e as de `texto` (ex.: "Detalhe") alinham à esquerda e quebram linha; as outras são número, numa linha só. O cabeçalho quebra linha para a tabela caber num cartão de meia tela |
 | `useToast()` | `avisar(texto, { tom?: 'success' \| 'danger', duracaoMs? })` — a casca já tem o `ToastProvider` |
 | `EmConstrucao` | marcador temporário; some quando o módulo fica pronto |
 
 Grades em `index.css`: `.mkt-grid-kpis` (cards de KPI), `.mkt-grid-2` (dois blocos lado a lado), `.mkt-stack`,
 `.mkt-actions`, `.mkt-filters`. Para o resto do layout, Tailwind só de espaçamento e grade (`grid`, `gap-4`, `flex`).
+
+O que o `index.css` já resolve para toda tela (não precisa de contorno no módulo): a coluna do `.yn-content` e a do
+`.mkt-chart` não crescem com o conteúdo (fila de chips ou tabela larga rola dentro do bloco, sem rolagem lateral na
+página); `<dialog class="yn-modal">` abre no meio; `.yn-table-wrap` e `.yn-tabs` seguram o `.yn-sr-only` de dentro;
+`.yn-tabs` sem barra de rolagem em pé; link no meio do texto sublinhado. Cuidados que continuam valendo:
+
+- O `componentes.css` do padrão entra sem camada e vence os utilitários do Tailwind (que ficam em `@layer
+  utilities`): `p-0` não tira o padding do `.yn-card`, `text-xl` não muda um `h2`. Use a classe do padrão ou estilo
+  em linha com token.
+- `Tabela` com `empilhar`: célula com mais de um nó (texto + `span`) se espalha no celular, porque o `td` vira flex com
+  `space-between`; envolva o conteúdo da célula num elemento só.
 
 Formatação (`src/lib/format.ts`): `dinheiro(cents)` ("R$ 1.234" ou "R$ 1.234,56"), `dinheiroAbreviado`,
 `numero(n, casas?)`, `numeroAbreviado` ("82,4 mil"), `percentual(fracao)`, `variacao(fracao)` ("+12,4%"),
@@ -216,7 +229,8 @@ Nunca invente número: métrica `null` é "Sem dados", em KPI, tabela ("—") e 
 ## 9. Proibido
 
 - Cor crua, paleta do Tailwind, `rounded-xl/2xl`, `shadow-xl`, `text-[11px]`, fonte ou tamanho fixo. Cores só por
-  token (`var(--color-…)`) e pelas classes do padrão; cor de série só para marca, canal e operador, sempre com rótulo.
+  token (`var(--color-…)`) e pelas classes do padrão; cor de série só para marca, canal (e origem do lead, inclusive o
+  assistente de IA) e operador, sempre com rótulo (decisão 0007).
 - Componente inventado quando existe `yn-*` ou um dos componentes acima.
 - Somar linhas ou calcular KPI dentro da tela: toda conta vive em `queries.ts` (com teste). Precisa de um número
   novo? Adicione a query, teste e depois use.

@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:exemplo": "vite --mode exemplo",
     "build": "tsc --noEmit && vite build",
+    "build:exemplo": "tsc --noEmit && vite build --mode exemplo",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

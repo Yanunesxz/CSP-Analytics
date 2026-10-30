@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
@@ -14,30 +14,42 @@ const commit = (process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? '
 const version = commit ? `${pacote.version}+${commit}` : pacote.version;
 
 /**
- * Gera `public/version.json` ({ version, builtAt }) em toda build e no dev.
+ * Serve `/version.json` ({ version, builtAt }): na build vira `dist/version.json`; no dev sai de um
+ * middleware, para uma build rodada com o dev aberto não trocar o arquivo que o dev serve.
  * `src/lib/versao.ts` lê `/version.json` de tempos em tempos e, quando o `builtAt` muda,
  * a casca mostra a faixa "Versão nova disponível" (seção 10 do padrão).
  */
 function versaoJson(): Plugin {
+  const conteudo = JSON.stringify({ version, builtAt }, null, 2) + '\n';
   return {
     name: 'csp-mkt:version-json',
-    buildStart() {
-      const pasta = resolve(raiz, 'public');
-      mkdirSync(pasta, { recursive: true });
-      writeFileSync(resolve(pasta, 'version.json'), JSON.stringify({ version, builtAt }, null, 2) + '\n');
+    configureServer(server) {
+      server.middlewares.use('/version.json', (_req, res) => {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(conteudo);
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: conteudo });
     },
   };
 }
 
-export default defineConfig({
+/**
+ * `--mode exemplo` (scripts dev:exemplo e build:exemplo) liga os dados de exemplo sem precisar de .env:
+ * é o protótipo da fase 2 aberto como o dono vai ver. Nunca usar em produção.
+ */
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), versaoJson()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
     __APP_BUILT_AT__: JSON.stringify(builtAt),
+    ...(mode === 'exemplo' ? { 'import.meta.env.VITE_SAMPLE_DATA': JSON.stringify('true') } : {}),
   },
   server: { port: 5173 },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
   },
-});
+}));

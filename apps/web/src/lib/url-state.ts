@@ -153,6 +153,25 @@ function comoSearch(params: URLSearchParams): string {
   return texto ? `?${texto}` : '';
 }
 
+/**
+ * Caminho para `<Link to>` com os filtros globais da URL atual (marca, visão, período, comparar, estado)
+ * e, se quiser, outros filtros. O destino pode trazer parâmetros próprios da tela de destino
+ * (`/base?recorte=inativos`) e uma âncora (`/chegada#custo-por-cliente-novo`): os parâmetros entram
+ * junto dos filtros e a âncora vai no fim, para o link abrir a tela já no bloco certo.
+ */
+export function montarLink(params: URLSearchParams, destino: string, parcial: Partial<Filtros> = {}): string {
+  const iAncora = destino.indexOf('#');
+  const ancora = iAncora >= 0 ? destino.slice(iAncora + 1) : '';
+  const semAncora = iAncora >= 0 ? destino.slice(0, iAncora) : destino;
+  const iBusca = semAncora.indexOf('?');
+  const caminho = iBusca >= 0 ? semAncora.slice(0, iBusca) : semAncora;
+  const proximo = escreverFiltros(apenasGlobais(params), parcial);
+  if (iBusca >= 0) {
+    new URLSearchParams(semAncora.slice(iBusca + 1)).forEach((valor, chave) => proximo.set(chave, valor));
+  }
+  return `${caminho}${comoSearch(proximo)}${ancora ? `#${ancora}` : ''}`;
+}
+
 export interface UsoDeFiltros {
   filtros: Filtros;
   /** Grava um ou mais filtros na URL (e marca/visão na memória). `null` limpa a chave. */
@@ -161,8 +180,11 @@ export interface UsoDeFiltros {
   limpar: (chaves?: readonly ChaveFiltro[]) => void;
   /** Filtros de tela que estão ativos (diferentes do padrão). */
   ativos: ChaveFiltro[];
-  /** Caminho com os filtros globais atuais (e, se quiser, outros) para `<Link to>`. */
-  linkCom: (pathname: string, parcial?: Partial<Filtros>) => string;
+  /**
+   * Caminho com os filtros globais atuais (e, se quiser, outros) para `<Link to>`. O destino aceita
+   * parâmetros da tela e âncora: `linkCom('/base?recorte=inativos#lista-de-clientes')` (ver `montarLink`).
+   */
+  linkCom: (destino: string, parcial?: Partial<Filtros>) => string;
   /** A string `?…` só com os filtros globais, para links do menu. */
   searchGlobal: string;
 }
@@ -197,8 +219,7 @@ export function useFiltros(): UsoDeFiltros {
   const searchGlobal = useMemo(() => comoSearch(apenasGlobais(params)), [params]);
 
   const linkCom = useCallback(
-    (pathname: string, parcial: Partial<Filtros> = {}) =>
-      `${pathname}${comoSearch(escreverFiltros(apenasGlobais(params), parcial))}`,
+    (destino: string, parcial: Partial<Filtros> = {}) => montarLink(params, destino, parcial),
     [params],
   );
 

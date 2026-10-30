@@ -1,7 +1,8 @@
 /**
  * Menu lateral (.yn-sidebar): assinatura, seletor de marca (.yn-context ligado a ?marca=),
  * navegação em grupos com aria-current="page" e title em cada link, usuário no fim com
- * Perfil · Tema · Sair. Item "Tráfego com IA" só aparece quando o papel permite.
+ * Perfil (Configurações → Sua conta) · Tema · Sair. Item com `acao` só aparece quando o papel permite;
+ * a rota exige a mesma ação (ROTAS_PROTEGIDAS em @csp-mkt/shared, conferido em rotas.test.ts).
  */
 
 import {
@@ -28,7 +29,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { pode, rotulo, rotuloMarca, type Acao } from '@csp-mkt/shared';
 import { iniciais, useSessao } from '../../lib/auth';
 import { alternarTema } from '../../lib/tema';
@@ -104,9 +105,11 @@ export interface SidebarProps {
   recolhido: boolean;
   aoRecolher: () => void;
   aoNavegar: () => void;
+  /** Escolher a marca fecha a gaveta no celular, como escolher um item do menu. */
+  aoEscolherMarca: () => void;
 }
 
-export function Sidebar({ recolhido, aoRecolher, aoNavegar }: SidebarProps) {
+export function Sidebar({ recolhido, aoRecolher, aoNavegar, aoEscolherMarca }: SidebarProps) {
   const { perfil, modo, sair } = useSessao();
   const { filtros, definir, searchGlobal } = useFiltros();
   const { avisar } = useToast();
@@ -116,6 +119,7 @@ export function Sidebar({ recolhido, aoRecolher, aoNavegar }: SidebarProps) {
   const escolherMarca = (marca: Marca) => {
     definir({ marca });
     setContextoAberto(false);
+    aoEscolherMarca();
   };
 
   const aoSair = async () => {
@@ -219,10 +223,17 @@ export function Sidebar({ recolhido, aoRecolher, aoNavegar }: SidebarProps) {
               <EllipsisVertical strokeWidth={1.75} aria-hidden="true" />
             </summary>
             <div className="yn-menu__list yn-menu__list--up">
-              <NavLink to={{ pathname: '/usuarios', search: searchGlobal }} onClick={aoNavegar}>
+              {/* "Sua conta" em Configurações vale para todo papel; /usuarios exige gerir_usuarios */}
+              <Link
+                to={{ pathname: '/configuracoes', search: searchGlobal, hash: '#conta' }}
+                onClick={() => {
+                  menuUsuario.current?.removeAttribute('open');
+                  aoNavegar();
+                }}
+              >
                 <User strokeWidth={1.75} aria-hidden="true" />
                 Perfil
-              </NavLink>
+              </Link>
               <button type="button" onClick={alternarTema}>
                 <Moon strokeWidth={1.75} aria-hidden="true" className="yn-only-light" />
                 <Sun strokeWidth={1.75} aria-hidden="true" className="yn-only-dark" />

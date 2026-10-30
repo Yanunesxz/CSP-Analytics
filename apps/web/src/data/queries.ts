@@ -31,7 +31,7 @@ import type {
   TrafficAction,
 } from '@csp-mkt/shared';
 import { rotulo } from '@csp-mkt/shared';
-import { diaSp, diferencaEmDias, diasEntre } from '../lib/datas';
+import { diaSp, diferencaEmDias, diasEntre, somarMeses } from '../lib/datas';
 import { diferenca } from '../lib/format';
 import { intervaloDoPeriodo, type Intervalo } from '../lib/periodo';
 import type { Filtros } from '../lib/url-state';
@@ -122,8 +122,11 @@ function metricasDe(dados: Dados, campanhas: readonly Campaign[], janela: Janela
 
 const CANAIS_PAGOS: readonly LeadSource[] = ['meta', 'tiktok', 'google'];
 
-/** Leads que respeitam marca, canal, campanha, operador, origem e representante. */
-function leadsFiltrados(dados: Dados, filtros: Filtros): Lead[] {
+/**
+ * Leads que respeitam marca, canal, campanha, operador, origem e representante.
+ * Exportada para as consultas de cada tela usarem a mesma regra (nenhuma regra em dois lugares).
+ */
+export function leadsFiltrados(dados: Dados, filtros: Filtros): Lead[] {
   const porUtm = new Map(dados.campaigns.map((c) => [c.utmCampaign, c]));
   return filtrarMarca(dados.leads, filtros.marca).filter((lead) => {
     const campanha = lead.utmCampaign ? porUtm.get(lead.utmCampaign) : undefined;
@@ -140,12 +143,13 @@ function leadsFiltrados(dados: Dados, filtros: Filtros): Lead[] {
   });
 }
 
-function chegouAoPedido(lead: Lead): boolean {
+/** O lead chegou ao 1º pedido enviado (decisão 0012)? */
+export function chegouAoPedido(lead: Lead): boolean {
   return (lead.stage === 'first_order' || lead.stage === 'invoiced') && lead.firstOrderAt !== null;
 }
 
 /** Clientes novos no período: leads com 1º pedido no intervalo, um por cliente. */
-function clientesNovos(leads: readonly Lead[], janela: Janela): Lead[] {
+export function clientesNovos(leads: readonly Lead[], janela: Janela): Lead[] {
   const vistos = new Set<string>();
   return filtrarPeriodo(leads.filter(chegouAoPedido), 'firstOrderAt', janela).filter((lead) => {
     const chave = lead.crmCustomerId ?? lead.id;
@@ -323,10 +327,12 @@ export interface FunilChegada {
 }
 
 function etapasDe(leads: readonly Lead[], tabela: readonly unknown[]): Array<number | null> {
+  const iPedido = ETAPAS.indexOf('first_order');
   return ETAPAS.map((_etapa, i) =>
     contagem(
       tabela,
-      leads.filter((l) => ETAPAS.indexOf(l.stage) >= i),
+      // Do 1º pedido em diante vale a regra de cliente novo (etapa e carimbo do pedido), a mesma do resto da tela
+      leads.filter((l) => ETAPAS.indexOf(l.stage) >= i && (i < iPedido || chegouAoPedido(l))),
     ),
   );
 }
@@ -368,12 +374,9 @@ export function funilChegada(dados: Dados, filtros: Filtros, agora: Date = new D
     ...new Set(doPeriodo.map((l) => l.repId).filter((r): r is string => r !== null)),
   ].sort();
 
+  // somarMeses parte do dia 1: no dia 31 (ou 29 e 30 de março) setUTCMonth transbordaria para o mês seguinte
   const meses: string[] = [];
-  for (let i = 3; i >= 0; i -= 1) {
-    const d = new Date(`${intervalo.fim}T12:00:00Z`);
-    d.setUTCMonth(d.getUTCMonth() - i);
-    meses.push(d.toISOString().slice(0, 7));
-  }
+  for (let i = 3; i >= 0; i -= 1) meses.push(somarMeses(intervalo.fim, -i).slice(0, 7));
   const coorte = meses.map((mes) => {
     const grupo = leads.filter((l) => diaSp(l.createdAt).startsWith(mes));
     const novos = grupo.filter(chegouAoPedido);
@@ -732,6 +735,10 @@ export function baseDeClientes(dados: Dados, filtros: Filtros, agora: Date = new
   const pedidos = filtrarMarca(dados.orders, filtros.marca);
   const porCliente = new Map<string, typeof pedidos>();
   for (const p of pedidos) porCliente.set(p.customerId, [...(porCliente.get(p.customerId) ?? []), p]);
+  // Dia do pedido mais antigo do conjunto (início da janela conhecida): calculado uma vez, fora do laço
+  const primeiroPedidoConhecido = dados.orders.length
+    ? diaSp(dados.orders.reduce((m, p) => (p.createdAt < m ? p.createdAt : m), dados.orders[0]!.createdAt))
+    : null;
 
   const calcular = (janela: Janela) => {
     let recompraram = 0;
@@ -751,11 +758,7 @@ export function baseDeClientes(dados: Dados, filtros: Filtros, agora: Date = new
       if (antigo && noPeriodo.length > 0) {
         recompraram += 1;
         const primeiroNoPeriodo = diaSp(noPeriodo[0]!.createdAt);
-        const inicioConhecido = dados.orders.length
-          ? diaSp(
-              dados.orders.reduce((m, p) => (p.createdAt < m ? p.createdAt : m), dados.orders[0]!.createdAt),
-            )
-          : janela.inicio;
+        const inicioConhecido = primeiroPedidoConhecido ?? janela.inicio;
         const gap = ultimoAntes
           ? diferencaEmDias(ultimoAntes, primeiroNoPeriodo)
           : diferencaEmDias(inicioConhecido, primeiroNoPeriodo);
@@ -1055,9 +1058,11 @@ export function seoGeo(dados: Dados, filtros: Filtros, agora: Date = new Date())
     const linhas = filtrarPeriodo(seoTodas, 'date', janela);
     const impressoes = temSeo ? (somaCampo(linhas, 'impressions') ?? 0) : null;
     const cliques = temSeo ? (somaCampo(linhas, 'clicks') ?? 0) : null;
-    const posicao = linhas.length
-      ? linhas.reduce((s, l) => s + l.position * l.impressions, 0) / Math.max(1, impressoes ?? 0)
-      : null;
+    // Média ponderada pelas impressões; sem impressões no período não há posição ("Sem dados", nunca 0)
+    const posicao = razao(
+      linhas.length ? linhas.reduce((s, l) => s + l.position * l.impressions, 0) : null,
+      impressoes,
+    );
     return { impressoes, cliques, ctr: razao(cliques, impressoes), posicao };
   };
   const sa = seoDe(intervalo);

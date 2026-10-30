@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "csp-mkt-exemplo",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@csp-mkt/web", "dev:exemplo"],
+      "port": 5173
+    }
+  ]
+}

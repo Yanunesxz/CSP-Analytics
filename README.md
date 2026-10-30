@@ -56,12 +56,11 @@ Monorepo pnpm: `apps/web` (React 18 + Vite + TypeScript + Tailwind 4, na Vercel)
 ## Como rodar
 
 ```bash
-cp .env.example .env   # preencha os valores; sem VITE_SUPABASE_URL o app abre no modo demonstração
 pnpm install
-pnpm dev               # apps/web em http://localhost:5173
+pnpm dev:exemplo       # protótipo com dados de exemplo em http://localhost:5173 (sem .env)
 ```
 
-`VITE_SAMPLE_DATA=true` carrega dados de exemplo (duas marcas, campanhas, leads sem nome real) no modo demonstração.
+Para ligar no Supabase: `cp .env.example .env`, preencha os valores e rode `pnpm dev`. Sem `VITE_SUPABASE_URL` o app abre no modo demonstração, vazio; `VITE_SAMPLE_DATA=true` (ou `pnpm dev:exemplo`) carrega dados de exemplo inventados — duas marcas, campanhas, leads sem nome real. Para ver um estado de tela, acrescente `?estado=carregando`, `vazio`, `erro` ou `sem-dados` ao endereço.
 
 ## Como testar
 

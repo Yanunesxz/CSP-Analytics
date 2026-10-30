@@ -487,6 +487,11 @@ function gerarSeoGeo(ctx: Contexto): { seo: SeoDaily[]; geo: GeoDaily[] } {
   return { seo, geo };
 }
 
+/** Uma etapa nunca vem antes da anterior: sorteada antes, fica 1 h depois dela. */
+function depoisDe(instante: string, anterior: string): string {
+  return instante > anterior ? instante : new Date(Date.parse(anterior) + 3_600_000).toISOString();
+}
+
 function gerarAcoes(ctx: Contexto, campanhas: Campaign[]): TrafficAction[] {
   const { rng, hoje } = ctx;
   const acoes: TrafficAction[] = [];
@@ -562,12 +567,15 @@ function gerarAcoes(ctx: Contexto, campanhas: Campaign[]): TrafficAction[] {
     const createdAt = instanteDe(criadoDia, rng.inteiro(8, 19), rng.inteiro(0, 59));
     const aprovado = status !== 'idea' && status !== 'discarded';
     const approvedAt = aprovado
-      ? instanteDe(somarDias(criadoDia, rng.inteiro(0, 3)), rng.inteiro(9, 18))
+      ? depoisDe(instanteDe(somarDias(criadoDia, rng.inteiro(0, 3)), rng.inteiro(9, 18)), createdAt)
       : null;
     const executado = status === 'done' || status === 'running';
     const executedAt =
       executado && approvedAt
-        ? instanteDe(somarDias(diaSp(approvedAt), rng.inteiro(0, 2)), rng.inteiro(9, 18))
+        ? depoisDe(
+            instanteDe(somarDias(diaSp(approvedAt), rng.inteiro(0, 2)), rng.inteiro(9, 18)),
+            approvedAt,
+          )
         : null;
     acoes.push({
       id: `act-${String(i + 1).padStart(3, '0')}`,
@@ -692,6 +700,23 @@ function gerarConectores(agora: Date): Connector[] {
   ];
 }
 
+/**
+ * Nada de exemplo fica depois de agora. Os geradores sorteiam horas de 8 a 20 h e somam dias,
+ * então parte do que cai hoje (ou depois) estaria no futuro. O que é de hoje é comprimido para
+ * entre 0 h e agora, sem mudar a ordem; o que caiu num dia depois de hoje vira agora.
+ */
+function semFuturo(agora: Date, hoje: string): (instante: string) => string {
+  const DIA_MS = 86_400_000;
+  const inicio = Date.parse(instanteDe(hoje, 0));
+  const fator = (agora.getTime() - inicio) / DIA_MS;
+  return (instante) => {
+    const t = Date.parse(instante);
+    if (t < inicio) return instante;
+    if (t >= inicio + DIA_MS) return agora.toISOString();
+    return new Date(inicio + Math.round((t - inicio) * fator)).toISOString();
+  };
+}
+
 export function gerarDadosDeExemplo(opcoes: OpcoesDeExemplo = {}): Dados {
   const { semente = SEMENTE_PADRAO, agora = new Date(), dias: quantidade = 120 } = opcoes;
   const rng = criarPrng(semente);
@@ -707,6 +732,24 @@ export function gerarDadosDeExemplo(opcoes: OpcoesDeExemplo = {}): Dados {
   const instagram = gerarInstagram(ctx);
   const seoGeo = gerarSeoGeo(ctx);
   const actions = gerarAcoes(ctx, campaigns);
+
+  const ate = semFuturo(agora, hoje);
+  const talvez = (instante: string | null): string | null => (instante ? ate(instante) : instante);
+  for (const lead of carteira.leads) {
+    lead.createdAt = ate(lead.createdAt);
+    lead.firstOrderAt = talvez(lead.firstOrderAt);
+  }
+  for (const cliente of carteira.clientes) {
+    cliente.firstOrderAt = talvez(cliente.firstOrderAt);
+    cliente.lastOrderAt = talvez(cliente.lastOrderAt);
+  }
+  for (const pedido of carteira.pedidos) pedido.createdAt = ate(pedido.createdAt);
+  for (const post of instagram.posts) post.publishedAt = ate(post.publishedAt);
+  for (const acao of actions) {
+    acao.createdAt = ate(acao.createdAt);
+    acao.approvedAt = talvez(acao.approvedAt);
+    acao.executedAt = talvez(acao.executedAt);
+  }
 
   return {
     campaigns,

@@ -90,9 +90,10 @@ function Casca() {
     }
   }, []);
 
-  // Fecha a gaveta ao trocar de tela
+  // Fecha a gaveta e volta ao topo ao trocar de tela. Com #âncora, quem rola é a tela de destino.
   useEffect(() => {
     setNavAberta(false);
+    if (!window.location.hash) window.scrollTo(0, 0);
   }, [location.pathname]);
 
   // Esc fecha a gaveta
@@ -126,6 +127,9 @@ function Casca() {
         recolhido={menuRecolhido}
         aoRecolher={() => definirRecolhido(!menuRecolhido)}
         aoNavegar={() => setNavAberta(false)}
+        aoEscolherMarca={() => {
+          if (navAberta) definirGaveta(false);
+        }}
       />
       <div className="yn-scrim" aria-hidden="true" onClick={() => definirGaveta(false)} />
       <div className="yn-main">

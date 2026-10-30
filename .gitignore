@@ -32,5 +32,5 @@ Thumbs.db
 *.sqlite
 *.db
 
-# Gerado na build pelo plugin de versão (apps/web/vite.config.ts)
-apps/web/public/version.json
+# Claude Code: preferências locais de cada máquina
+.claude/settings.local.json

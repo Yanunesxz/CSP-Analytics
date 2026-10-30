@@ -57,7 +57,7 @@ export function Topbar({ navAberta, aoAbrirMenu }: TopbarProps) {
         ))}
       </div>
       <button
-        className="yn-btn yn-btn--ghost yn-btn--icon"
+        className="yn-btn yn-btn--ghost yn-btn--icon mkt-topbar__tema"
         type="button"
         data-alternar-tema
         aria-label="Alternar tema claro e escuro"

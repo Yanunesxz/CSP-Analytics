@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FILTROS_PADRAO, apenasGlobais, escreverFiltros, lerFiltros } from './url-state';
+import { FILTROS_PADRAO, apenasGlobais, escreverFiltros, lerFiltros, montarLink } from './url-state';
 
 describe('lerFiltros', () => {
   it('sem nada na URL vale o padrão', () => {
@@ -86,5 +86,37 @@ describe('apenasGlobais', () => {
       new URLSearchParams('marca=cs&canal=meta&periodo=7d&estado=vazio&campanha=x&comparar=false'),
     );
     expect([...p.keys()].sort()).toEqual(['comparar', 'estado', 'marca', 'periodo']);
+  });
+});
+
+describe('montarLink', () => {
+  const atual = new URLSearchParams('marca=cs&canal=meta&periodo=7d');
+
+  it('leva só os filtros globais da URL atual', () => {
+    expect(montarLink(atual, '/chegada')).toBe('/chegada?marca=cs&periodo=7d');
+    expect(montarLink(new URLSearchParams(), '/conectores')).toBe('/conectores');
+  });
+
+  it('acrescenta os filtros pedidos', () => {
+    expect(montarLink(atual, '/leads', { origem: 'google' })).toBe(
+      '/leads?marca=cs&periodo=7d&origem=google',
+    );
+  });
+
+  it('põe a âncora no fim, depois dos filtros', () => {
+    expect(montarLink(atual, '/chegada#custo-por-cliente-novo', { canal: 'meta' })).toBe(
+      '/chegada?marca=cs&periodo=7d&canal=meta#custo-por-cliente-novo',
+    );
+  });
+
+  it('junta os parâmetros da tela de destino aos filtros', () => {
+    expect(montarLink(atual, '/base?recorte=inativos#clientes', { representante: 'REP-03' })).toBe(
+      '/base?marca=cs&periodo=7d&representante=REP-03&recorte=inativos#clientes',
+    );
+    expect(montarLink(new URLSearchParams(), '/trafego?aba=limites')).toBe('/trafego?aba=limites');
+  });
+
+  it('âncora vazia não deixa "#" sobrando', () => {
+    expect(montarLink(atual, '/chegada#')).toBe('/chegada?marca=cs&periodo=7d');
   });
 });

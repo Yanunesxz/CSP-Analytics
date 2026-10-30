@@ -46,6 +46,9 @@ export function marcarAcaoComoFeita(
   }));
 }
 
+/** Sequência desta aba: duas propostas no mesmo milissegundo não dividem o id. */
+let sequencia = 0;
+
 /** Ideia nova do gestor na lista "O que podemos fazer". */
 export function proporAcao(
   acao: Omit<
@@ -54,7 +57,8 @@ export function proporAcao(
   >,
   agora: Date = new Date(),
 ): string {
-  const id = `act-${agora.getTime().toString(36)}`;
+  sequencia += 1;
+  const id = `act-${agora.getTime().toString(36)}-${sequencia.toString(36)}`;
   store.alterar((dados) => ({
     ...dados,
     actions: [

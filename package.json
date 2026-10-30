@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @csp-mkt/web dev",
+    "dev:exemplo": "pnpm --filter @csp-mkt/web dev:exemplo",
     "typecheck": "pnpm -r --if-present run typecheck",
     "lint": "pnpm -r --if-present run lint",
     "test": "pnpm -r --if-present run test",

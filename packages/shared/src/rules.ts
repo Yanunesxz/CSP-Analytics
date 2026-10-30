@@ -162,9 +162,14 @@ export function pode(role: Role | null | undefined, acao: Acao): boolean {
   return permissoes(role).includes(acao);
 }
 
-/** Ação exigida para abrir cada rota protegida. Rota fora da lista é aberta a quem está logado. */
+/**
+ * Ação exigida para abrir cada rota protegida. Rota fora da lista é aberta a quem está logado.
+ * É a mesma ação que esconde o item do menu (decisão 0011): o menu e a rota nunca divergem.
+ */
 export const ROTAS_PROTEGIDAS: Readonly<Record<string, Acao>> = {
+  '/leads': 'ver_leads',
   '/trafego': 'ver_trafego_ia',
+  '/conectores': 'ver_conectores',
   '/usuarios': 'gerir_usuarios',
   '/diagnostico': 'ver_diagnostico',
 };

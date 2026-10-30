@@ -98,9 +98,7 @@ export function Kpi({
       ) : nota ? (
         <span className="yn-kpi__delta">{nota}</span>
       ) : semDados ? (
-        <span className="yn-kpi__delta">
-          {deltaTexto ? `Sem base ${deltaTexto}` : 'Sem base para calcular'}
-        </span>
+        <span className="yn-kpi__delta">Sem base para calcular</span>
       ) : null}
     </>
   );

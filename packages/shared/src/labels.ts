@@ -55,9 +55,12 @@ export const LISTAS = {
     plumene: serie(6, 'Plumene'),
   } satisfies Tabela<Brand>,
 
+  // Séries escolhidas para os pares que aparecem juntos ficarem bem distintos no tema claro:
+  // Meta × TikTok × Google (azul, magenta, laranja) e Busca orgânica × Assistente de IA (mint, roxo).
+  // Ciano fica com "Site", o par menos disputado (no claro ele é próximo do mint e do azul).
   platform: {
     meta: serie(4, 'Meta Ads'),
-    tiktok: serie(5, 'TikTok Ads'),
+    tiktok: serie(2, 'TikTok Ads'),
     google: serie(3, 'Google Ads'),
   } satisfies Tabela<Platform>,
 
@@ -82,13 +85,15 @@ export const LISTAS = {
 
   leadSource: {
     meta: serie(4, 'Meta Ads'),
-    tiktok: serie(5, 'TikTok Ads'),
+    tiktok: serie(2, 'TikTok Ads'),
     google: serie(3, 'Google Ads'),
-    site: serie(6, 'Site'),
+    site: serie(5, 'Site'),
     organic: serie(1, 'Busca orgânica'),
-    ai_assistant: serie(2, 'Assistente de IA'),
+    ai_assistant: serie(6, 'Assistente de IA'),
+    // Origens sem série própria ficam em neutros que passam de 3:1 no card nos dois temas (decisão
+    // 0007). --color-border-strong não serve: fica abaixo de 2:1 e a barra some no branco e no preto.
     sdr: { rotulo: 'SDR · WhatsApp', cor: 'var(--color-text-muted)' },
-    referral: { rotulo: 'Indicação', cor: 'var(--color-border-strong)' },
+    referral: { rotulo: 'Indicação', cor: 'var(--color-text)' },
     direct: { rotulo: 'Direto', cor: 'var(--color-silver)' },
   } satisfies Tabela<LeadSource>,
 
@@ -157,7 +162,8 @@ export const LISTAS = {
     ok: status('success', 'Funcionando'),
     late: status('warning', 'Atrasado'),
     down: status('danger', 'Caído'),
-    simulated: status('info', 'Simulado'),
+    // Simulado não pede atenção: etiqueta neutra (cor de status só quando pede ação)
+    simulated: status('muted', 'Simulado'),
   } satisfies Tabela<ConnectorStatus>,
 
   role: {

@@ -130,7 +130,7 @@ export function GraficoLinha({
         {descricao ? <p className="yn-muted text-sm">{descricao}</p> : null}
       </div>
       {series.length > 0 ? (
-        <div className="mkt-chart__legend" aria-label="Legenda">
+        <div className="mkt-chart__legend" role="group" aria-label="Legenda">
           {series.map((s) => (
             <ChipSerie key={s.id} rotulo={s.rotulo} cor={s.cor} />
           ))}

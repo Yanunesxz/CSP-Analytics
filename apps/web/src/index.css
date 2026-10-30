@@ -38,6 +38,42 @@
   --radius-full: 999px;
 }
 
+/* ---------- Ajustes da ponte com o padrão ----------
+   O preflight do Tailwind (camada base) zera a margem de todo elemento, e o <dialog> perde o
+   margin: auto do navegador que o centraliza: .yn-modal e .yn-sheet no computador abririam no canto.
+   As regras sem camada do padrão (.yn-drawer, .yn-sheet no celular) continuam vencendo. */
+@layer base {
+  dialog {
+    margin: auto;
+  }
+
+  /* O preflight também tira o sublinhado de todo link (text-decoration: inherit), e com a cor herdada
+     o link no meio do texto ficava igual ao texto. O padrão espera link sublinhado; botão, menu, card
+     e item do menu continuam sem, pelas regras do padrão (sem camada) e por no-underline. */
+  a {
+    text-decoration-line: underline;
+  }
+}
+
+/* A coluna do .yn-content não cresce com o conteúdo: uma fila de chips que não quebra no celular,
+   ou uma tabela larga, rola dentro do próprio bloco em vez de dar rolagem lateral na página. */
+.yn-content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Texto só para leitor de tela (.yn-sr-only, position: absolute) dentro de área que rola de lado
+   escaparia da rolagem e alargaria a página: estas áreas passam a ser o bloco de referência. */
+.yn-table-wrap,
+.yn-tabs {
+  position: relative;
+}
+
+/* A aba ativa tem margem de -1px para cobrir a linha de baixo; com overflow-x: auto isso sobrava
+   1px em pé e mostrava uma barra de rolagem vertical no Windows. */
+.yn-tabs {
+  overflow-y: hidden;
+}
+
 /* ---------- Grades do CSP-MKT ----------
    Só layout, com a grade que a seção 5 do padrão prescreve para indicadores.
    Nenhuma cor, fonte ou tamanho de texto aqui: tudo vem dos tokens e das classes yn-*. */
@@ -56,9 +92,11 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
 }
 
-/* Bloco de gráfico: título, legenda, desenho e "Ver como tabela" */
+/* Bloco de gráfico: título, legenda, desenho e "Ver como tabela".
+   A coluna fica do tamanho do card: "Ver como tabela" aberto com tabela larga rola dentro dela. */
 .mkt-chart {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
   min-width: 0;
 }
@@ -77,11 +115,19 @@
   gap: var(--space-2);
 }
 
-.mkt-chart svg {
+/* Só o desenho do gráfico (role="img"), nunca os ícones Lucide de dentro (vazio, ordenação) */
+.mkt-chart svg[role='img'] {
   display: block;
   width: 100%;
   height: auto;
   overflow: visible;
+}
+
+/* "Ver como tabela" num cartão estreito (gráfico em meia tela, celular): o cabeçalho e as colunas de
+   texto quebram linha para a tabela caber no cartão sem rolar de lado; número fica numa linha só. */
+.yn-as-table .yn-table th,
+.yn-as-table .yn-table td:not(.yn-num) {
+  white-space: normal;
 }
 
 /* Linha de filtros: período, chips rápidos e botão "Filtros" na mesma linha; quebra no celular */
@@ -90,6 +136,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .mkt-filters__period {
@@ -115,4 +162,23 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* ---------- Celular ----------
+   Barra do topo: a Visão (Visualizador · Gestor de tráfego) ocupa a segunda linha inteira, e o botão
+   de tema descia sozinho para uma terceira. Ele sobe para a linha do título; a ação e a Visão descem.
+   Linha de filtros: os filtros rápidos dividem a linha com "Filtros" e rolam de lado, como o padrão
+   prevê para o celular, em vez de ocupar uma linha só para eles. */
+@media (max-width: 768px) {
+  .yn-topbar > .mkt-topbar__tema {
+    order: 1;
+  }
+
+  .yn-topbar > :nth-child(n + 3):not(.mkt-topbar__tema) {
+    order: 2;
+  }
+
+  .mkt-filters > .yn-chips {
+    flex: 1 1 200px;
+  }
 }

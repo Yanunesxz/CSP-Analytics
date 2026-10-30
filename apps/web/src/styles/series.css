@@ -10,18 +10,21 @@
  * Mapeamento código → série em packages/shared/src/labels.ts.
  */
 
-/* ---------- Tema claro: valores do Tangram, como estão ---------- */
+/* ---------- Tema claro ----------
+   Matizes do Tangram. Magenta, azul e roxo entram como estão; mint (#00F2C9), laranja (#FF8900)
+   e ciano (#00DBFF) ficavam abaixo de 3:1 no branco, então aqui vão escurecidos em OKLCH,
+   mesma matiz, até passar de 3:1 no card (#FFFFFF) e no fundo cinza (#F5F5F5). */
 :root {
-  --color-series-1: #00f2c9; /* mint */
+  --color-series-1: #039c81; /* mint (Tangram #00F2C9 escurecido) */
   --color-series-2: #ed0093; /* magenta */
-  --color-series-3: #ff8900; /* laranja */
+  --color-series-3: #d17005; /* laranja (Tangram #FF8900 escurecido) */
   --color-series-4: #0077b2; /* azul */
-  --color-series-5: #00dbff; /* ciano */
+  --color-series-5: #0697b0; /* ciano (Tangram #00DBFF escurecido) */
   --color-series-6: #8800f7; /* roxo */
 }
 
 /* ---------- Tema escuro: versões mais claras, legíveis no fundo preto ----------
-   Mesmos matizes, mais luz e menos saturação, para manter 3:1 contra o fundo e entre si
+   Mesmas matizes, mais luz: todas passam de 5:1 no card escuro (#202020) e no preto
    (regra 10 do Diagnóstico). Os dois blocos seguem o mecanismo de tokens.css. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {

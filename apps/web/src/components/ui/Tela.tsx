@@ -15,15 +15,27 @@ import { Vazio } from './Vazio';
 
 export interface TelaProps<T> {
   resultado: Resultado<T>;
-  /** Texto do estado vazio (padrão: "Nenhum dado ainda" com link para Conectores). */
+  /**
+   * Texto do estado vazio (padrão: "Nenhum dado ainda" com link para Conectores).
+   * `acao: null` tira o link (ex.: na própria tela de Conectores).
+   */
   vazio?: { titulo?: string; texto?: string; icone?: LucideIcon; acao?: ReactNode };
+  /** Texto da falha ao carregar (padrão: tentar de novo e, se continuar, ver os conectores). */
+  erroTexto?: string;
   esqueleto?: EsqueletoProps['variante'];
   /** Padrão: tira `?estado=` da URL (na demonstração, "Tentar de novo" recupera a tela). */
   aoTentarDeNovo?: () => void;
   children: (dados: T, estado: 'ok' | 'sem-dados') => ReactNode;
 }
 
-export function Tela<T>({ resultado, vazio, esqueleto = 'tela', aoTentarDeNovo, children }: TelaProps<T>) {
+export function Tela<T>({
+  resultado,
+  vazio,
+  erroTexto,
+  esqueleto = 'tela',
+  aoTentarDeNovo,
+  children,
+}: TelaProps<T>) {
   const { limpar, linkCom } = useFiltros();
   const tentar = aoTentarDeNovo ?? (() => limpar(['estado']));
 
@@ -33,7 +45,7 @@ export function Tela<T>({ resultado, vazio, esqueleto = 'tela', aoTentarDeNovo, 
       <Vazio
         erro
         titulo="Não deu para carregar"
-        texto="Tente de novo em alguns segundos. Se continuar, veja os conectores."
+        texto={erroTexto ?? 'Tente de novo em alguns segundos. Se continuar, veja os conectores.'}
         codigo={resultado.codigo}
         aoTentarDeNovo={tentar}
       />
@@ -44,12 +56,12 @@ export function Tela<T>({ resultado, vazio, esqueleto = 'tela', aoTentarDeNovo, 
       <Vazio
         icone={vazio?.icone ?? Plug}
         titulo={vazio?.titulo ?? 'Nenhum dado ainda'}
-        texto={
-          vazio?.texto ??
-          'Ligue um conector para os números chegarem. No modo demonstração, abra com VITE_SAMPLE_DATA=true.'
-        }
+        texto={vazio?.texto ?? 'Ligue um conector para os números chegarem.'}
         acao={
-          vazio?.acao ?? (
+          // `undefined` usa o link padrão; `null` pede o vazio sem ação
+          vazio?.acao !== undefined ? (
+            vazio.acao
+          ) : (
             <Link className="yn-btn yn-btn--secondary" to={linkCom('/conectores')}>
               Ver conectores
             </Link>

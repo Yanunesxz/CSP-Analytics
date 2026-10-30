@@ -10,13 +10,7 @@ import { Bookmark, Filter, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { opcoes as opcoesDe, rotulo as rotuloDe, cor as corDe } from '@csp-mkt/shared';
 import { PERIODOS } from '../../lib/periodo';
-import {
-  CHAVES_DE_TELA,
-  FILTROS_PADRAO,
-  useFiltros,
-  type ChaveFiltro,
-  type Filtros,
-} from '../../lib/url-state';
+import { CHAVES_DE_TELA, useFiltros, type ChaveFiltro, type Filtros } from '../../lib/url-state';
 import { PontoDeSerie } from './ChipSerie';
 
 export type CampoFiltro = 'canal' | 'campanha' | 'operador' | 'origem' | 'representante';
@@ -200,11 +194,15 @@ export function BarraDeFiltros({
           </div>
         ) : null}
 
-        <button className="yn-btn yn-btn--secondary" type="button" onClick={abrir} aria-haspopup="dialog">
-          <Filter strokeWidth={1.75} aria-hidden="true" />
-          Filtros
-          {ativos.length ? <span className="yn-count">{ativos.length}</span> : null}
-        </button>
+        {/* Tela sem filtro próprio (campos={[]}, como Instagram e SEO e GEO) não mostra o botão: o painel
+            ficaria só com "Meus filtros" de um período (lei de Occam, seção 7 do padrão) */}
+        {campos.length > 0 ? (
+          <button className="yn-btn yn-btn--secondary" type="button" onClick={abrir} aria-haspopup="dialog">
+            <Filter strokeWidth={1.75} aria-hidden="true" />
+            Filtros
+            {ativos.length ? <span className="yn-count">{ativos.length}</span> : null}
+          </button>
+        ) : null}
 
         {ativos.map((chave) => {
           const valor = String(filtros[chave]);
@@ -364,10 +362,9 @@ export function BarraDeFiltros({
           <button
             className="yn-btn yn-btn--ghost"
             type="button"
-            onClick={() => {
-              limpar();
-              definir({ periodo: FILTROS_PADRAO.periodo, comparar: FILTROS_PADRAO.comparar });
-            }}
+            // Uma gravação só: duas seguidas (limpar e depois definir) partem da mesma URL do render,
+            // e a segunda desfaria a primeira. Período e comparação voltam ao padrão junto.
+            onClick={() => limpar([...CHAVES_DE_TELA, 'periodo', 'comparar'])}
           >
             Limpar filtros
           </button>

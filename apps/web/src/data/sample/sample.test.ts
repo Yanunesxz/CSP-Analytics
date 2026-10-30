@@ -74,6 +74,24 @@ describe('gerarDadosDeExemplo', () => {
     expect(dados.connectors.filter((c) => c.status === 'late')).toHaveLength(1);
   });
 
+  it('nada fica depois de agora, nem quando o dia mal começou', () => {
+    for (const quando of [agora, new Date('2026-10-30T09:05:00-03:00')]) {
+      const d = gerarDadosDeExemplo({ agora: quando });
+      const instantes = [
+        ...d.leads.flatMap((l) => [l.createdAt, l.firstOrderAt]),
+        ...d.customers.flatMap((c) => [c.firstOrderAt, c.lastOrderAt]),
+        ...d.orders.map((p) => p.createdAt),
+        ...d.igMedia.map((p) => p.publishedAt),
+        ...d.actions.flatMap((a) => [a.createdAt, a.approvedAt, a.executedAt]),
+      ].filter((v): v is string => Boolean(v));
+      expect(instantes.filter((v) => Date.parse(v) > quando.getTime())).toEqual([]);
+      for (const a of d.actions) {
+        if (a.approvedAt) expect(a.approvedAt >= a.createdAt).toBe(true);
+        if (a.executedAt && a.approvedAt) expect(a.executedAt >= a.approvedAt).toBe(true);
+      }
+    }
+  });
+
   it('não tem nome de pessoa nem dado pessoal', () => {
     const texto = JSON.stringify(dados);
     expect(texto).not.toMatch(/@(?!example\.com)/);

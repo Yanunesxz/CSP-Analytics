@@ -35,6 +35,7 @@ describe('labels', () => {
     expect(rotulo('operator', 'claude')).toBe('Claude');
     expect(cor('platform', 'meta')).toBe('var(--color-series-4)');
     expect(tom('connectorStatus', 'late')).toBe('warning');
+    expect(tom('connectorStatus', 'simulated')).toBe('muted');
     expect(tom('brand', 'cs')).toBeUndefined();
   });
 

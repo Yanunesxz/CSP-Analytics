@@ -97,6 +97,7 @@ export function GraficoBarras({
         <AsTable
           legenda={titulo}
           colunas={itens.some((i) => i.detalhe) ? ['Item', rotuloValor, 'Detalhe'] : ['Item', rotuloValor]}
+          texto={[2]}
           linhas={itens.map((i) =>
             itens.some((x) => x.detalhe)
               ? [i.rotulo, i.valor === null ? '—' : formato(i.valor), i.detalhe ?? '—']
