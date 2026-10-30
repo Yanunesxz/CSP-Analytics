@@ -1,0 +1,36 @@
+# Roda em todo PR e na main: tipos, lint, testes, build e checagens do projeto.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Dependências
+        run: |
+          if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi
+
+      - name: Tipos, lint, testes e build
+        run: pnpm verify
+
+      - name: Migrações com versão única
+        run: |
+          if [ -d supabase/migrations ]; then
+            dup=$(ls supabase/migrations | grep -oE '^[0-9]{14}' | sort | uniq -d)
+            if [ -n "$dup" ]; then echo "Migrações com a mesma versão: $dup"; exit 1; fi
+          fi

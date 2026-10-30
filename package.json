@@ -1,0 +1,18 @@
+{
+  "name": "csp-mkt",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Central de marketing do grupo Corpo Sensual e Plumene — padrão Yan Nunes v0.4.0",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @csp-mkt/web dev",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "lint": "pnpm -r --if-present run lint",
+    "test": "pnpm -r --if-present run test",
+    "build": "pnpm -r --if-present run build",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+  }
+}
