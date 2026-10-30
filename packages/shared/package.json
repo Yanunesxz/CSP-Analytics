@@ -1,0 +1,23 @@
+{
+  "name": "@csp-mkt/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Listas fechadas, rótulos, permissões e regras puras do CSP-MKT, usadas pelo front e como referência das views do banco.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.14.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1",
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,118 @@
+@import "tailwindcss";
+@import "./styles/series.css";
+
+/* Ponte Tailwind 4 do padrão Yan Nunes (ui/tailwind.css v0.4.0), colada exatamente.
+   Apaga a paleta do Tailwind e cria as cores do padrão a partir dos tokens. */
+@theme inline {
+  --color-*: initial;
+
+  --color-page: var(--color-bg);
+  --color-panel: var(--color-surface);
+  --color-raised: var(--color-surface-raised);
+  --color-line: var(--color-border);
+  --color-line-strong: var(--color-border-strong);
+  --color-ink: var(--color-text);
+  --color-muted: var(--color-text-muted);
+  --color-decor: var(--color-silver);
+
+  --color-primary: var(--color-brand);
+  --color-primary-hover: var(--color-brand-hover);
+  --color-primary-subtle: var(--color-brand-subtle);
+  --color-on-primary: var(--color-brand-contrast);
+
+  --color-tone-success: var(--color-success);
+  --color-tone-info: var(--color-info);
+  --color-tone-warning: var(--color-warning);
+  --color-tone-danger: var(--color-danger);
+
+  --color-ring: var(--color-focus);
+
+  --font-*: initial;
+  --font-sans: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --radius-*: initial;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 999px;
+}
+
+/* ---------- Grades do CSP-MKT ----------
+   Só layout, com a grade que a seção 5 do padrão prescreve para indicadores.
+   Nenhuma cor, fonte ou tamanho de texto aqui: tudo vem dos tokens e das classes yn-*. */
+
+/* Cards de indicador: até 4 por linha no computador, 1 ou 2 no celular */
+.mkt-grid-kpis {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+/* Dois blocos lado a lado (gráfico + tabela, duas marcas) que empilham quando aperta */
+.mkt-grid-2 {
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+
+/* Bloco de gráfico: título, legenda, desenho e "Ver como tabela" */
+.mkt-chart {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.mkt-chart__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.mkt-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.mkt-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Linha de filtros: período, chips rápidos e botão "Filtros" na mesma linha; quebra no celular */
+.mkt-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mkt-filters__period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.mkt-filters__period .yn-input {
+  width: auto;
+  min-width: 160px;
+}
+
+/* Grupo de campos dentro do painel de filtros */
+.mkt-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* Linha de ações no rodapé de um card ou lista */
+.mkt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

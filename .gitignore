@@ -31,3 +31,6 @@ Thumbs.db
 *.xlsx
 *.sqlite
 *.db
+
+# Gerado na build pelo plugin de versão (apps/web/vite.config.ts)
+apps/web/public/version.json

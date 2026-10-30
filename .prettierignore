@@ -1,0 +1,7 @@
+node_modules
+dist
+pnpm-lock.yaml
+apps/web/public/version.json
+PADRAO-YAN-NUNES.md
+# bloco @theme colado exatamente do padrão: não reformatar
+apps/web/src/index.css

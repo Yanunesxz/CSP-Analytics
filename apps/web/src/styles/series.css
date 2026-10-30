@@ -1,0 +1,44 @@
+/*
+ * Cores de série do CSP-MKT — decisão 0007 (desvio registrado da seção 3 do padrão).
+ *
+ * Escala categórica tirada dos tokens de dataviz do Tangram (design system da RD Station),
+ * congelada aqui: o Tangram só documenta o modo claro e os valores vivem no bundle do site,
+ * então nunca buscar em runtime.
+ *
+ * Uso: SÓ para canal, marca e operador em gráfico, chip e legenda, sempre com rótulo ao lado.
+ * Nunca em botão, status ou texto corrido. Cor de status nunca identifica série.
+ * Mapeamento código → série em packages/shared/src/labels.ts.
+ */
+
+/* ---------- Tema claro: valores do Tangram, como estão ---------- */
+:root {
+  --color-series-1: #00f2c9; /* mint */
+  --color-series-2: #ed0093; /* magenta */
+  --color-series-3: #ff8900; /* laranja */
+  --color-series-4: #0077b2; /* azul */
+  --color-series-5: #00dbff; /* ciano */
+  --color-series-6: #8800f7; /* roxo */
+}
+
+/* ---------- Tema escuro: versões mais claras, legíveis no fundo preto ----------
+   Mesmos matizes, mais luz e menos saturação, para manter 3:1 contra o fundo e entre si
+   (regra 10 do Diagnóstico). Os dois blocos seguem o mecanismo de tokens.css. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-series-1: #5cf5db;
+    --color-series-2: #ff5cbf;
+    --color-series-3: #ffa94d;
+    --color-series-4: #4fb3e8;
+    --color-series-5: #6ae6ff;
+    --color-series-6: #b57aff;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-series-1: #5cf5db;
+  --color-series-2: #ff5cbf;
+  --color-series-3: #ffa94d;
+  --color-series-4: #4fb3e8;
+  --color-series-5: #6ae6ff;
+  --color-series-6: #b57aff;
+}
