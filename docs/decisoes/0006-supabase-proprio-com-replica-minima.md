@@ -1,11 +1,11 @@
 # 0006 — Dados em projeto Supabase próprio, com réplica mínima do CRM
 
 - **Data:** 2026-10-30
-- **Status:** aceita
+- **Status:** aceita (contexto e primeira alternativa reescritos em 2026-11-03 para tirar o detalhe de acesso do CRM, sem mudar a decisão)
 
 ## Contexto
 
-O CRM (CSP 360) tem um projeto Supabase só, sem views nem RPC, com uma política única para usuários logados (lê e grava tudo) e migrações aplicadas à mão. O CSP-MKT precisa de views de KPI, RLS por papel e tabelas próprias de marketing, e não pode ter dado pessoal além do mínimo.
+O CRM (CSP 360) é outro sistema, com outro time, outro projeto Supabase e as próprias regras de acesso. O CSP-MKT precisa de views de KPI, RLS por papel e tabelas próprias de marketing, e não pode ter dado pessoal além do mínimo.
 
 ## Decisão
 
@@ -15,7 +15,7 @@ Latência: leads a cada 5 min pela réplica (quase tempo real exige o CRM avisar
 
 ## Alternativas consideradas
 
-- **Mesmo projeto do CRM:** rejeitada — herdaria "logado = acesso a tudo", colocaria tabelas de marketing no banco de produção do CRM por migração manual e impediria o login do gestor de tráfego sem RLS nova no CRM.
+- **Mesmo projeto do CRM:** rejeitada — misturaria as regras de acesso dos dois sistemas, colocaria tabelas de marketing no banco de produção do CRM e faria o login do gestor de tráfego depender de regra nova no CRM.
 - **Projeto próprio lendo o CRM ao vivo por Edge Function:** rejeitada — o CRM não tem RPC nem view e devolve 1.000 linhas por chamada; toda tela dependeria da latência do outro sistema.
 
 ## Consequências

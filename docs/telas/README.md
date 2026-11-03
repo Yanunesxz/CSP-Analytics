@@ -85,7 +85,10 @@ foi corrigido; o resto está em "Pendências de desenho".
 - **Testes:** `tela.test.ts` novos na Visão geral, na Base de clientes e nas telas de canal, e casos novos no de
   Tráfego com IA, desenham a tela no servidor e conferem os destinos dos links e a ordem dos blocos.
 
-## Pendências de desenho (precisam de decisão)
+## Pendências de desenho (melhorias, não bloqueiam)
+
+O portão da fase 2 fechou em 03/11/2026 com o protótipo como está: estas pendências viram melhorias de tela, sem
+bloquear a fase 3. As de número ("Este mês", "Parar tudo", quem aprova) viraram decisões de produto da fase 3.
 
 - **Visão geral em 375px:** os oito indicadores ficam um por linha e empurram as tabelas por marca e por canal para
   depois de cerca de duas telas de rolagem. Proposta: dividir os indicadores em "Aquisição" (custo por cliente novo,
@@ -94,7 +97,9 @@ foi corrigido; o resto está em "Pendências de desenho".
 - **"Este mês" contra o mês anterior inteiro** (`lib/periodo.ts`, de propósito e com teste): no começo do mês, as
   contagens (clientes novos, leads, investimento, pedidos) aparecem em queda forte e em vermelho, uma urgência falsa
   (lei 18). Nos dados de exemplo, de 30/10, isso não aparece. Decidir se a T1 compara com os mesmos dias do mês
-  anterior (1º a hoje) ou com o mês inteiro, e dizer qual no rótulo ("vs. 1º a 5 de setembro").
+  anterior (1º a hoje) ou com o mês inteiro, e dizer qual no rótulo ("vs. 1º a 5 de setembro"). Proposta na
+  [decisão 0026](../decisoes/0026-comparacao-de-este-mes.md): os mesmos dias do mês anterior, só com os dias completos
+  de cada fonte.
 - **Canal em 375px, visão Gestor:** Humano × Claude (T3) vem depois de 12 indicadores um por linha.
 - **Tráfego com IA no Visualizador:** abrir o módulo mostra só "Esta tela é da visão Gestor de tráfego"; decidir se
   os links para ele ("Ver pendências em Tráfego com IA", em Conectores e SEO e GEO) já levam `?visao=gestor`.

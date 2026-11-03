@@ -47,7 +47,7 @@ Central de marketing do grupo Corpo Sensual e Plumene: mostra numa tela só quan
 
 ## Dicionário de dados
 
-A preencher na fase 3 (tabelas, status, views de KPI e conectores). Regras que já valem: inglês e `snake_case`; dinheiro em `*_cents`; data e hora em `*_at` com fuso `America/Sao_Paulo`; status em lista fechada em inglês com rótulo em português; `brand_id` em toda tabela de fato e nunca em cliente ([decisão 0003](docs/decisoes/0003-marca-como-dimensao.md)); `external_id` + `source` em tudo que vem de fora; toda métrica derivada é view ou função SQL.
+Proposta da fase 3 em [`docs/dados/`](docs/dados/README.md), aguardando a aprovação do dono: tabelas e colunas ([`tabelas.md`](docs/dados/tabelas.md)), listas fechadas, papéis e RLS, views e funções de KPI, e o que é replicado do CSP 360 e o que não é ([`integracoes.md`](docs/dados/integracoes.md), seção 3.2). Regras que já valem: inglês e `snake_case`; dinheiro em `*_cents`; data e hora em `*_at` com fuso `America/Sao_Paulo`; status em lista fechada em inglês com rótulo em português; `brand_id` em toda tabela de fato e nunca em cliente ([decisão 0003](docs/decisoes/0003-marca-como-dimensao.md)); `external_id` + `source` em tudo que vem de fora; toda métrica derivada é view ou função SQL.
 
 ## Estrutura
 
