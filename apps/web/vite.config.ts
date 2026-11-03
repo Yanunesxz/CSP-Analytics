@@ -38,7 +38,8 @@ function versaoJson(): Plugin {
 
 /**
  * `--mode exemplo` (scripts dev:exemplo e build:exemplo) liga os dados de exemplo sem precisar de .env:
- * é o protótipo da fase 2 aberto como o dono vai ver. Nunca usar em produção.
+ * é o protótipo da fase 2 aberto como o dono vai ver. A Vercel usa o build:exemplo (vercel.json) só enquanto
+ * o front não lê o banco; quando ler (fase 4), o buildCommand volta a ser `pnpm build`.
  */
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), versaoJson()],

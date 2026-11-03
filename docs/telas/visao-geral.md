@@ -28,7 +28,7 @@ até o custo por marca e canal.
 
 | Pergunta | Caminho | Toques |
 |---|---|---|
-| Quanto custou o cliente novo neste mês, comparado ao anterior? | Indicador "Custo por cliente novo", com a variação "vs. mês anterior" | 0 |
+| Quanto custou o cliente novo neste mês, comparado ao anterior? | Indicador "Custo por cliente novo", com a variação contra os mesmos dias do mês anterior ("vs. 1º a 3 de outubro", decisão 0026) | 0 |
 | E por marca e por canal? | Tabelas "Por marca" e "Por canal" do bloco "Custo por cliente novo", logo depois dos indicadores nas duas visões, com a variação embaixo de cada custo | 0 |
 | Marca × canal cruzados | Tocar no indicador "Custo por cliente novo" → Chegada de clientes em `#custo-por-cliente-novo` (a matriz) | 1 |
 | Só uma marca, por canal | Tocar no nome da marca na tabela "Por marca" → Chegada de clientes daquela marca, no mesmo bloco | 1 |

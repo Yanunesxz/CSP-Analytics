@@ -94,12 +94,11 @@ bloquear a fase 3. As de número ("Este mês", "Parar tudo", quem aprova) virara
   depois de cerca de duas telas de rolagem. Proposta: dividir os indicadores em "Aquisição" (custo por cliente novo,
   clientes novos, leads, investimento), seguidos do custo por marca e por canal, e "Venda e alcance" (pedidos,
   valor, faturado, Instagram) depois; ou dois indicadores por linha no celular.
-- **"Este mês" contra o mês anterior inteiro** (`lib/periodo.ts`, de propósito e com teste): no começo do mês, as
-  contagens (clientes novos, leads, investimento, pedidos) aparecem em queda forte e em vermelho, uma urgência falsa
-  (lei 18). Nos dados de exemplo, de 30/10, isso não aparece. Decidir se a T1 compara com os mesmos dias do mês
-  anterior (1º a hoje) ou com o mês inteiro, e dizer qual no rótulo ("vs. 1º a 5 de setembro"). Decidido na
-  [decisão 0026](../decisoes/0026-comparacao-de-este-mes.md), aceita em 03/11/2026: os mesmos dias do mês anterior, só
-  com os dias completos de cada fonte (o front passa a usar na fase 4).
+- **"Este mês" contra o mês anterior inteiro** (resolvida): no começo do mês, as contagens apareciam em queda forte e
+  em vermelho, uma urgência falsa (lei 18). A [decisão 0026](../decisoes/0026-comparacao-de-este-mes.md), aceita em
+  03/11/2026, compara com os mesmos dias do mês anterior, e o protótipo já faz isso desde 03/11/2026 (`lib/periodo.ts`,
+  com teste), com o rótulo "vs. 1º a 3 de outubro". Comparar só os dias completos de cada fonte vem com o banco, na
+  fase 4.
 - **Canal em 375px, visão Gestor:** Humano × Claude (T3) vem depois de 12 indicadores um por linha.
 - **Tráfego com IA no Visualizador:** abrir o módulo mostra só "Esta tela é da visão Gestor de tráfego"; decidir se
   os links para ele ("Ver pendências em Tráfego com IA", em Conectores e SEO e GEO) já levam `?visao=gestor`.

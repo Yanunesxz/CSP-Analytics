@@ -14,8 +14,8 @@
 
 ## Em produção
 
-- Versão: nenhuma (nada publicado)
-- O que está funcionando: nada ainda
+- Versão: nenhuma em produção de verdade. A Vercel publica a `main` como prévia do protótipo, com dados de exemplo e a faixa "Modo demonstração" (`apps/web/vercel.json`: `pnpm build:exemplo`, raiz `apps/web`, sem variável de ambiente, `noindex`). Quando o front ler o banco (fase 4), o `buildCommand` volta a ser `pnpm build`.
+- O que está funcionando: as 13 telas do protótipo com dados de exemplo inventados; nenhum dado real
 
 ## Em andamento
 
@@ -34,7 +34,7 @@ O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquema
 - Nada em produção. Riscos conhecidos: a aprovação da Meta para o Claude executar (Full Access: App Review + Business Verification) é o item mais longo e ainda não começou; os sites não medem nada (`NEXT_PUBLIC_GA_ID` vazio em produção); a `sincronizar-apps` do CRM não traz `orders.total`, `invoiced_total` nem `source`; a função de leads dos sites está fora da `main` do CRM.
 - **O CI não roda no GitHub:** o token usado no `git push` não tem o escopo `workflow`, então o workflow ficou em `docs/ci.yml`. Até ele voltar para `.github/workflows/ci.yml` (pelo site do GitHub ou com um token com esse escopo), rode `pnpm verify` antes de todo push.
 - O Google Ads aposentou o developer token em 09/09/2026 (o acesso passou a ser pelo projeto do Google Cloud): `GOOGLE_ADS_DEVELOPER_TOKEN` e o OAuth do Google Ads no `.env.example` não valem mais. A proposta usa contas de serviço (decisão 0036); o `.env.example` muda na fase 4.
-- Números do protótipo são de exemplo e ainda seguem as regras de antes das decisões 0026 a 0033 (a tela passa a ler as contas do banco na fase 4): não tirar conclusão de negócio deles.
+- Números do protótipo são de exemplo. "Este mês" já compara com os mesmos dias do mês anterior (decisão 0026, desde 03/11/2026); as outras regras ainda são as de antes das decisões 0027 a 0033 (a tela passa a ler as contas do banco na fase 4): não tirar conclusão de negócio deles.
 
 ## Próximos passos
 

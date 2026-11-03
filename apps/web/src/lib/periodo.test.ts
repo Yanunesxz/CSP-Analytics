@@ -4,15 +4,36 @@ import { intervaloDoPeriodo } from './periodo';
 const agora = new Date('2026-10-30T15:00:00-03:00');
 
 describe('intervaloDoPeriodo', () => {
-  it('este mês vai do dia 1 até hoje e compara com o mês anterior inteiro', () => {
-    const i = intervaloDoPeriodo('este-mes', agora);
-    expect(i).toMatchObject({
+  it('este mês vai do dia 1 até hoje e compara com os mesmos dias do mês anterior (decisão 0026)', () => {
+    expect(intervaloDoPeriodo('este-mes', new Date('2026-11-03T15:00:00-03:00'))).toMatchObject({
+      inicio: '2026-11-01',
+      fim: '2026-11-03',
+      anteriorInicio: '2026-10-01',
+      anteriorFim: '2026-10-03',
+      dias: 3,
+      rotuloAnterior: 'vs. 1º a 3 de outubro',
+    });
+    // Mês anterior mais curto: para no último dia dele.
+    expect(intervaloDoPeriodo('este-mes', new Date('2026-03-31T15:00:00-03:00'))).toMatchObject({
+      anteriorInicio: '2026-02-01',
+      anteriorFim: '2026-02-28',
+      rotuloAnterior: 'vs. 1º a 28 de fevereiro',
+    });
+    // Dia 1: compara com o dia 1 do mês anterior.
+    expect(intervaloDoPeriodo('este-mes', new Date('2026-11-01T09:00:00-03:00'))).toMatchObject({
+      anteriorInicio: '2026-10-01',
+      anteriorFim: '2026-10-01',
+      dias: 1,
+      rotuloAnterior: 'vs. 1º de outubro',
+    });
+    // No fim do mês, os mesmos dias são o mês anterior inteiro.
+    expect(intervaloDoPeriodo('este-mes', agora)).toMatchObject({
       inicio: '2026-10-01',
       fim: '2026-10-30',
       anteriorInicio: '2026-09-01',
       anteriorFim: '2026-09-30',
       dias: 30,
-      rotuloAnterior: 'vs. mês anterior',
+      rotuloAnterior: 'vs. 1º a 30 de setembro',
     });
   });
 
@@ -52,12 +73,13 @@ describe('intervaloDoPeriodo', () => {
     // 23:30 em São Paulo de 30/10 é 02:30 UTC de 31/10
     const i = intervaloDoPeriodo('este-mes', new Date('2026-10-30T23:30:00-03:00'));
     expect(i.fim).toBe('2026-10-30');
+    // 00:30 de 1º/11 em São Paulo ainda é 31/10 em UTC: o mês já é novembro, e o anterior é só o dia 1 (0026)
     const j = intervaloDoPeriodo('este-mes', new Date('2026-11-01T00:30:00-03:00'));
     expect(j).toMatchObject({
       inicio: '2026-11-01',
       fim: '2026-11-01',
       anteriorInicio: '2026-10-01',
-      anteriorFim: '2026-10-31',
+      anteriorFim: '2026-10-01',
     });
   });
 
