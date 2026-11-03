@@ -1,7 +1,7 @@
 # 0037 — Leads de formulário das plataformas: só a contagem
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; detalha a 0006 e a 0010)
+- **Status:** aceita em 2026-11-03 (técnica; detalha a 0006 e a 0010)
 
 ## Contexto
 

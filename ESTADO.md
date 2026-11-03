@@ -6,11 +6,11 @@
 
 ## Fase do processo
 
-- Fase atual: **3. Modelar** — proposta do modelo de dados em `docs/dados/` e nas decisões 0013 a 0038, aguardando a aprovação do dono antes de criar o banco
+- Fase atual: **3. Modelar** — modelo de dados aprovado pelo dono em 2026-11-03 ("Aprovar tudo": o modelo de `docs/dados/`, as decisões 0013 a 0038 e as de produto 0021 a 0033 como recomendadas); falta a parte 2 do portão (migrações e o teste de RLS pela API)
 - Fases fechadas: 1. Entender em 2026-10-30 (resumo aprovado por escrito pelo dono — "ok, segue"); 2. Desenhar em 2026-11-03 (o dono fez a T1 no protótipo e aprovou — "Aprovado, seguir"; o protótipo segue como está e as pendências de desenho de tela viram melhoria, sem bloquear)
-- Portão da fase 3: RLS testada com um usuário de cada papel (`owner`, `traffic_manager`) e sem login, tentando ler, alterar e chamar o que não devia, e sendo negado. Fecha em duas partes: o dono aprova o modelo e responde as decisões de produto; depois as migrações rodam no projeto Supabase de teste e o teste de RLS passa pela API (`docs/dados/plano.md`)
+- Portão da fase 3: RLS testada com um usuário de cada papel (`owner`, `traffic_manager`) e sem login, tentando ler, alterar e chamar o que não devia, e sendo negado. Fecha em duas partes: o dono aprova o modelo e responde as decisões de produto (feito em 2026-11-03); depois as migrações rodam no projeto Supabase de teste e o teste de RLS passa pela API (`docs/dados/plano.md`)
 - Número de sucesso: custo por cliente novo por marca e canal — hoje desconhecido → conhecido toda semana para as duas marcas (meta de valor depois de 4 semanas medidas); relatório semanal de marketing — hoje não existe → 5 min numa tela. Última medição: nenhuma (nada mede ainda; GA4 dos sites sem ID)
-- Último resumo enviado ao cliente: 2026-10-30 (modelo 1, fase 1); prévia da fase 2 enviada em 2026-10-30 (modelo 2)
+- Último resumo enviado ao cliente: 2026-10-30 (modelo 1, fase 1); prévia da fase 2 enviada em 2026-10-30 (modelo 2); o modelo de dados e as decisões de produto da fase 3 em 2026-11-03, aprovados no mesmo dia
 
 ## Em produção
 
@@ -23,27 +23,25 @@
 |---|---|---|---|
 | Arquivos do padrão, CLAUDE.md, ESTADO.md, decisões 0001–0012 | sessão de IA | `chore/iniciar-projeto` | publicada; PR para a `main` a abrir |
 | Fase 2: protótipo no modo demonstração (13 telas, estados, Visualizador × Gestor de tráfego, Humano × Claude) | sessão de IA | `feat/prototipo-demonstracao` (sobre `chore/iniciar-projeto`) | portão fechado em 03/11/2026; publicada; PR a abrir |
-| Fase 3: proposta do modelo de dados (`docs/dados/`, decisões 0013–0038) | sessão de IA | `feat/modelo-de-dados` (sobre `feat/prototipo-demonstracao`) | aguardando a aprovação do dono; nenhum banco, migração ou código criado |
+| Fase 3: modelo de dados (`docs/dados/`, decisões 0013–0038) | sessão de IA | `feat/modelo-de-dados` (sobre `feat/prototipo-demonstracao`) | aprovado pelo dono em 03/11/2026; publicada; PR a abrir |
 
 O protótipo abre com `pnpm dev:exemplo` (dados de exemplo, sem `.env`). Telas: Visão geral, Chegada de clientes, Base de clientes, Leads, Meta Ads, TikTok Ads, Google Ads, Instagram, SEO e GEO, Tráfego com IA, Conectores, Usuários, Configurações e Diagnóstico. Cada tela tem o seu `docs/telas/<módulo>.md`; tarefas T1–T6, revisão de UX e pendências de desenho em `docs/telas/README.md`; o contrato dos módulos em `docs/telas/00-contrato.md`. `pnpm verify` verde em 30/10/2026 (18 testes no shared, 436 no web, build). Conferido no navegador em 30/10/2026: 1280px claro e escuro, 375px claro e escuro, a T1, a gaveta, os estados de `?estado=` e o Diagnóstico.
 
-A proposta da fase 3 começa por `docs/dados/README.md`: camadas e esquemas do banco, fluxo de cada dado, latência, convenções, dado pessoal e prazo de guarda. O detalhe está em `tabelas.md` (dicionário, com o DDL proposto), `listas.md`, `papeis-e-rls.md` (matriz de acesso, políticas, funções de ação e os casos do teste de RLS), `plano.md` (migrações, CI, seed e o que o dono providencia), `metricas.md` (a view ou função de cada número das telas, com as divergências do protótipo resolvidas) e `integracoes.md` (réplica do CSP 360, cada conector, execução das ações do Claude, avisos e credenciais). As decisões 0013 a 0020 e 0034 a 0038 são técnicas; as 0021 a 0033 são de produto e trazem a recomendação para o dono decidir. A proposta passou por três conferências independentes (segurança e LGPD; números; padrão e integrações), foi corrigida, passou por uma segunda rodada (coerência entre os arquivos, cobertura do protótipo, integrações e regras do projeto) e por uma revisão independente das correções. O que só se confirma na primeira leitura ou na primeira escrita de cada plataforma está em `docs/dados/integracoes.md`, seção 19 (por exemplo, como a Meta conta o gasto depois de zerar o teto da conta).
+O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquemas do banco, fluxo de cada dado, latência, convenções, dado pessoal e prazo de guarda. O detalhe está em `tabelas.md` (dicionário, com o DDL proposto), `listas.md`, `papeis-e-rls.md` (matriz de acesso, políticas, funções de ação e os casos do teste de RLS), `plano.md` (migrações, CI, seed e o que o dono providencia), `metricas.md` (a view ou função de cada número das telas, com as divergências do protótipo resolvidas) e `integracoes.md` (réplica do CSP 360, cada conector, execução das ações do Claude, avisos e credenciais). As decisões 0013 a 0020 e 0034 a 0038 são técnicas; as 0021 a 0033 são de produto, aprovadas como recomendadas. Antes da aprovação, a proposta passou por três conferências independentes (segurança e LGPD; números; padrão e integrações), foi corrigida, passou por uma segunda rodada (coerência entre os arquivos, cobertura do protótipo, integrações e regras do projeto) e por uma revisão independente das correções. O que só se confirma na primeira leitura ou na primeira escrita de cada plataforma está em `docs/dados/integracoes.md`, seção 19 (por exemplo, como a Meta conta o gasto depois de zerar o teto da conta).
 
 ## Quebrado ou arriscado
 
 - Nada em produção. Riscos conhecidos: a aprovação da Meta para o Claude executar (Full Access: App Review + Business Verification) é o item mais longo e ainda não começou; os sites não medem nada (`NEXT_PUBLIC_GA_ID` vazio em produção); a `sincronizar-apps` do CRM não traz `orders.total`, `invoiced_total` nem `source`; a função de leads dos sites está fora da `main` do CRM.
 - **O CI não roda no GitHub:** o token usado no `git push` não tem o escopo `workflow`, então o workflow ficou em `docs/ci.yml`. Até ele voltar para `.github/workflows/ci.yml` (pelo site do GitHub ou com um token com esse escopo), rode `pnpm verify` antes de todo push.
 - O Google Ads aposentou o developer token em 09/09/2026 (o acesso passou a ser pelo projeto do Google Cloud): `GOOGLE_ADS_DEVELOPER_TOKEN` e o OAuth do Google Ads no `.env.example` não valem mais. A proposta usa contas de serviço (decisão 0036); o `.env.example` muda na fase 4.
-- Números do protótipo são de exemplo e as definições de número só fecham com as decisões 0026 a 0033: não tirar conclusão de negócio deles.
+- Números do protótipo são de exemplo e ainda seguem as regras de antes das decisões 0026 a 0033 (a tela passa a ler as contas do banco na fase 4): não tirar conclusão de negócio deles.
 
 ## Próximos passos
 
-1. **Portão da fase 3, parte 1:** o dono aprova o modelo de `docs/dados/` e responde as decisões de produto 0021 a 0033 (lista em "Pendências que dependem do cliente").
-2. **PR da aprovação:** as decisões 0013 a 0038 passam a "aceita", com a data; `CLAUDE.md`, `README.md` e as decisões 0006 e 0008 mudam como diz `docs/dados/plano.md`, seção "No PR da aprovação".
-3. **Migrações 01 a 10** em `supabase/migrations/` e as views de `api` adiantadas, com o teste de RLS no PGlite (camada 1) no `pnpm verify`.
-4. **Portão da fase 3, parte 2:** o CI aplica as migrações no projeto Supabase de teste e roda o teste de RLS pela API (camada 2) com `owner`, `traffic_manager` e sem login. O resultado entra aqui.
-5. Em paralelo: o que o dono providencia (`docs/dados/plano.md`) e os pedidos ao time do CRM (`docs/dados/integracoes.md`, seções 3 e 19).
-6. Dívidas do protótipo, para a fase 4 (quando o front ligar no banco):
+1. **Migrações 01 a 10** em `supabase/migrations/` e as views de `api` adiantadas, com o teste de RLS no PGlite (camada 1) no `pnpm verify` (o PR da aprovação, com o status das decisões, o `CLAUDE.md` e o `README.md`, já foi feito em 2026-11-03).
+2. **Portão da fase 3, parte 2:** o CI aplica as migrações no projeto Supabase de teste e roda o teste de RLS pela API (camada 2) com `owner`, `traffic_manager` e sem login. Depende do projeto de teste, do CI de volta em `.github/workflows/` e dos segredos do GitHub. O resultado entra aqui.
+3. Em paralelo: o que o dono providencia (`docs/dados/plano.md`) e os pedidos ao time do CRM (`docs/dados/integracoes.md`, seções 3 e 19).
+4. Dívidas do protótipo, para a fase 4 (quando o front ligar no banco):
    - uma janela de confirmação única em `components/ui` (`canais/Modal.tsx` e `trafego-ia/Janela.tsx` são cópias; `usuarios/JanelaDeConvite.tsx` monta a própria);
    - `Kpi` com variação neutra (investimento, impressões) e `Meter` sem cor de atenção; ordenação da tabela empilhada no celular; rótulo do `GraficoBarras` que corta em 375px;
    - listas fechadas que ficaram nos módulos e vão para `packages/shared` (`ROTULO_DA_ACAO`, `RESUMO_DO_PAPEL`, `Ga4Channel`, `SiteCheckItem`, `assistenteDoHost`); complementos de exemplo do SEO para `data/sample`; endereço de exemplo do CSP 360 num lugar só;
@@ -63,7 +61,6 @@ A proposta da fase 3 começa por `docs/dados/README.md`: camadas e esquemas do b
 
 ## Pendências que dependem do cliente
 
-- **Decisões de produto da fase 3** (cada uma traz a recomendação): 0021 limite de gasto; 0022 "Parar tudo"; 0023 quem aprova as ações, com o segundo fator; 0024 erros do conector; 0025 representante por código; 0026 comparação de "Este mês"; 0027 custo por lead; 0028 ROAS; 0029 cliente novo por indicador; 0030 cliente novo da marca e do grupo; 0031 atribuição; 0032 custo com filtro de origem ou de representante; 0033 Instagram.
 - **Melhorias de tela da fase 2** (não bloqueiam; detalhe em `docs/telas/README.md`): Visão geral em 375px; Humano × Claude no canal em 375px; os links para Tráfego com IA já levarem `?visao=gestor`; "Propor impulsionar post" no Instagram; a coluna de representante na Base de clientes; "Tentar de novo" nas duas visões. "Este mês", "Parar tudo" e "o gestor aprova?" viraram as decisões 0026, 0022 e 0023.
 - Dois projetos Supabase (produção e teste) na região de São Paulo, com a configuração de `docs/dados/plano.md` ("O que o dono providencia"), e verificação em duas etapas nas contas de Supabase, Vercel, Railway, GitHub, n8n e das plataformas.
 - Quem cuida da LGPD do grupo: encarregado, canal do titular e a confirmação das bases legais do quadro de dado pessoal (`docs/dados/README.md`).

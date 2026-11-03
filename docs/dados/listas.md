@@ -92,7 +92,7 @@ As listas do histórico de marketing do CRM (tipo de evento e fonte) ficam para 
 | `mkt.operator_change_reason` | `imported` → Importada da plataforma · `created_by_claude` → Criada pelo Claude · `handover_to_claude` → Passou para o Claude · `back_to_human` → Voltou para o humano · `correction` → Correção · `other` → Outro (exige nota) | Decisão 0008: trocar o dono é ação registrada, com o porquê |
 | `mkt.actor_kind` | `user` → pessoa (mostra o nome) · `claude` → Claude · `system` → Sistema | Quem fez cada passo da trilha; o Claude não é usuário |
 | `mkt.run_status` | `running` → Rodando (warning) · `succeeded` → Concluída (success) · `failed` → Falhou (danger) | Rodada do Claude |
-| `mkt.stop_scope` | `claude_only` → Só as campanhas do Claude | Decisão 0022 (proposta). Se o dono escolher parar tudo, entra `all_campaigns` → Todas as campanhas |
+| `mkt.stop_scope` | `claude_only` → Só as campanhas do Claude | Decisão 0022. Se um dia o dono quiser parar também as do humano, entra `all_campaigns` → Todas as campanhas |
 | `mkt.execution_operation` | `pause` → Pausar · `activate` → Reativar · `set_daily_budget` → Mudar orçamento diário · `create_campaign` → Criar campanha · `set_account_spend_cap` → Gravar limite na conta | Cada chamada de escrita numa plataforma. Lance e criativo não executam pela central na v1 (a tela diz "Faça na plataforma e marque como feita"); `set_bid` e `swap_creative` entram na fase que os executar |
 | `mkt.execution_status` | `queued` → Na fila (muted) · `blocked` → Bloqueada (warning) · `sent` → Enviada (info) · `confirmed` → Confirmada (success) · `failed` → Falhou (danger) · `cancelled` → Cancelada (muted) | Andamento da escrita; "Bloqueada" diz o que fazer na plataforma; "Cancelada" quando a ação foi descartada ou feita à mão antes de a central executar (decisão 0038) |
 | `mkt.execution_block_reason` | `no_write_credential` → Sem credencial de escrita · `no_spend_limit` → Conta sem limite de gasto · `over_spend_limit` → Passa do limite do mês · `stopped` → Parada pelo Parar tudo · `approval_invalid` → Aprovação não confere · `campaign_ended` → Campanha encerrada · `connector_disabled` → Conector desligado | Por que a central não executou ([`integracoes.md`](integracoes.md), seção 14) |
@@ -132,7 +132,7 @@ As ações do `rules.ts` estavam em português (`ver_numeros`…). Viram código
 | `ver_lead_dado_pessoal` | `view_lead_personal_data` | Ver nome, telefone e e-mail de lead | **ninguém** | **ninguém** |
 | `ver_trafego_ia` | `view_traffic` | Abrir o Tráfego com IA | sim | sim |
 | `operar_trafego_ia` | `operate_traffic` | Operar o Tráfego com IA (propor, estratégia, marcar como feita) | sim | sim |
-| `aprovar_acao` | `approve_action` ² | Aprovar ou descartar ações | sim | não (decisão 0023, proposta) |
+| `aprovar_acao` | `approve_action` ² | Aprovar ou descartar ações | sim | não (decisão 0023) |
 | `parar_tudo` | `stop_all` | Parar e reativar as campanhas do Claude | sim | não |
 | — | `configure_traffic` ² | Mudar limites de gasto e o operador das campanhas | sim | não |
 | `ver_conectores` | `view_connectors` | Ver os conectores | sim | sim |

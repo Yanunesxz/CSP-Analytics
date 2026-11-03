@@ -1,7 +1,7 @@
 # 0023 — Só o dono aprova ações na v1, com o segundo fator
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -9,8 +9,6 @@ A decisão 0005 fala em aprovação "do dono (ou do gestor, quando existir)". O 
 descartar e parar tudo só ao dono, e a tela de Usuários mostra isso. Na v1 só o dono entra (decisão 0011).
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 Na v1, **só o dono** aprova e descarta ações, para tudo, muda limite de gasto e troca o operador de uma campanha
 (`approve_action`, `stop_all`, `configure_traffic`). O gestor de tráfego propõe, registra ideia, escreve a estratégia

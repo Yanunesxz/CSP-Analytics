@@ -1,7 +1,7 @@
 # 0003 — Marca como dimensão do fato, sem `company_id`
 
 - **Data:** 2026-10-30
-- **Status:** aceita
+- **Status:** aceita (complementada pela 0014 e pela 0030)
 
 ## Contexto
 

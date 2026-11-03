@@ -1,7 +1,7 @@
 # 0019 — Avisos: o banco decide e enfileira, o n8n entrega
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo)
+- **Status:** aceita em 2026-11-03 (técnica)
 
 ## Contexto
 

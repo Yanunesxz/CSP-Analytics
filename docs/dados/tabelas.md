@@ -1147,7 +1147,7 @@ create table if not exists mkt.traffic_strategies (
 );
 ```
 
-### `spend_limits` — limite de gasto por conta e mês (decisão 0021, proposta)
+### `spend_limits` — limite de gasto por conta e mês (decisão 0021)
 
 Uma linha por conta e por dia em que o limite mudou. Vale a linha mais recente com `valid_from_on` até o dia
 consultado: mudar no meio do mês vale para o mês inteiro dali em diante, e o mês passado continua com o limite que
@@ -1363,7 +1363,7 @@ alter table mkt.campaigns
   references mkt.traffic_actions(id) on delete set null;
 ```
 
-### `traffic_stops` e `traffic_stop_campaigns` — "Parar tudo" (decisão 0022, proposta)
+### `traffic_stops` e `traffic_stop_campaigns` — "Parar tudo" (decisão 0022)
 
 O botão vira um comando registrado: quem, quando, a marca, o alcance e cada campanha, com a execução de cada uma em
 `platform_executions`. Uma campanha fica em no máximo uma parada aberta (`undone_at` nulo): a segunda parada pega só

@@ -1,7 +1,7 @@
 # 0028 — ROAS com a receita do 1º pedido dos clientes novos atribuídos
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -10,8 +10,6 @@ de conversão. Os parâmetros do prompt pedem receita atribuída (decisão 0009)
 com valor pela soma dos itens; o faturado ainda não tem valor (decisão 0004).
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 "ROAS" = valor do 1º pedido enviado dos clientes novos do período atribuídos às campanhas do recorte ÷ investimento
 dessas campanhas no período.

@@ -1,7 +1,7 @@
 # 0015 — Réplica do CRM: tabelas `crm_*`, leitura e exclusão
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; substitui na 0006 a leitura de `historico_marketing`, a passada completa só em clientes e a chave de junção por documento)
+- **Status:** aceita em 2026-11-03 (técnica; substitui na 0006 a leitura de `historico_marketing`, a passada completa só em clientes e a chave de junção por documento)
 
 ## Contexto
 

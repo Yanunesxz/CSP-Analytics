@@ -1,7 +1,7 @@
 # 0005 — A v1 só lê; o Claude recomenda e executa só depois de aprovação
 
 - **Data:** 2026-10-30
-- **Status:** aceita
+- **Status:** aceita (exceções registradas na 0020, o nome digitado no contexto do Claude, e na 0021, o teto da conta na Meta regravado todo dia 1)
 
 ## Contexto
 

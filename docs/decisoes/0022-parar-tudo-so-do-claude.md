@@ -1,7 +1,7 @@
 # 0022 — "Parar tudo" só para as campanhas do Claude
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -10,8 +10,6 @@ em todos os canais, e deixa as do humano rodando; o `ESTADO.md` pergunta se tamb
 para parar um canal só.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 O botão para **só as campanhas ativas do Claude**, da marca escolhida (ou das duas), **em todos os canais**. As do
 humano continuam. Não há parada por canal na v1.

@@ -1,7 +1,7 @@
 # 0024 — Erros do conector contados desde o último sucesso
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -10,8 +10,6 @@ verdade, um erro das últimas 24 h continua contado depois de o conector voltar,
 errado agora.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 O cartão mostra **"Falhas seguidas"**: quantas rodadas falharam desde a última que deu certo (zera no primeiro
 sucesso), com a hora e o código da última falha. "Linhas gravadas em 24 h" continua. O estado do cartão segue a mesma

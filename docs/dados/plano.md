@@ -1,12 +1,12 @@
 # Plano: do modelo aprovado ao banco
 
-> Proposta da fase 3. Nada daqui roda antes do "ok" do dono no modelo e nas decisões de produto 0021 a 0033.
+> Aprovado pelo dono em 03/11/2026 ("Aprovar tudo"), com as decisões de produto 0021 a 0033 como recomendadas.
 
 ## Como a fase 3 fecha
 
 1. O dono aprova este modelo (os arquivos de `docs/dados/` e as decisões 0013 a 0038) e responde as decisões de
    produto (0021 a 0033). No PR da aprovação, as decisões passam de "proposta" a "aceita", com a data (seção "No PR da
-   aprovação", abaixo).
+   aprovação", abaixo). Feito em 03/11/2026.
 2. As migrações 01 a 10 e, adiantadas da 11, as views de `api` (`api.v_traffic_actions`, `api.v_traffic_log`) com as
    views `mkt.*` de que elas dependem são escritas, com os testes da camada 1 no `pnpm verify`.
 3. O CI aplica as migrações no **projeto Supabase de teste** e roda o teste de RLS pela API (camada 2,

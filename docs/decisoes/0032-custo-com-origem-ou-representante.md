@@ -1,7 +1,7 @@
 # 0032 — Custo "Não se aplica" com filtro de representante ou de origem sem mídia
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -10,8 +10,6 @@ orgânica, SDR, indicação). No protótipo, a Chegada e Leads mostram "Não se 
 geral aplica esses filtros aos leads e calcula o custo assim mesmo.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 - Com **representante**: custo por cliente novo, custo por lead e ROAS = "Não se aplica" ("o investimento não se
   divide por representante").

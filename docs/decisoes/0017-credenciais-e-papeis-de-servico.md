@@ -1,7 +1,7 @@
 # 0017 — Credenciais e papéis de serviço
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; detalha a 0005 e amplia na 0001 o uso de Edge Function: também onde o Auth exige a chave de serviço, convidar e tirar acesso)
+- **Status:** aceita em 2026-11-03 (técnica; detalha a 0005 e amplia na 0001 o uso de Edge Function: também onde o Auth exige a chave de serviço, convidar e tirar acesso)
 
 ## Contexto
 

@@ -11,7 +11,7 @@ Central de marketing do grupo Corpo Sensual e Plumene: mostra numa tela só quan
 - **Base de clientes:** ativos, inativos e perdidos, recompra e reativação dos clientes que já existem.
 - **Leads:** por marca e origem (anúncio, site, busca orgânica, assistentes de IA, SDR), sem dado pessoal — a ficha fica no CSP 360.
 - **Meta Ads, TikTok Ads, Google Ads:** investimento e resultado por conta e campanha, separados por operador (humano × Claude).
-- **Instagram:** seguidores, alcance e engajamento por perfil e por post (só leitura).
+- **Instagram:** seguidores, visualizações, alcance e interações por perfil e por post (só leitura, só orgânico).
 - **SEO e GEO:** busca orgânica (Search Console) e assistentes de IA (GA4 e `referrer` dos leads).
 - **Tráfego com IA:** estratégia, propostas do Claude, a lista "O que podemos fazer", fila de aprovação, limites de gasto e botão de parar tudo.
 - **Conectores:** estado de cada integração e "atualizado há X min".
@@ -20,17 +20,17 @@ Central de marketing do grupo Corpo Sensual e Plumene: mostra numa tela só quan
 
 | Sistema / serviço | O que faz com ele |
 |---|---|
-| CSP 360 (CRM do grupo) | Lê, por réplica mínima (só ids, marca, datas, status, origem/UTM e chave de junção), clientes, pedidos, negócios, leads do SDR e histórico de marketing, com credencial só-leitura criada para o CSP-MKT. Não grava na v1. |
+| CSP 360 (CRM do grupo) | Lê, por réplica mínima (só ids, marca, datas, status, origem/UTM e chave de junção), clientes, pedidos, negócios e leads do SDR, com credencial só-leitura criada para o CSP-MKT. Não grava na v1. |
 | Apps de Representantes (Corpo Sensual e Plumene) | Não lê direto: o que precisa já chega pelo CRM. |
 | ERP Control | Nunca: o faturado e o retrato chegam pelos apps → CRM. |
-| Meta Marketing API (+ Lead Ads) | Lê campanhas, gasto e leads; executa ações do Claude só depois de aprovação, com credencial de escrita separada. |
+| Meta Marketing API | Lê campanhas, gasto e a contagem de leads de formulário, sem a pessoa; executa ações do Claude só depois de aprovação, com credencial de escrita separada, e regrava todo dia 1 o teto da conta com o limite aprovado. |
 | Instagram API | Lê métricas de conta e de post. |
 | TikTok Marketing API | Lê campanhas e gasto; escrita como na Meta. |
 | Google Ads API | Lê campanhas e gasto; escrita como na Meta. |
 | GA4 Data API | Lê sessões, canais (inclusive "AI Assistant") e conversões dos dois sites. |
 | Search Console API | Lê impressões, cliques e consultas (relatório "Web"). |
 | Claude API | Analisa e propõe ações de tráfego; só no worker. |
-| n8n | Gatilhos externos e avisos (token vencendo, conector caído, CPL acima do limite). |
+| n8n | Entrega os avisos que o banco enfileira, por e-mail e WhatsApp (credencial vencendo, conector caído, custo por lead acima da meta). |
 
 ## Fluxo de dados (fixo, não revisitar)
 
@@ -47,7 +47,7 @@ Central de marketing do grupo Corpo Sensual e Plumene: mostra numa tela só quan
 
 ## Dicionário de dados
 
-Proposta da fase 3 em [`docs/dados/`](docs/dados/README.md), aguardando a aprovação do dono: tabelas e colunas ([`tabelas.md`](docs/dados/tabelas.md)), listas fechadas, papéis e RLS, views e funções de KPI, e o que é replicado do CSP 360 e o que não é ([`integracoes.md`](docs/dados/integracoes.md), seção 3.2). Regras que já valem: inglês e `snake_case`; dinheiro em `*_cents`; data e hora em `*_at` com fuso `America/Sao_Paulo`; status em lista fechada em inglês com rótulo em português; `brand_id` em toda tabela de fato e nunca em cliente ([decisão 0003](docs/decisoes/0003-marca-como-dimensao.md)); `external_id` + `source` em tudo que vem de fora; toda métrica derivada é view ou função SQL.
+Em [`docs/dados/`](docs/dados/README.md), aprovado na fase 3: tabelas e colunas ([`tabelas.md`](docs/dados/tabelas.md)), listas fechadas, papéis e RLS, views e funções de KPI, e o que é replicado do CSP 360 e o que não é ([`integracoes.md`](docs/dados/integracoes.md), seção 3.2). As convenções (nomes, dinheiro, datas, listas, marca) ficam só lá, na seção "Convenções" de [`docs/dados/README.md`](docs/dados/README.md).
 
 ## Estrutura
 

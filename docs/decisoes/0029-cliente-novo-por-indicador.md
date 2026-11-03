@@ -1,7 +1,7 @@
 # 0029 — Cliente novo por indicador: dia do 1º pedido para contar, leads do período para converter
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -12,8 +12,6 @@ misturam: a Chegada conta por lead e mostra a variação; Leads junta pelo clien
 lead no CRM, não aparece.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 Duas medidas, cada uma com um nome fixo:
 

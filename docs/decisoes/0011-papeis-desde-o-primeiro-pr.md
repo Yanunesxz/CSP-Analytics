@@ -1,7 +1,7 @@
 # 0011 — Papéis desde o primeiro PR, um usuário na v1
 
 - **Data:** 2026-10-30
-- **Status:** aceita
+- **Status:** aceita (trecho substituído pela 0018)
 
 ## Contexto
 

@@ -1,7 +1,7 @@
 # 0036 — Autenticação de cada conector e nomes das credenciais
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; detalha a 0005 e a 0017)
+- **Status:** aceita em 2026-11-03 (técnica; detalha a 0005 e a 0017)
 
 ## Contexto
 

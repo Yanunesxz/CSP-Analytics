@@ -1,7 +1,7 @@
 # 0033 — Instagram: visualizações, alcance somado por dia e interações
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -11,8 +11,6 @@ período não é a soma dos dias, porque a mesma conta alcançada em dois dias c
 protótipo, é curtidas + comentários + salvos.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 - "Impressões" vira **"Visualizações"** (`views`), no perfil e nos posts.
 - "Alcance" passa a se chamar **"Alcance somado dos dias"**: a soma do alcance de cada dia. O "Como contamos" diz que a

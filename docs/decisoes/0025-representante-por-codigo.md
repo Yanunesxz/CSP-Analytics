@@ -1,7 +1,7 @@
 # 0025 — Representante aparece por código
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -10,8 +10,6 @@ As telas filtram e quebram os números por representante (Chegada, Leads, Base).
 **recebeu** o lead no CRM, quem tem o cliente na **carteira** do app e quem **vendeu** o pedido.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 Na v1 o representante aparece **por código** (`REP-0001`), gerado pelo CSP-MKT a partir do id do CRM ou da chave do
 login no app, como no protótipo. O nome continua só no CSP 360. Cada tela diz qual papel o código mede: em Leads e na

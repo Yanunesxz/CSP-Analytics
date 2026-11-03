@@ -1,7 +1,7 @@
 # 0031 — Atribuição do lead e do cliente novo: UTM, canal e primeiro toque
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono; detalha a 0009)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação; detalha a 0009)
 
 ## Contexto
 
@@ -13,8 +13,6 @@ A decisão 0009 liga campanha → lead → cliente por UTM e `clientes.id`, mas 
 - qual lead leva o crédito quando o cliente teve mais de um (o protótipo pega o primeiro da lista, sem regra).
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 1. **UTM do lead:** a do próprio lead, quando o CRM passar a gravar por envio. Até lá, a UTM de primeiro contato do
    cliente vale só para o negócio do site que a gravou: o primeiro negócio do cliente cuja origem é a `utm_source`

@@ -1,16 +1,16 @@
-# Modelo de dados do CSP-MKT — proposta da fase 3
+# Modelo de dados do CSP-MKT — fase 3
 
-> **Situação:** proposta, aguardando a aprovação do dono. Nada daqui foi criado: sem banco, sem migração, sem
-> código. Depois do "ok", o plano em [`plano.md`](plano.md) vira migrações em `supabase/migrations/`.
-> Base: o protótipo aprovado em 03/11/2026, as decisões 0001 a 0012 e as novas 0013 a 0038 (todas com status
-> "proposta" até a aprovação).
+> **Situação:** aprovado pelo dono em 03/11/2026 ("Aprovar tudo"), com as decisões de produto 0021 a 0033 como
+> recomendadas. O plano em [`plano.md`](plano.md) vira migrações em `supabase/migrations/`; o que já existe está no
+> `ESTADO.md`. Base: o protótipo aprovado em 03/11/2026, as decisões 0001 a 0012 e as novas 0013 a 0038, aceitas em
+> 03/11/2026.
 
 ## Arquivos desta pasta
 
 | Arquivo | O que tem |
 |---|---|
 | `README.md` | Este resumo: camadas, esquemas, fluxo de cada dado, latência, convenções, dado pessoal, operadores, incidente, domínio e o diagrama |
-| [`tabelas.md`](tabelas.md) | Dicionário de dados: cada tabela com colunas, chaves, índices, gatilhos, quem grava, RLS e o DDL proposto |
+| [`tabelas.md`](tabelas.md) | Dicionário de dados: cada tabela com colunas, chaves, índices, gatilhos, quem grava, RLS e o DDL |
 | [`listas.md`](listas.md) | Listas fechadas: código em inglês, rótulo em português, tom, e o que muda em relação ao `labels.ts` |
 | [`papeis-e-rls.md`](papeis-e-rls.md) | Papéis, matriz de acesso, privilégios, políticas em SQL, funções de ação e o plano do teste de RLS |
 | [`plano.md`](plano.md) | Ordem das migrações, como reverter, CI, seed, o que o dono providencia e o que muda no PR da aprovação |
@@ -254,7 +254,7 @@ O protótipo continua aprovado; estas diferenças seguem as decisões e entram n
   do dono (decisão 0023). Permissões e a regra de dado pessoal saem do TypeScript: a tela lê do banco (decisão 0018).
 - A comparação com o período anterior usa só os dias completos de cada fonte; o número de hoje entra no valor, não na
   variação.
-- Números (decisões 0026 a 0033, propostas): "Este mês" contra os mesmos dias do mês anterior; um custo por lead (o
+- Números (decisões 0026 a 0033): "Este mês" contra os mesmos dias do mês anterior; um custo por lead (o
   do CSP 360) e o da plataforma com outro nome; ROAS com a receita do 1º pedido dos clientes atribuídos; clientes novos
   contados pelo pedido (também quem não passou por lead) e conversão contada por lead, sem comparação; em "As duas",
   cliente novo do grupo; atribuição pelo primeiro toque, pelo id da campanha ou pelo nome, com UTM repetida sem

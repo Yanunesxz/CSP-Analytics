@@ -1,7 +1,7 @@
 # 0020 — Trilha do tráfego: ações, rodadas do Claude, execuções e diário
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; detalha a 0005 e registra nela uma exceção: o nome digitado no contexto do Claude)
+- **Status:** aceita em 2026-11-03 (técnica; detalha a 0005 e registra nela uma exceção: o nome digitado no contexto do Claude)
 
 ## Contexto
 

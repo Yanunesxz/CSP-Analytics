@@ -1,7 +1,7 @@
 # 0021 — Limite de gasto por conta e por mês
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -11,8 +11,6 @@ canal comparam o investimento do período escolhido das campanhas ativas com a s
 0005 fala em limite por conta. Na Meta, o teto da campanha vale para a vida dela, não para o mês.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 Um limite por **conta de anúncio** (marca × plataforma), **por mês do calendário de São Paulo**, definido no CSP-MKT,
 comparado com todo o gasto da conta no mês até hoje, de qualquer campanha. A régua é a mesma na Visão geral (Gestor),

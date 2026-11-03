@@ -1,7 +1,7 @@
 # 0016 — Nomes, colunas e listas fechadas no banco
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; substitui na 0008 o nome `campaigns_managed_by_history`)
+- **Status:** aceita em 2026-11-03 (técnica; substitui na 0008 o nome `campaigns_managed_by_history`)
 
 ## Contexto
 

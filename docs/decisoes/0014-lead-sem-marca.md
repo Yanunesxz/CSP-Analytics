@@ -1,7 +1,7 @@
 # 0014 — Lead sem marca: `brand_id` nulo só na réplica de leads
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; complementa a 0003)
+- **Status:** aceita em 2026-11-03 (técnica; complementa a 0003)
 
 ## Contexto
 

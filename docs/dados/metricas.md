@@ -1,10 +1,12 @@
 # Métricas — views e funções de KPI
 
-> Proposta da fase 3, para o dono aprovar. O SQL aqui é **rascunho**: não é migração e não roda em lugar nenhum.
+> Aprovado na fase 3, em 03/11/2026. O SQL aqui é a especificação: as migrações em `supabase/migrations/` o
+> transformam em código, com os testes da seção 9.
 > Tabelas em [`tabelas.md`](tabelas.md), listas em [`listas.md`](listas.md), acesso em
 > [`papeis-e-rls.md`](papeis-e-rls.md), conectores em [`integracoes.md`](integracoes.md). Base: as consultas do
 > protótipo aprovado (`apps/web/src/data/queries.ts` e `queries/*.ts`), os testes delas e as decisões 0001 a 0038.
-> As decisões 0013 a 0038 ainda são propostas; onde a conta depende de uma de produto (0021 a 0033), o texto diz qual.
+> As decisões 0013 a 0038 foram aceitas em 03/11/2026; onde a conta depende de uma de produto (0021 a 0033), o texto
+> diz qual.
 
 ## Como ler
 
@@ -211,7 +213,6 @@ begin
   if p_period = 'this_month' then
     w.current_window  := daterange(v_month, v_today, '[]');
     -- os mesmos dias do mês anterior, até o último dia dele (decisão 0026).
-    -- Se a 0026 não for aprovada, o fim volta a ser "v_month - 1" (o mês anterior inteiro).
     w.previous_window := daterange(v_prev_month, least(v_prev_month + (v_today - v_month), v_month - 1), '[]');
     w.days := v_today - v_month + 1;
   elsif p_period = 'last_month' then

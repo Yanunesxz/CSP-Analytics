@@ -1,7 +1,7 @@
 # 0001 — Stack e monorepo, com worker em Python como exceção
 
 - **Data:** 2026-10-30
-- **Status:** aceita
+- **Status:** aceita (trecho substituído pela 0018 e uso de Edge Function ampliado pela 0017)
 
 ## Contexto
 

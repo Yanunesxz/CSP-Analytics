@@ -1,7 +1,7 @@
 # 0034 — Funções de KPI por tela, base de cada fonte e relógio do banco
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; detalha a 0001 e a 0013)
+- **Status:** aceita em 2026-11-03 (técnica; detalha a 0001 e a 0013)
 
 ## Contexto
 

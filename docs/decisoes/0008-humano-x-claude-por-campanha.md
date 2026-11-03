@@ -1,7 +1,7 @@
 # 0008 — Números do humano e do Claude separados por campanha
 
 - **Data:** 2026-10-30
-- **Status:** aceita
+- **Status:** aceita (trecho substituído pela 0016)
 
 ## Contexto
 

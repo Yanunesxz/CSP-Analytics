@@ -1,7 +1,7 @@
 # 0018 — O SQL roda no PGlite nos testes e no modo demonstração
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; substitui na 0011 a regra de permissão em `packages/shared`, que passa a ser `role_permissions`, no banco, e na 0001 as permissões e a regra de dado pessoal em `packages/shared`)
+- **Status:** aceita em 2026-11-03 (técnica; substitui na 0011 a regra de permissão em `packages/shared`, que passa a ser `role_permissions`, no banco, e na 0001 as permissões e a regra de dado pessoal em `packages/shared`)
 
 ## Contexto
 

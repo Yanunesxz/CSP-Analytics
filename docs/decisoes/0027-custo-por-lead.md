@@ -1,7 +1,7 @@
 # 0027 — Custo por lead com os leads do CSP 360 atribuídos às campanhas
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -11,8 +11,6 @@ leads que a plataforma informa. Os sites não têm pixel nem a conversão do Goo
 plataforma hoje é quase sempre zero, ou só o do formulário de lead da própria plataforma.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 "Custo por lead" = investimento das campanhas do recorte no período ÷ leads do CSP 360 que chegaram no período e foram
 atribuídos a essas campanhas (decisões 0009 e 0031). É o mesmo número em toda tela, na meta da estratégia e no aviso

@@ -1,7 +1,7 @@
 # 0006 — Dados em projeto Supabase próprio, com réplica mínima do CRM
 
 - **Data:** 2026-10-30
-- **Status:** aceita (contexto e primeira alternativa reescritos em 2026-11-03 para tirar o detalhe de acesso do CRM, sem mudar a decisão)
+- **Status:** aceita (contexto e primeira alternativa reescritos em 2026-11-03 para tirar o detalhe de acesso do CRM, sem mudar a decisão; trechos substituídos pela 0015)
 
 ## Contexto
 
@@ -22,4 +22,4 @@ Latência: leads a cada 5 min pela réplica (quase tempo real exige o CRM avisar
 
 - Pedir ao time do CRM a credencial só-leitura e, para a situação do cliente, uma view ou RPC (o CSP-MKT não recalcula a régua).
 - Um dicionário de dados no README com o que é replicado e o que não é.
-- A lista de leads mostra código, origem, marca, data e o link para a ficha 360 no CSP 360.
+- A lista de leads mostra código, origem, marca, campanha, etapa, data e o link para a ficha 360 no CSP 360 (campanha e etapa como o protótipo aprovado em 03/11/2026).

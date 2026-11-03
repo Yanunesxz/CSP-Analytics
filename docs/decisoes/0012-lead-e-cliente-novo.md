@@ -1,7 +1,7 @@
 # 0012 — Definição de lead e de cliente novo
 
 - **Data:** 2026-10-30
-- **Status:** aceita
+- **Status:** aceita (complementada pela 0030)
 
 ## Contexto
 

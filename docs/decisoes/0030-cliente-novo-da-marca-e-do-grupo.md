@@ -1,7 +1,7 @@
 # 0030 — Cliente novo da marca e cliente novo do grupo ("As duas")
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono; complementa a 0003 e a 0012)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação; complementa a 0003 e a 0012)
 
 ## Contexto
 
@@ -12,8 +12,6 @@ novo do grupo. E o CRM só tem pedido desde agosto de 2026; antes disso há só 
 por marca). Sem ele, todo cliente antigo pareceria novo no primeiro pedido depois de agosto.
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 - **Com uma marca escolhida:** cliente novo da marca = 1º pedido enviado **naquela marca**, mesmo que o cliente já
   compre da outra (decisão 0012). É o número que diz se a mídia da marca trouxe comprador novo para ela.

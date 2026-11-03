@@ -1,7 +1,7 @@
 # 0035 — Ingestão: um adaptador por provedor, evento único, releitura e CSV de reserva
 
 - **Data:** 2026-11-03
-- **Status:** proposta (técnica, aguarda a aprovação do modelo; detalha a 0001 e a 0016)
+- **Status:** aceita em 2026-11-03 (técnica; detalha a 0001 e a 0016)
 
 ## Contexto
 

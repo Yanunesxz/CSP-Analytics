@@ -1,7 +1,7 @@
 # 0026 — "Este mês" compara com os mesmos dias do mês anterior
 
 - **Data:** 2026-11-03
-- **Status:** proposta (decisão de produto, aguarda o dono)
+- **Status:** aceita em 2026-11-03 (decisão de produto; o dono aprovou a recomendação)
 
 ## Contexto
 
@@ -11,8 +11,6 @@ vermelho: uma urgência falsa (lei 18 do padrão). É uma das "Pendências de de
 o período passa a ser calculado no banco (`mkt.period_window`, decisão 0034).
 
 ## Decisão
-
-Recomendação, para o dono decidir:
 
 "Este mês" compara com **os mesmos dias do mês anterior**: do dia 1 até o mesmo dia; se o mês anterior for mais
 curto, até o último dia dele. O rótulo diz o intervalo ("vs. 1º a 3 de outubro"). "Mês passado" continua contra o mês
