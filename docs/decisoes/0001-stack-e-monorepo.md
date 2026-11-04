@@ -1,7 +1,7 @@
 # 0001 — Stack e monorepo, com worker em Python como exceção
 
 - **Data:** 2026-10-30
-- **Status:** aceita (trecho substituído pela 0018 e uso de Edge Function ampliado pela 0017)
+- **Status:** aceita (trecho substituído pela 0018, uso de Edge Function ampliado pela 0017 e nome do repositório revisto pela 0039)
 
 ## Contexto
 
@@ -11,7 +11,7 @@ O padrão Yan Nunes (decisão 0004 do SystemDesing) fixa React + Vite + TypeScri
 
 Monorepo pnpm com `apps/web` (React 18 + Vite + TypeScript strict + Tailwind 4 + lucide-react + Vitest, publicado na Vercel só pela `main`), `apps/worker` (**Python** no Railway: conectores, réplica do CRM, gravação dos snapshots e o operador de tráfego que chama a Claude API), `packages/shared` (listas fechadas, rótulos, permissões e regras usadas pelo front e pelo banco, com teste) e `supabase/` (migrações e Edge Functions). n8n só para gatilhos externos e avisos que cabem em até ~15 nós; Edge Functions só onde o banco do CSP-MKT precisar reagir sem servidor. Nenhuma regra roda em dois lugares e nenhuma fórmula de KPI vive no worker nem no React: toda métrica derivada é view ou função SQL no Postgres.
 
-Nome do repositório: produto Yan Nunes → `yn-csp-mkt` pela regra de `docs/05` do padrão. Até o dono renomear o repositório no GitHub, `CSP-MKT` fica como exceção registrada aqui.
+Nome do repositório: sistema de cliente → `cliente-csp-mkt` pela regra de `docs/05` do padrão (até 2026-11-04 era produto Yan Nunes → `yn-csp-mkt`; decisão 0039). Até o dono renomear o repositório no GitHub, `CSP-MKT` fica como exceção registrada aqui.
 
 ## Alternativas consideradas
 

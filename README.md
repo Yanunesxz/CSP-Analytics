@@ -1,6 +1,6 @@
 # CSP-MKT
 
-> Padrão: [SystemDesing v0.4.0](https://github.com/Yanunesxz/SystemDesing/tree/v0.4.0) — produto Yan Nunes (preto e branco, sem cor de cliente), menu do celular em gaveta. Desvios registrados: cores de série tiradas do Tangram ([decisão 0007](docs/decisoes/0007-cores-de-serie-do-tangram.md)) e worker em Python ([decisão 0001](docs/decisoes/0001-stack-e-monorepo.md)).
+> Padrão: [SystemDesing v0.4.0](https://github.com/Yanunesxz/SystemDesing/tree/v0.4.0) — sistema de cliente do grupo ("CSP MKT" no menu, preto e branco, crédito "Criado por Yan Nunes" no rodapé; [decisão 0039](docs/decisoes/0039-sistema-de-cliente-csp-mkt.md)), menu do celular em gaveta. Desvios registrados: cores de série tiradas do Tangram ([decisão 0007](docs/decisoes/0007-cores-de-serie-do-tangram.md)) e worker em Python ([decisão 0001](docs/decisoes/0001-stack-e-monorepo.md)).
 
 Central de marketing do grupo Corpo Sensual e Plumene: mostra numa tela só quanto custa cada cliente novo por marca e por canal, de onde chegam os leads, como vão as campanhas de Meta, TikTok e Google (separando o gestor humano do Claude), o Instagram, o SEO e o GEO, e deixa o dono aprovar o que o Claude vai executar nas contas de anúncio.
 

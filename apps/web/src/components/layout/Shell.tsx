@@ -1,6 +1,7 @@
 /**
  * Casca (.yn-shell) do padrão, modelo gaveta: menu lateral, scrim, coluna principal com faixas
- * (modo demonstração, versão nova), barra do topo e .yn-content com a rota.
+ * (modo demonstração, versão nova), barra do topo, .yn-content com a rota e o crédito "Criado por
+ * Yan Nunes", obrigatório em sistema de cliente (decisão 0039).
  * O script da casca vira estado: navAberta (data-nav="open") e menuRecolhido (data-sidebar="collapsed",
  * guardado em localStorage "menu-recolhido").
  */
@@ -137,6 +138,12 @@ function Casca() {
         <FaixaVersaoNova />
         <Topbar navAberta={navAberta} aoAbrirMenu={() => definirGaveta(!navAberta)} />
         <main className="yn-content">{conteudo}</main>
+        <footer className="yn-credit">
+          Criado por{' '}
+          <a href="https://github.com/Yanunesxz" rel="noopener" target="_blank">
+            Yan Nunes
+          </a>
+        </footer>
       </div>
     </div>
   );
