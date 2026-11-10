@@ -117,7 +117,7 @@ function SuaConta() {
         </div>
         <div>
           <dt>E-mail</dt>
-          <dd>{perfil.email}</dd>
+          {perfil.email ? <dd>{perfil.email}</dd> : <dd className="yn-muted">A cadastrar</dd>}
         </div>
         <div>
           <dt>Papel</dt>

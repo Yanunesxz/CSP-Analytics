@@ -1,6 +1,6 @@
 # Estado do projeto — CSP-MKT
 
-> **Atualizado em:** 2026-11-05 · **por:** sessão de IA (Claude Code), branch `docs/acessos-das-conexoes`
+> **Atualizado em:** 2026-11-10 · **por:** sessão de IA (Claude Code), branch `fix/site-sem-dados-de-exemplo`
 > Atualize este arquivo em **todo PR**. Ele é o que a próxima pessoa ou IA lê primeiro.
 > Nada de senha, token ou dado pessoal aqui.
 
@@ -14,8 +14,8 @@
 
 ## Em produção
 
-- Versão: nenhuma em produção de verdade. O protótipo está no ar em https://csp-mkt.vercel.app desde 2026-11-04: a Vercel publica a `main` com dados de exemplo e a faixa "Modo demonstração" (`apps/web/vercel.json`: `pnpm build:exemplo`; no projeto da Vercel, Root Directory `apps/web`; sem variável de ambiente; `noindex`). O endereço abre para quem tiver o link. Quando o front ler o banco (fase 4), o `buildCommand` volta a ser `pnpm build`.
-- O que está funcionando: as 13 telas do protótipo com dados de exemplo inventados, com "CSP MKT" no menu e "Criado por Yan Nunes" no rodapé (decisão 0039); nenhum dado real
+- Versão: nenhuma em produção de verdade. A Vercel publica a `main` em https://csp-mkt.vercel.app desde 2026-11-04 (no projeto da Vercel, Root Directory `apps/web`; sem variável de ambiente; `noindex`; abre para quem tiver o link). Desde 2026-11-10, a pedido do dono, sem dados de exemplo: o `buildCommand` é o `pnpm build` normal e, sem as variáveis do Supabase, o site abre vazio, com a faixa "Modo demonstração · sem dados de exemplo". Os números aparecem quando o front ler o banco (fase 4).
+- O que está funcionando: as 13 telas, vazias no site da Vercel e com dados de exemplo inventados só no `pnpm dev:exemplo` local, com "CSP MKT" no menu e "Criado por Yan Nunes" no rodapé (decisão 0039); nenhum dado real
 
 ## Em andamento
 
@@ -23,7 +23,7 @@
 |---|---|---|---|
 | Fase 3, parte 2: migrações 01 a 10, views de `api` e o teste de RLS no PGlite (camada 1) | sessão de IA | `feat/banco-e-rls` | em andamento |
 
-Já na `main`: desde 03/11/2026, por avanço direto e sem PR, os arquivos do padrão e as decisões 0001–0012, o protótipo da fase 2, o modelo de dados da fase 3 e a prévia na Vercel, com "Este mês" contra os mesmos dias do mês anterior; desde 04/11/2026, "CSP MKT" no menu e o crédito no rodapé (decisão 0039, branch `feat/nome-csp-mkt`).
+Já na `main`: desde 03/11/2026, por avanço direto e sem PR, os arquivos do padrão e as decisões 0001–0012, o protótipo da fase 2, o modelo de dados da fase 3 e a prévia na Vercel, com "Este mês" contra os mesmos dias do mês anterior; desde 04/11/2026, "CSP MKT" no menu e o crédito no rodapé (decisão 0039, branch `feat/nome-csp-mkt`); desde 10/11/2026, o site da Vercel sem dados de exemplo (branch `fix/site-sem-dados-de-exemplo`).
 
 Acessos das conexões, abertos pelo dono em 04/11/2026 com a lista da sessão de IA "Conexões". Nenhum token nem chave foi gerado: o token da Meta e as chaves do Google nascem no dia de subir o worker, direto no Railway.
 
@@ -33,16 +33,16 @@ Acessos das conexões, abertos pelo dono em 04/11/2026 com a lista da sessão de
 - **TikTok:** hoje as marcas anunciam só na Meta e no Google Ads; o conector do TikTok fica "A ligar".
 - **A confirmar:** se os nomes criados são os da lista (os de cima); se a verificação do negócio na Meta foi enviada ou já existia; a aprovação do Explorer; se as propriedades GA4 dos sites já existiam; se o Search Console aceitou a conta de serviço; se a organização do Google Cloud deixa criar chave de conta de serviço (`iam.disableServiceAccountKeyCreation`); a verificação em duas etapas em cada conta.
 
-O protótipo abre com `pnpm dev:exemplo` (dados de exemplo, sem `.env`). Telas: Visão geral, Chegada de clientes, Base de clientes, Leads, Meta Ads, TikTok Ads, Google Ads, Instagram, SEO e GEO, Tráfego com IA, Conectores, Usuários, Configurações e Diagnóstico. Cada tela tem o seu `docs/telas/<módulo>.md`; tarefas T1–T6, revisão de UX e pendências de desenho em `docs/telas/README.md`; o contrato dos módulos em `docs/telas/00-contrato.md`. `pnpm verify` verde em 30/10/2026 (18 testes no shared, 436 no web, build). Conferido no navegador em 30/10/2026: 1280px claro e escuro, 375px claro e escuro, a T1, a gaveta, os estados de `?estado=` e o Diagnóstico. Em 04/11/2026, com "CSP MKT" no menu e o crédito no rodapé: `pnpm verify` verde (18 testes no shared, 438 no web, build) e a casca conferida no navegador em 1280px e 375px, claro e escuro, com a gaveta.
+O protótipo abre com `pnpm dev:exemplo` (dados de exemplo, sem `.env`). Telas: Visão geral, Chegada de clientes, Base de clientes, Leads, Meta Ads, TikTok Ads, Google Ads, Instagram, SEO e GEO, Tráfego com IA, Conectores, Usuários, Configurações e Diagnóstico. Cada tela tem o seu `docs/telas/<módulo>.md`; tarefas T1–T6, revisão de UX e pendências de desenho em `docs/telas/README.md`; o contrato dos módulos em `docs/telas/00-contrato.md`. `pnpm verify` verde em 30/10/2026 (18 testes no shared, 436 no web, build). Conferido no navegador em 30/10/2026: 1280px claro e escuro, 375px claro e escuro, a T1, a gaveta, os estados de `?estado=` e o Diagnóstico. Em 04/11/2026, com "CSP MKT" no menu e o crédito no rodapé: `pnpm verify` verde (18 testes no shared, 438 no web, build) e a casca conferida no navegador em 1280px e 375px, claro e escuro, com a gaveta. Em 10/11/2026, com o site sem dados de exemplo: `pnpm verify` verde (18 testes no shared, 439 no web, build normal), todas as telas do build normal conferidas no navegador nas duas visões, sem nenhum número inventado, e a Visão geral e as Configurações em 1280px e 375px, claro e escuro. O e-mail do usuário da demonstração passou a "A cadastrar".
 
 O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquemas do banco, fluxo de cada dado, latência, convenções, dado pessoal e prazo de guarda. O detalhe está em `tabelas.md` (dicionário, com o DDL proposto), `listas.md`, `papeis-e-rls.md` (matriz de acesso, políticas, funções de ação e os casos do teste de RLS), `plano.md` (migrações, CI, seed e o que o dono providencia), `metricas.md` (a view ou função de cada número das telas, com as divergências do protótipo resolvidas) e `integracoes.md` (réplica do CSP 360, cada conector, execução das ações do Claude, avisos e credenciais). As decisões 0013 a 0020 e 0034 a 0038 são técnicas; as 0021 a 0033 são de produto, aprovadas como recomendadas. Antes da aprovação, a proposta passou por três conferências independentes (segurança e LGPD; números; padrão e integrações), foi corrigida, passou por uma segunda rodada (coerência entre os arquivos, cobertura do protótipo, integrações e regras do projeto) e por uma revisão independente das correções. O que só se confirma na primeira leitura ou na primeira escrita de cada plataforma está em `docs/dados/integracoes.md`, seção 19 (por exemplo, como a Meta conta o gasto depois de zerar o teto da conta).
 
 ## Quebrado ou arriscado
 
-- Nada em produção (o endereço da Vercel é o protótipo). Riscos conhecidos: a aprovação da Meta para o Claude executar (Full Access) é o item mais longo: o app e o usuário de leitura existem desde 04/11/2026, mas as 500 chamadas em 15 dias que o App Review pede só começam com o worker lendo, e a verificação do negócio está a confirmar; os sites não medem nada (`NEXT_PUBLIC_GA_ID` vazio em produção); a `sincronizar-apps` do CRM não traz `orders.total`, `invoiced_total` nem `source`; a função de leads dos sites está fora da `main` do CRM.
+- Nada em produção (o site da Vercel mostra as telas vazias, sem dado nenhum). Riscos conhecidos: a aprovação da Meta para o Claude executar (Full Access) é o item mais longo: o app e o usuário de leitura existem desde 04/11/2026, mas as 500 chamadas em 15 dias que o App Review pede só começam com o worker lendo, e a verificação do negócio está a confirmar; os sites não medem nada (`NEXT_PUBLIC_GA_ID` vazio em produção); a `sincronizar-apps` do CRM não traz `orders.total`, `invoiced_total` nem `source`; a função de leads dos sites está fora da `main` do CRM.
 - **O CI não roda no GitHub:** o token usado no `git push` não tem o escopo `workflow`, então o workflow ficou em `docs/ci.yml`. Até ele voltar para `.github/workflows/ci.yml` (pelo site do GitHub ou com um token com esse escopo), rode `pnpm verify` antes de todo push.
 - O Google Ads aposentou o developer token em 09/09/2026 (o acesso passou a ser pelo projeto do Google Cloud): `GOOGLE_ADS_DEVELOPER_TOKEN` e o OAuth do Google Ads no `.env.example` não valem mais. A proposta usa contas de serviço (decisão 0036); o `.env.example` muda na fase 4.
-- Números do protótipo são de exemplo. "Este mês" já compara com os mesmos dias do mês anterior (decisão 0026, desde 03/11/2026); as outras regras ainda são as de antes das decisões 0027 a 0033 (a tela passa a ler as contas do banco na fase 4): não tirar conclusão de negócio deles.
+- Os números do `pnpm dev:exemplo` (local) são de exemplo; o site da Vercel não mostra nenhum desde 10/11/2026. "Este mês" já compara com os mesmos dias do mês anterior (decisão 0026, desde 03/11/2026); as outras regras ainda são as de antes das decisões 0027 a 0033 (a tela passa a ler as contas do banco na fase 4): não tirar conclusão de negócio deles.
 
 ## Próximos passos
 
