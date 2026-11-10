@@ -33,3 +33,7 @@ Motivo: é o lead que entra no funil e vira cliente. O da plataforma conta só o
 - Lead sem UTM que case com uma campanha não entra no custo por lead; entra no total de leads.
 - Os testes de canal e de Humano × Claude que esperavam o número da plataforma mudam (`docs/dados/metricas.md`,
   seção 6).
+- Em 10/11/2026: conferido no código do CRM que lead é o negócio, e não o envio (decisão 0041, item 2). Quem já tem
+  negócio aberto no funil de leads e manda o formulário de novo não vira lead novo: o CRM anota o envio no negócio que
+  existe. O custo por lead conta esse lead uma vez, e "Leads informados pela plataforma" pode ser maior que "Leads".
+  Quem já é cliente ativo e manda o formulário abre negócio e conta como lead.

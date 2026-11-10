@@ -304,7 +304,7 @@ Dimensão compartilhada (sem marca). O CSP-MKT dá a cada pessoa um código `REP
 | `code` | `text` | não | `REP-0001` | Código mostrado na tela, por sequência |
 | `source` | `mkt.data_source` | não | `'csp360'` | Sistema de origem |
 | `external_id` | `text` | sim | — | `usuarios.id` do CRM; nulo para quem só tem login de app |
-| `crm_role` | `mkt.rep_crm_role` | sim | — | `manager`, `supervisor`, `internal_seller`, `field_rep`, `relationship` |
+| `crm_role` | `mkt.rep_crm_role` | sim | — | `manager`, `supervisor`, `internal_seller`, `field_rep`, `customer_service` (atendimento). Papel do CRM fora da lista entra nulo, sem derrubar a rodada (decisão 0041, item 8) |
 | `is_active` | `boolean` | não | `true` | Ativo no CRM |
 | `last_seen_at` | `timestamptz` | sim | — | Última leitura |
 
@@ -421,7 +421,7 @@ create table if not exists mkt.web_properties (
 
 ---
 
-## 2. Réplica do CSP 360 (decisões 0006, 0012, 0014 e 0015)
+## 2. Réplica do CSP 360 (decisões 0006, 0012, 0014, 0015, 0041 e 0042)
 
 Regras de todas as tabelas `crm_*`:
 
@@ -429,18 +429,26 @@ Regras de todas as tabelas `crm_*`:
   telefone, e-mail, documento, endereço ou texto livre de pessoa. O documento não vem: a junção já é `clientes.id`.
 - `source = 'csp360'` e `external_id` = o id da linha no CRM. O `id` daqui é gerado no CSP-MKT.
 - O que vem em português do CRM é convertido na entrada (status, situação) para as listas em inglês.
+- **O CRM como ele é:** o que esta seção diz do CRM foi conferido no código do CRM em 10/11/2026; nada foi lido do
+  banco. O que o CRM não entrega fica nulo aqui e "Sem dados" na tela, sem valor inventado (decisão 0041, item 6).
 - **UTM que vem do CRM** (`utm_source`, `utm_medium`, `utm_campaign`): vem do endereço do formulário público, onde
   qualquer pessoa escreve o que quiser, e ferramentas de e-mail podem pôr ali o e-mail do assinante. Entra cortada em
   150 letras. Na função `ingest.*`, vira nulo o valor com `@` ou que `mkt.has_personal_data` marque; em `utm_campaign`
   vale só o teste do `@`, para não perder nome de campanha com número. A rodada conta `PERSONAL_DATA_DROPPED` em
   `sync_runs`. Cada tabela leva o mesmo teste num `check` (`mkt.valid_crm_text`), como última barreira. `utm_term` e
   `utm_content` não entram: nenhuma conta usa (regra 6).
-- **Origem do negócio** (`negocios.origem`, texto que a equipe digita ou rótulo do ClickUp): não é gravada como veio.
+- **Origem do negócio** (`negocios.origem`: a `utm_source` do site ou "site", um valor da lista da tela do CRM,
+  "SDR WhatsApp" na conversão do SDR ou o texto de uma importação antiga): não é gravada como veio.
   `ingest.upsert_crm_leads` guarda em `crm_origin_raw` só o valor normalizado (minúsculas, sem espaço nas pontas) que
   está em `crm_origin_map`, que é uma fonte de UTM conhecida da classificação (`mkt.is_known_origin_text`, a mesma
   lista de `mkt.classify_lead_origin`) ou que é igual à `utm_source` de primeiro contato do cliente, já replicada e
   limpa (é o que liga o negócio do site à UTM dele, [`metricas.md`](metricas.md), seção 3.2). Outro texto vira nulo e
   o lead fica com `is_origin_unmapped = true`. Valor novo é conferido no CSP 360 e entra no de-para por migração.
+- **O texto já vem limpo do CRM:** a view entrega a origem do negócio e as três UTMs sem espaço nas pontas, cortadas
+  em 150 letras e nulas quando vazias ou quando parecem e-mail, telefone, CPF ou CNPJ (na campanha, número solto
+  passa, porque é o id da campanha). A origem vem sem o trecho de nome de representante que as listas de reativação
+  gravaram, e o nome de funil com dado pessoal vem trocado por um rótulo. O teste daqui continua, como segunda
+  barreira: o que a view já tirou não entra na contagem `PERSONAL_DATA_DROPPED` nem vira origem sem de-para.
 - `last_seen_at` = última leitura que viu a linha. A passada completa diária apaga a linha que sumiu do CRM, sem
   cópia (decisão 0015).
 - **Grava:** worker, sempre pelas funções `ingest.*` (o de-para `crm_origin_map`, só por migração). **RLS:** lê quem
@@ -463,11 +471,21 @@ $$;
 | `source`, `external_id` | `mkt.data_source`, `text` | não | `'csp360'` | `funis_venda.id` |
 | `name` | `text` | não | — | Nome do funil |
 | `is_default` | `boolean` | não | `false` | Funil padrão no CRM |
-| `is_lead_funnel` | `boolean` | não | `false` | Configuração do CSP-MKT: é o funil de leads. Um só pode ser verdadeiro |
+| `is_lead_funnel` | `boolean` | não | `false` | É funil de leads: o funil padrão do CRM e o funil antigo dos leads do site. Mais de um pode ser verdadeiro (decisão 0041, item 1) |
 | `last_seen_at` | `timestamptz` | sim | — | — |
 
-- **Grava:** worker (nome e padrão); `is_lead_funnel` só por migração, quando o time do CRM decidir qual funil vale
-  (Parte 4 do prompt). Trocar o funil faz a próxima passada completa refazer `crm_leads`.
+- **Funil de leads** (decisão 0041, item 1): são dois, o funil padrão do CRM e o funil antigo dos leads do site. O
+  lead do site nasce no funil padrão desde 05/11/2026; os negócios abertos do funil antigo foram movidos para ele com
+  o mesmo id, e os encerrados ficaram no funil antigo. Negócio sem funil no CRM conta como do funil padrão. Não há
+  mais trava de um só funil de leads.
+- **Grava:** worker (nome e padrão; no funil padrão, `is_lead_funnel` segue `is_default` na ingestão) e script (uma
+  função `setup.*` marca uma vez, pelo id, o funil antigo dos leads do site, para o histórico encerrado entrar). Quando
+  o funil de leads muda (o CRM troca o funil padrão, ou o funil antigo é marcado), a próxima passada completa refaz
+  `crm_leads`.
+- **Em aberto** (decisão 0041): o funil padrão é o funil de vendas do time comercial, e nele também há negócio aberto
+  à mão. O negócio aberto à mão com a origem "Carteira" ou "Prospecção ativa" conta como lead? O dono decide antes da
+  primeira carga. Até lá, ele entra em `crm_leads` e a origem aparece na pendência de origem sem de-para da tela de
+  Leads.
 
 ```sql
 create table if not exists mkt.crm_funnels (
@@ -482,15 +500,16 @@ create table if not exists mkt.crm_funnels (
   updated_at timestamptz not null default date_trunc('milliseconds', now()),
   unique (source, external_id)
 );
-create unique index if not exists crm_funnels_one_lead_funnel on mkt.crm_funnels (is_lead_funnel) where is_lead_funnel;
+-- Sem índice único em is_lead_funnel: os funis de leads são o padrão e o antigo dos leads do site (decisão 0041).
 ```
 
 ### `crm_origin_map` — de-para da origem do negócio
 
-`negocios.origem` no CRM é texto sem lista fechada (UTM, "site", rótulo do ClickUp, texto digitado). Este de-para
-leva cada valor para a origem do lead (`mkt.lead_origin`). Valor que não está aqui e é uma fonte de UTM conhecida
-segue a regra da função de classificação (`mkt.classify_lead_origin`, em `metricas.md`); o resto não é gravado (seção
-"Regras", acima).
+`negocios.origem` no CRM é texto, sem lista fechada no banco: a `utm_source` do site ou "site", um valor da lista da
+tela do CRM, "SDR WhatsApp" na conversão do SDR ou o texto de uma importação antiga. Este de-para leva cada valor para
+a origem do lead (`mkt.lead_origin`); `sdr whatsapp` vai para `sdr` (decisão 0041, item 3). Valor que não está aqui e
+é uma fonte de UTM conhecida segue a regra da função de classificação (`mkt.classify_lead_origin`, em `metricas.md`);
+o resto não é gravado (seção "Regras", acima).
 
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 |---|---|---|---|---|
@@ -524,11 +543,15 @@ Dimensão compartilhada: a base de clientes do CRM é uma só (decisão 0003).
 | `first_utm_source` | `text` | sim | — | UTM do primeiro contato, gravada pela função de leads do CRM (limpa na entrada, seção "Regras") |
 | `first_utm_medium` | `text` | sim | — | idem |
 | `first_utm_campaign` | `text` | sim | — | idem |
-| `source_created_at` | `timestamptz` | não | — | `clientes.criado_em` |
+| `source_created_at` | `timestamptz` | não | — | `clientes.criado_em`. No cliente criado pela tela do CRM vem só o dia: o instante exatamente à meia-noite UTC é data pura (decisão 0041, item 5) |
 | `last_seen_at` | `timestamptz` | não | — | — |
 
 - **Chaves:** única `(source, external_id)`; índice em `code`.
-- As três UTMs vêm da view `clientes_utm` pedida ao CRM; enquanto ela não existir, ficam nulas.
+- As três UTMs vêm da view `clientes_utm` do CRM, que só traz o cliente com pelo menos uma delas: quem não está na
+  view fica com as três nulas. É a UTM de primeiro contato: o primeiro valor não vazio de cada campo, campo a campo,
+  então as três podem vir de envios diferentes. Quem já é cliente ativo na hora do envio não recebe UTM no cadastro
+  (fica só a origem do negócio), e o valor pode ser editado à mão no CRM. Só há UTM para quem entrou pelo site, desde
+  09/09/2026. A view já entrega o valor limpo (seção "Regras").
 
 ```sql
 create table if not exists mkt.crm_customers (
@@ -555,20 +578,33 @@ create index if not exists crm_customers_code on mkt.crm_customers (code);
 
 ### `crm_customer_brands` — situação e última compra por marca
 
-Uma linha por cliente e marca. A situação é a da régua do CRM, por marca, lida da view `clientes_situacao`
-pedida ao time do CRM; o CSP-MKT não recalcula a régua (decisão 0012).
+Uma linha por cliente e marca. A situação é a da régua do CRM, por marca; o CSP-MKT não recalcula a régua (decisão
+0012). Em 10/11/2026 o CRM não a entrega: a régua só roda na tela de lá, sem SQL, e o perdido marcado à mão é coluna
+do cliente (não é por marca) e não está nas views lidas. Enquanto for assim, `situation`, `is_lost_manual`,
+`last_purchase_on` e `situation_computed_at` ficam nulas (decisão 0041, item 6) e a linha nasce só da view
+`clientes_compras_marca`. A Base mostra quem comprou, com "Sem situação"; ativos, inativos e perdidos ficam "Sem
+dados" ([`metricas.md`](metricas.md), seção 4.7).
+
+O retrato do ERP (view `clientes_compras_marca`) é cópia do que o Control exportou para o app pela última vez; o CRM
+só copia. Traz a última compra e o total de cerca de 24 meses; a primeira compra vem sempre nula. O retrato da marca é
+trocado inteiro quando muda: a última compra anterior some. Ele pode incluir compra feita pelo app e já faturada, com
+atraso. Por isso a réplica guarda a compra do ERP mais antiga que já viu (`erp_earliest_purchase_on`): a primeira
+compra, quando o CRM a entregar; até lá, a menor última compra lida até hoje. Essa data nunca anda para a frente, e é
+ela que a regra do histórico usa: o cliente não é novo na marca se ela é anterior ao dia do 1º pedido do CRM (decisão
+0042, que também diz o que essa data não resolve).
 
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 |---|---|---|---|---|
 | `customer_id` | `uuid` | não | — | Cliente |
 | `brand_id` | `uuid` | não | — | Marca |
-| `situation` | `mkt.customer_situation` | sim | — | `lead`, `active`, `inactive_recent`, `inactive_old`, `lost`; nulo = sem base ou view ainda inexistente |
-| `is_lost_manual` | `boolean` | não | `false` | Marcado como perdido à mão no CRM |
-| `last_purchase_on` | `date` | sim | — | Última compra que a régua do CRM usou (`clientes_situacao.ultima_compra`: CRM e retrato do ERP) |
-| `erp_first_purchase_on` | `date` | sim | — | Primeira compra na marca no retrato do ERP, sem os pedidos do CRM (view `clientes_compras_marca`, campo `primeira_compra`, a pedir ao time do CRM). Com `erp_last_purchase_on`, decide se o cliente já comprava antes do 1º pedido do CRM (decisão 0030) |
-| `erp_last_purchase_on` | `date` | sim | — | Última compra na marca no retrato do ERP, **sem** os pedidos do CRM (view `clientes_compras_marca`) |
-| `erp_total_purchased_cents` | `bigint` | sim | — | Total comprado na marca no retrato do ERP, sem os pedidos do CRM. Só informação: não decide cliente novo (o total pode ter compra de depois do 1º pedido do CRM) |
-| `situation_computed_at` | `timestamptz` | sim | — | Quando o CRM calculou a situação |
+| `situation` | `mkt.customer_situation` | sim | — | `lead`, `active`, `inactive_recent`, `inactive_old`, `lost`; nulo = sem base, ou situação que o CRM não entrega |
+| `is_lost_manual` | `boolean` | sim | — | Marcado como perdido à mão no CRM; nulo enquanto o CRM não entregar (decisão 0041, item 6) |
+| `last_purchase_on` | `date` | sim | — | Última compra que a régua do CRM usou (CRM e retrato do ERP); nula enquanto o CRM não entregar a situação |
+| `erp_first_purchase_on` | `date` | sim | — | Primeira compra na marca no retrato do ERP (campo `primeira_compra`). Vem sempre nula: o CRM não guarda a primeira compra |
+| `erp_last_purchase_on` | `date` | sim | — | Última compra na marca no retrato do ERP, como veio na última leitura (campo `ultima_compra`). Anda para a frente quando o retrato muda |
+| `erp_earliest_purchase_on` | `date` | sim | — | A compra do ERP mais antiga que a réplica já viu na marca. Só é trocada por uma data anterior. É a data da regra do histórico (decisões 0030 e 0042) |
+| `erp_total_purchased_cents` | `bigint` | sim | — | Total comprado na marca no retrato do ERP, de cerca de 24 meses (campo `total_comprado`, em reais na origem, convertido para centavos na entrada; negativo ou fora do formato vem nulo). Só informação: não decide cliente novo (o total pode ter compra de depois do 1º pedido do CRM) |
+| `situation_computed_at` | `timestamptz` | sim | — | Quando o CRM calculou a situação; nula enquanto o CRM não entregar a situação |
 | `last_seen_at` | `timestamptz` | não | — | — |
 
 ```sql
@@ -577,10 +613,11 @@ create table if not exists mkt.crm_customer_brands (
   customer_id uuid not null references mkt.crm_customers(id) on delete cascade,
   brand_id uuid not null references mkt.brands(id),
   situation mkt.customer_situation,
-  is_lost_manual boolean not null default false,
+  is_lost_manual boolean,                 -- nulo enquanto o CRM não entregar (decisão 0041)
   last_purchase_on date,
   erp_first_purchase_on date,
   erp_last_purchase_on date,
+  erp_earliest_purchase_on date,          -- a mais antiga já vista; só troca por data anterior (decisão 0042)
   erp_total_purchased_cents bigint check (erp_total_purchased_cents >= 0),
   situation_computed_at timestamptz,
   last_seen_at timestamptz not null,
@@ -620,14 +657,14 @@ create index if not exists crm_customer_reps_rep on mkt.crm_customer_reps (sales
 | `code` | `text` | não | — | `NEG-0001` do CRM; para o SDR, que não tem código, `LEAD-0001` gerado aqui |
 | `brand_id` | `uuid` | **sim** | — | Marca; nulo = "Sem marca" (lead do SDR, negócio sem marca; decisão 0014) |
 | `customer_id` | `uuid` | sim | — | Cliente no CRM; nulo = "A cadastrar" |
-| `crm_funnel_id` | `uuid` | sim | — | Funil do negócio; nulo no SDR |
+| `crm_funnel_id` | `uuid` | sim | — | Funil do negócio; nulo no SDR. Negócio sem funil no CRM conta como do funil padrão (decisão 0041, item 1) |
 | `crm_origin_raw` | `text` | sim | — | `negocios.origem` normalizado, só quando está no de-para ou é uma fonte de UTM conhecida; outro texto não é gravado (seção "Regras") |
 | `is_origin_unmapped` | `boolean` | não | `false` | O negócio tinha origem no CRM, mas fora do de-para e das fontes conhecidas: a origem fica `referral` e a tela de Leads conta a pendência |
-| `utm_source`, `utm_medium`, `utm_campaign` | `text` | sim | — | UTM do próprio lead, quando o CRM passar a gravar por envio (lacuna 10 do levantamento do CRM); limpa na entrada |
-| `referrer_host` | `text` | sim | — | Domínio de onde a pessoa veio, quando o CRM passar a gravar (lacuna 9) |
-| `assigned_rep_id` | `uuid` | sim | — | Quem recebeu o lead no CRM (`sales_reps`); nulo até o CRM dar o responsável por id |
-| `source_created_at` | `timestamptz` | não | — | Quando o lead chegou |
-| `source_updated_at` | `timestamptz` | sim | — | Última alteração no CRM |
+| `utm_source`, `utm_medium`, `utm_campaign` | `text` | sim | — | UTM do próprio lead. Nulas: o CRM não tem UTM por lead, e vale a de primeiro contato do cliente (decisões 0031 e 0041, item 6). Preenche quando o CRM passar a gravar por envio (lacuna 10 do levantamento do CRM); limpa na entrada |
+| `referrer_host` | `text` | sim | — | Domínio de onde a pessoa veio. Nulo: o CRM não tem `referrer` por lead. Preenche quando o CRM passar a gravar (lacuna 9) |
+| `assigned_rep_id` | `uuid` | sim | — | Quem recebeu o lead no CRM (`sales_reps`), pela view `negocios_responsavel`. Nulo quando o CRM não entrega o id ("Sem representante") e no lead do SDR |
+| `source_created_at` | `timestamptz` | não | — | Quando o lead chegou (`criado_em` do CRM). No negócio aberto pela tela do CRM vem só o dia |
+| `source_updated_at` | `timestamptz` | sim | — | `atualizado_em` do CRM. Não diz quando o CRM gravou |
 | `last_seen_at` | `timestamptz` | não | — | — |
 
 - **Chaves:** única `(source, kind, external_id)`; única `code`. `customer_id`, `crm_funnel_id` e `assigned_rep_id`
@@ -637,11 +674,28 @@ create index if not exists crm_customer_reps_rep on mkt.crm_customer_reps (sales
   `private.next_code('LEAD', 'mkt.lead_code_seq')`). `ingest.upsert_crm_leads` atualiza primeiro o que existe e
   depois insere só o que é novo, como em `sales_reps`: a sequência anda só com linha nova.
 - **Quais negócios entram:** a leitura traz os negócios de todos os funis; `ingest.upsert_crm_leads` grava o que está
-  no funil marcado em `crm_funnels.is_lead_funnel` ou que já existe em `crm_leads`, e ignora o resto
-  ([`integracoes.md`](integracoes.md), seção 3.4).
+  num funil de leads (`crm_funnels.is_lead_funnel`: o funil padrão do CRM e o funil antigo dos leads do site) ou que
+  já existe em `crm_leads`, e ignora o resto ([`integracoes.md`](integracoes.md), seção 3.4). O negócio sem funil no
+  CRM conta como do funil padrão e entra: é como nasce o negócio da conversão do SDR (decisão 0041, item 1). O negócio
+  aberto à mão no funil padrão também entra; se ele conta como lead está em aberto (decisão 0041).
+- **Lead é o negócio** (decisão 0041, item 2): quem já tem negócio aberto no funil de leads e manda o formulário de
+  novo não ganha negócio novo; o CRM anota o envio no que existe. O envio repetido não vira outro lead nem muda
+  `source_created_at`, e por isso "Leads" pode ficar abaixo de "Leads informados pela plataforma". Quem já é cliente
+  ativo e manda o formulário abre negócio no funil de leads: conta como lead e não ganha UTM. A chave do lead é o id
+  do negócio (`external_id`): o código mostrado (`code`) pode ser reaproveitado no CRM depois de uma limpeza.
+- **Responsável:** no CRM o responsável do negócio é o nome, em texto, e o nome nunca sai de lá. A view
+  `negocios_responsavel` só devolve o id de `usuarios` quando o nome (sem espaço nas pontas, sem diferença de
+  maiúscula) é de exatamente uma pessoa, de qualquer papel, ativa ou não. Nome repetido, desconhecido ou vazio: o
+  negócio não vem na view e `assigned_rep_id` fica nulo. O lead do SDR não tem responsável.
+- **Carimbos** (decisão 0041, itens 4 e 5): no negócio nenhum gatilho atualiza `atualizado_em`. A função dos sites
+  grava o instante do envio; a tela do CRM grava `criado_em` e `atualizado_em` só com o dia (meia-noite UTC), ao criar
+  e a cada edição; algumas ações não regravam o carimbo. Por isso a leitura de 5 min relê a janela de 3 dias, e a
+  passada completa diária pega o resto. No dia do lead, o instante exatamente à meia-noite UTC é data pura: vale a
+  data como está, sem converter para São Paulo. Os outros instantes convertem.
 - **Não guarda** a etapa, o 1º pedido nem a origem classificada: são derivados em `mkt.v_leads` (decisão 0001; o
-  protótipo grava `stage` e `source`). A view também resolve o lead do SDR que virou negócio (conta uma vez) e usa a
-  UTM do primeiro contato do cliente quando o lead não tem a sua.
+  protótipo grava `stage` e `source`). A view também resolve o lead do SDR que virou negócio (conta uma vez; a ligação
+  entre os dois é o cliente, decisão 0041, item 3) e usa a UTM do primeiro contato do cliente quando o lead não tem a
+  sua.
 
 ```sql
 create table if not exists mkt.crm_leads (
@@ -680,7 +734,8 @@ create index if not exists crm_leads_utm on mkt.crm_leads (mkt.utm_key(utm_campa
 ### `crm_orders` — pedidos
 
 Todos os status entram, para um pedido enviado e depois cancelado sair da conta. Faturado é carimbo, não status
-(seção 9 do padrão): o `faturado` do CRM vira `status = 'sent'` com `is_invoiced = true`.
+(seção 9 do padrão): o `faturado` do CRM vira `status = 'sent'` com `is_invoiced = true`. O CRM só tem pedido que
+nasceu nos apps: o pedido digitado direto no Control não chega, e o pedido apagado no app vira cancelado.
 
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 |---|---|---|---|---|
@@ -695,7 +750,7 @@ Todos os status entram, para um pedido enviado e depois cancelado sair da conta.
 | `sales_rep_id` | `uuid` | sim | — | Quem vendeu (`vendedor_app`) |
 | `sent_at` | `timestamptz` | sim | — | Nulo até o CRM gravar a data de envio (lacuna 4) |
 | `source_created_at` | `timestamptz` | não | — | Criação do pedido no app; é a data do pedido enquanto `sent_at` não existir |
-| `source_updated_at` | `timestamptz` | sim | — | — |
+| `source_updated_at` | `timestamptz` | sim | — | `atualizado_em` do CRM: é o relógio do app, pode ser nulo e pode chegar atrasado. Status ou cliente trocados à mão no CRM não o regravam; na leitura por janela, o pedido sem carimbo vale por `criado_em` (decisão 0041, item 4) |
 | `last_seen_at` | `timestamptz` | não | — | — |
 
 - **Índices:** as contas de pedido filtram e ordenam pelo dia de envio, `mkt.sp_day(coalesce(sent_at,
@@ -1622,7 +1677,7 @@ cria uma linha `requested` que o worker pega no minuto seguinte.
 | `requested_by` | `uuid` | sim | — | Quem pediu (só `manual_retry` e `csv_upload`) |
 | `requested_at`, `started_at`, `finished_at` | `timestamptz` | sim | — | Andamento |
 | `rows_written`, `rows_deleted`, `rows_refused` | `integer` | não | `0` | Linhas gravadas, apagadas e recusadas pelo banco (moeda, lista, `check`; [`integracoes.md`](integracoes.md), seção 2.3) |
-| `watermark_from_at`, `watermark_to_at` | `timestamptz` | sim | — | Janela lida; o `watermark_to_at` da última rodada boa é o próximo `since` |
+| `watermark_from_at`, `watermark_to_at` | `timestamptz` | sim | — | Janela lida; o `watermark_to_at` da última rodada boa é o próximo `since`. No CSP 360 a leitura de 5 min não usa a marca d'água: relê a janela de 3 dias (decisão 0041, item 4) |
 | `personal_data_dropped` | `integer` | não | `0` | Valores de texto do CRM que viraram nulo por parecer dado pessoal (`PERSONAL_DATA_DROPPED`) |
 | `error_code` | `text` | sim | — | Código do erro (`HTTP_429`, `CURRENCY`, `SCHEMA_DRIFT`, `EMPTY_SOURCE`, `SPEND_MISMATCH`, `MASS_DELETE_BLOCKED`…) |
 | `error_message` | `text` | sim | — | Mensagem curta, até 300 letras, sem dado pessoal |
@@ -2003,7 +2058,7 @@ create index if not exists audit_log_time on mkt.audit_log (occurred_at desc);
 | View | O que entrega |
 |---|---|
 | `mkt.v_leads` | Lead com origem classificada, UTM efetiva, campanha atribuída (ou UTM repetida), etapa e o 1º pedido que o converteu; o lead do SDR que virou negócio conta uma vez |
-| `mkt.v_first_orders` | 1º pedido enviado por cliente e marca, com o histórico do retrato do ERP e o 1º pedido do grupo (decisões 0012 e 0030) |
+| `mkt.v_first_orders` | 1º pedido enviado por cliente e marca, com o histórico do retrato do ERP e o 1º pedido do grupo (decisões 0012, 0030 e 0042) |
 | `mkt.v_new_customers` | Cliente novo na marca e no grupo, com o lead do primeiro toque (decisão 0031) |
 | `mkt.v_customer_orders` | Pedidos enviados com a compra anterior na marca e no grupo (recompra, reativação, receita) |
 | `mkt.v_customer_brand_status` | Situação, perdido manual e última compra por cliente e marca (também para quem só tem pedido, sem linha da view do CRM) |
@@ -2032,7 +2087,7 @@ uma função de KPI lê a view base. As regras e o SQL das views e das funções
 | `sales_rep_app_logins` | mkt | login de app por marca | não nula | worker | `view_numbers` |
 | `ig_accounts` | mkt | perfil | não nula | script, worker | `view_numbers` |
 | `web_properties` | mkt | propriedade GA4 ou Search Console | não nula | script, worker | `view_numbers` |
-| `crm_funnels` | mkt | funil do CRM | sem | worker, migração | `view_leads` |
+| `crm_funnels` | mkt | funil do CRM | sem | worker, script | `view_leads` |
 | `crm_origin_map` | mkt | valor de origem | sem | migração | `view_leads` |
 | `crm_customers` | mkt | cliente | sem | worker | `view_numbers` |
 | `crm_customer_brands` | mkt | cliente × marca | não nula | worker | `view_numbers` |

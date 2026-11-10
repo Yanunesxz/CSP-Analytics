@@ -69,6 +69,10 @@ A senha dos papéis de serviço entra por `alter role … with login password` n
 imprime. Nada é colado no SQL Editor (decisão 0006). "Mesclar sem aplicar não é mesclar": PR mesclado com migração
 que não subiu entra em "Quebrado ou arriscado" no `ESTADO.md`.
 
+Isso vale para o banco do CSP-MKT. O CRM não tem CI de migração: a migração de leitura de lá (o papel
+`csp_mkt_reader`, sem login, e as views do esquema `csp_mkt`) é rodada pelo dono no SQL Editor do CRM. O worker não
+tem senha no banco do CRM: lê pela API de dados, com um token do papel, que vai direto para o Railway (decisão 0040).
+
 ## Seed
 
 | Onde | O que entra | Como |
@@ -105,8 +109,11 @@ com `aal2` no token de exemplo, para as telas do dono funcionarem.
   `.github/workflows/ci.yml`.
 - [ ] Os ids das contas de anúncio e das propriedades GA4 e Search Console de cada marca, para os scripts de
   configuração.
-- [ ] Do time do CRM (Parte 4 do prompt, não trava a criação do banco): os pedidos de [`integracoes.md`](integracoes.md),
-  seção 19, "Time do CRM" (a lista fica só lá).
+- [ ] No CRM (não trava a criação do banco): aprovar o PR do acesso de leitura, rodar no SQL Editor de lá a migração
+  de leitura do CSP-MKT e a conferência do fim do arquivo. Depois da decisão 0040: expor o esquema `csp_mkt` na API só
+  para o papel de leitura e emitir o token, colado direto no Railway (`CSP360_API_TOKEN`).
+- [ ] Do time do CRM: o que continua aberto em [`integracoes.md`](integracoes.md), seção 19, "Time do CRM" (a lista
+  fica só lá).
 
 ## No PR da aprovação (fase 3)
 

@@ -40,3 +40,8 @@ Instagram.
 - Saem do `.env.example` o developer token e o OAuth do Google Ads, a chave e o endereço da API do CRM, os ids de
   propriedade (viram `web_properties`) e as credenciais únicas do TikTok; entram os nomes por finalidade (leitura e
   escrita).
+- Em 10/11/2026: o acesso ao CSP 360 passa a ser pela API de dados do CRM, com um token do papel `csp_mkt_reader`,
+  sem login no banco (decisão 0040, que diz como a leitura confere as colunas e pagina por chave). O papel e as views
+  estão na migração de leitura do CRM, que o dono roda no SQL Editor de lá: deixam de ser pedido ao time do CRM. Sai
+  `CSP360_DATABASE_URL`; entram `CSP360_API_URL`, `CSP360_API_KEY` e `CSP360_API_TOKEN` (`docs/dados/integracoes.md`,
+  seção 18).

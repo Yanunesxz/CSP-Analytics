@@ -52,3 +52,7 @@ vence em 60 dias; refresh token pode ser trocado pela plataforma) e o worker pre
   texto do SQL, e a função não repete o segredo em mensagem de erro.
 - Dois serviços no Railway em vez de um: `WORKER_DATABASE_URL` e `EXECUTOR_DATABASE_URL`, e os nomes `*_WRITE` só no
   executor (`docs/dados/integracoes.md`, seção 18).
+- Em 10/11/2026: a "chave só-leitura do CRM" passa a ser o token do papel de leitura, usado na API de dados do CRM,
+  sem login no banco (decisão 0040). O token (`CSP360_API_TOKEN`) fica só no Railway do worker e é trocado no CRM, pelo
+  dono; não renova sozinho e não entra no Vault. `CSP360_DATABASE_URL` deixa de existir. O papel e as views estão na
+  migração de leitura do CRM, que o dono roda no SQL Editor de lá.

@@ -23,3 +23,4 @@ Latência: leads a cada 5 min pela réplica (quase tempo real exige o CRM avisar
 - Pedir ao time do CRM a credencial só-leitura e, para a situação do cliente, uma view ou RPC (o CSP-MKT não recalcula a régua).
 - Um dicionário de dados no README com o que é replicado e o que não é.
 - A lista de leads mostra código, origem, marca, campanha, etapa, data e o link para a ficha 360 no CSP 360 (campanha e etapa como o protótipo aprovado em 03/11/2026).
+- Em 10/11/2026: o worker passa a ler o CRM pela API de dados, com um token do papel de leitura, sem login no banco (decisão 0040). O papel `csp_mkt_reader` e as views do esquema `csp_mkt` estão na migração de leitura do CRM, que o dono roda no SQL Editor de lá; a regra "nunca no SQL Editor" vale para o banco do CSP-MKT. A leitura de 5 min passa a ser por janela de 3 dias, e a view de situação do cliente não existe: a situação fica "Sem dados" e o CSP-MKT continua sem recalcular a régua (decisão 0041).
