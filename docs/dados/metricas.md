@@ -635,8 +635,8 @@ Lead é o lead do SDR ou o negócio de um funil de leads (`crm_funnels.is_lead_f
 (decisão 0041, item 1): o funil padrão do CRM, onde o lead do site nasce desde 05/11/2026, e o funil antigo dos leads
 do site, que guarda o histórico encerrado. Negócio sem funil conta como do funil padrão. O funil padrão é o funil de
 vendas do time comercial: nele também está o negócio que a equipe abre à mão, com a origem "Carteira" ou "Prospecção
-ativa". Se esse negócio conta como lead está em aberto com o dono (decisão 0041, "Fica em aberto"). Até decidir, essas
-origens aparecem na pendência de origem sem de-para da tela de Leads (`unmapped_origin_count`).
+ativa". Esse negócio não conta como lead (decisão 0041, item 9): entra na réplica e fica fora de `mkt.v_leads`, e
+essas duas origens não entram na pendência de origem sem de-para (`unmapped_origin_count`).
 
 O dia do lead (`created_on`) é o dia de São Paulo do instante em que ele chegou. A exceção é o instante exatamente à
 meia-noite UTC (decisão 0041, item 5): a tela do CRM grava só o dia, que chega como 00:00 UTC, e convertido cairia no
@@ -1841,8 +1841,8 @@ Vale em CH14, CH15, BA13, BA15, BA16, LE8, LE13, SG7, SG17 e CA14.
 - **No CRM, falta ligar** (o dono faz; não é pedido ao time): aprovar o PR do acesso, rodar a migração de leitura no
   SQL Editor de lá e a conferência do fim do arquivo; depois da decisão 0040, expor o esquema de leitura na API só
   para o papel de leitura e emitir o token.
-- **O dono decide** (decisão 0041, "Fica em aberto"): se o negócio aberto à mão, com origem "Carteira" ou "Prospecção
-  ativa", conta como lead (seção 3.4).
+- **Respondido pelo dono em 11/11/2026** (decisão 0041, item 9): o negócio aberto à mão, com origem "Carteira" ou
+  "Prospecção ativa", não conta como lead (seção 3.4).
 - **O dono responde** as decisões 0026 a 0033 (e a 0021, de que depende a régua do limite). Cada uma diz o que muda
   se a resposta for outra.
 - **Medir na fase 4:** o tempo de `mkt.v_leads` e de `mkt.v_new_customers` com volume de anos; se passar da meta,

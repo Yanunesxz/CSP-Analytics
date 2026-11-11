@@ -310,10 +310,10 @@ do negócio; a UTM e o `referrer` por lead; a primeira compra por marca; a régu
 - **O lead do SDR convertido conta uma vez** (decisão 0041, item 3): a conversão abre também um negócio com a origem
   "SDR WhatsApp", sem funil e sem marca. A ligação entre os dois é o cliente, e o de-para leva `sdr whatsapp` para
   `sdr` ([`metricas.md`](metricas.md), seção 3.3).
-- **Em aberto, com o dono** (decisão 0041): o funil padrão é o funil de vendas do time comercial, e nele também há
-  negócio aberto à mão, com a origem "Carteira" ou "Prospecção ativa". Se esse negócio conta como lead, quem decide é
-  o dono, antes da primeira carga. Até lá ele entra na réplica, e essas origens aparecem na pendência de origem sem
-  de-para da tela de Leads.
+- **Negócio aberto à mão não conta como lead** (decisão 0041, item 9): o funil padrão é o funil de vendas do time
+  comercial, e nele também há negócio aberto à mão, com a origem "Carteira" ou "Prospecção ativa". Ele entra na
+  réplica e fica fora de Leads, da conversão e do custo por lead. Essas duas origens não aparecem na pendência de
+  origem sem de-para.
 - **Ordem na rodada:** marcas → funis → representantes → clientes e views → leads → pedidos com itens → rodadas apps →
   CRM.
 

@@ -511,10 +511,9 @@ $$;
   funil marcado que um dia vira o padrão e depois deixa de ser perde a marca, e o script marca de novo. Quando o funil
   de leads muda (o CRM troca o funil padrão, ou o funil antigo é marcado), a próxima passada completa refaz
   `crm_leads`.
-- **Em aberto** (decisão 0041): o funil padrão é o funil de vendas do time comercial, e nele também há negócio aberto
-  à mão. O negócio aberto à mão com a origem "Carteira" ou "Prospecção ativa" conta como lead? O dono decide antes da
-  primeira carga. Até lá, ele entra em `crm_leads` e a origem aparece na pendência de origem sem de-para da tela de
-  Leads.
+- **Negócio aberto à mão** (decisão 0041, item 9): o funil padrão é o funil de vendas do time comercial, e nele
+  também há negócio aberto à mão. O negócio com a origem "Carteira" ou "Prospecção ativa" entra em `crm_leads` e não
+  conta como lead: fica fora de `mkt.v_leads`, e a origem dele não aparece na pendência de origem sem de-para.
 
 ```sql
 create table if not exists mkt.crm_funnels (
@@ -719,7 +718,7 @@ create index if not exists crm_customer_reps_rep on mkt.crm_customer_reps (sales
   num funil de leads (`crm_funnels.is_lead_funnel`: o funil padrão do CRM e o funil antigo dos leads do site) ou que
   já existe em `crm_leads`, e ignora o resto ([`integracoes.md`](integracoes.md), seção 3.4). O negócio sem funil no
   CRM conta como do funil padrão e entra: é como nasce o negócio da conversão do SDR (decisão 0041, item 1). O negócio
-  aberto à mão no funil padrão também entra; se ele conta como lead está em aberto (decisão 0041).
+  aberto à mão no funil padrão também entra, mas não conta como lead (decisão 0041, item 9).
 - **Lead é o negócio** (decisão 0041, item 2): quem já tem negócio aberto no funil de leads e manda o formulário de
   novo não ganha negócio novo; o CRM anota o envio no que existe. O envio repetido não vira outro lead nem muda
   `source_created_at`, e por isso "Leads" pode ficar abaixo de "Leads informados pela plataforma". Quem já é cliente
