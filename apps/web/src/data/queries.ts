@@ -11,6 +11,7 @@
  *   aparece nas duas e é sinalizado como "Sem marca" (decisão 0003).
  * - Cliente novo = lead que chegou ao 1º pedido enviado (`first_order` ou `invoiced`), contado
  *   uma vez por `crmCustomerId`, no dia do `firstOrderAt` (decisão 0012).
+ * - Pedido conta só enviado (`sent`): orçamento e cancelado ficam fora. Faturado é o carimbo `isInvoiced`.
  * - Atribuição a canal e campanha pelo `utmCampaign` do lead (decisão 0009).
  */
 
@@ -27,6 +28,7 @@ import type {
   LeadSource,
   LeadStage,
   Operator,
+  Order,
   Platform,
   TrafficAction,
 } from '@csp-mkt/shared';
@@ -104,6 +106,11 @@ export function filtrarMarca<T extends { brandId: Brand | null }>(
 
 function porId<T extends { id: string }>(lista: readonly T[]): Map<string, T> {
   return new Map(lista.map((item) => [item.id, item]));
+}
+
+/** Só os pedidos enviados: orçamento e cancelado não entram em contagem nem em receita. */
+function enviados(pedidos: readonly Order[]): Order[] {
+  return pedidos.filter((p) => p.status === 'sent');
 }
 
 function campanhasFiltradas(dados: Dados, filtros: Filtros): Campaign[] {
@@ -225,11 +232,11 @@ export function kpisVisaoGeral(dados: Dados, filtros: Filtros, agora: Date = new
   const c = filtros.comparar;
 
   const pedidosDe = (janela: Janela) =>
-    filtrarPeriodo(filtrarMarca(dados.orders, filtros.marca), 'createdAt', janela);
+    filtrarPeriodo(filtrarMarca(enviados(dados.orders), filtros.marca), 'createdAt', janela);
   const pedidosAtual = pedidosDe(intervalo);
   const pedidosAntes = pedidosDe(anterior(intervalo));
-  const faturadosAtual = pedidosAtual.filter((o) => o.status === 'invoiced');
-  const faturadosAntes = pedidosAntes.filter((o) => o.status === 'invoiced');
+  const faturadosAtual = pedidosAtual.filter((o) => o.isInvoiced);
+  const faturadosAntes = pedidosAntes.filter((o) => o.isInvoiced);
 
   const alcanceDe = (janela: Janela) =>
     dados.igDaily.length === 0
@@ -732,7 +739,7 @@ export function baseDeClientes(dados: Dados, filtros: Filtros, agora: Date = new
       (filtros.marca === 'todas' || c.brands.includes(filtros.marca) || c.brands.length === 0) &&
       (!filtros.representante || c.repId === filtros.representante),
   );
-  const pedidos = filtrarMarca(dados.orders, filtros.marca);
+  const pedidos = filtrarMarca(enviados(dados.orders), filtros.marca);
   const porCliente = new Map<string, typeof pedidos>();
   for (const p of pedidos) porCliente.set(p.customerId, [...(porCliente.get(p.customerId) ?? []), p]);
   // Dia do pedido mais antigo do conjunto (início da janela conhecida): calculado uma vez, fora do laço
@@ -1177,7 +1184,7 @@ export function acoes(dados: Dados, filtros: Filtros, agora: Date = new Date()):
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const temBase = dados.actions.length > 0;
   const contar = (f: (a: TrafficAction) => boolean) => (temBase ? lista.filter(f).length : null);
-  const statuses: ActionStatus[] = ['idea', 'approved', 'running', 'done', 'discarded'];
+  const statuses: ActionStatus[] = ['idea', 'failed', 'approved', 'running', 'done', 'discarded'];
   const aprovadas = lista.filter((a) => a.approvedAt !== null);
   const horas = aprovadas.map(
     (a) => (new Date(a.approvedAt as string).getTime() - new Date(a.createdAt).getTime()) / 3_600_000,
@@ -1267,7 +1274,13 @@ export function conectores(dados: Dados, agora: Date = new Date()): Conectores {
     .sort();
   return {
     lista,
-    resumo: { ok: contar('ok'), late: contar('late'), down: contar('down'), simulated: contar('simulated') },
+    resumo: {
+      ok: contar('ok'),
+      late: contar('late'),
+      down: contar('down'),
+      not_connected: contar('not_connected'),
+      disabled: contar('disabled'),
+    },
     ultimaSincronizacao: datas[datas.length - 1] ?? null,
   };
 }

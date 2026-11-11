@@ -242,7 +242,9 @@ function gerarLeadsClientesPedidos(ctx: Contexto, campanhas: Campaign[], metrica
       id: `ped-${String(numeroPedido).padStart(5, '0')}`,
       brandId,
       customerId: cliente.id,
-      status: rng.chance(0.25) ? 'invoiced' : 'sent',
+      status: 'sent',
+      // Faturado é carimbo do pedido enviado, não status (o mesmo sorteio de antes: os dados não mudam).
+      isInvoiced: rng.chance(0.25),
       totalCents: Math.round(rng.entre(80000, 600000) / 100) * 100,
       invoicedTotalCents: null, // "Sem dados" até o Control abrir o canal (decisão 0004)
       createdAt,
@@ -322,7 +324,7 @@ function gerarLeadsClientesPedidos(ctx: Contexto, campanhas: Campaign[], metrica
       } else {
         const marcaDoPedido = brandId ?? rng.escolher(MARCAS);
         const pedido = novoPedido(cliente, marcaDoPedido, firstOrderAt);
-        if (stage === 'invoiced') pedido.status = 'invoiced';
+        if (stage === 'invoiced') pedido.isInvoiced = true;
         // Recompra do cliente novo
         if (rng.chance(0.3)) {
           const outro = somarDias(diaSp(firstOrderAt), rng.inteiro(10, 40));
@@ -456,7 +458,8 @@ function gerarSeoGeo(ctx: Contexto): { seo: SeoDaily[]; geo: GeoDaily[] } {
   const seo: SeoDaily[] = [];
   const geo: GeoDaily[] = [];
   const impressoesBase: Record<Brand, [number, number]> = { cs: [1500, 3500], plumene: [600, 1800] };
-  const sessoesBase: Record<GeoSource, [number, number]> = {
+  // "Outro assistente" não entra no exemplo: a lista é a de antes, e os dados não mudam.
+  const sessoesBase: Record<Exclude<GeoSource, 'other'>, [number, number]> = {
     chatgpt: [3, 25],
     perplexity: [0, 8],
     claude: [0, 5],
@@ -477,7 +480,7 @@ function gerarSeoGeo(ctx: Contexto): { seo: SeoDaily[]; geo: GeoDaily[] } {
         clicks: Math.round(impressions * rng.entre(0.02, 0.045)),
         position: Math.round(posicao * 10) / 10,
       });
-      for (const source of Object.keys(sessoesBase) as GeoSource[]) {
+      for (const source of Object.keys(sessoesBase) as Array<keyof typeof sessoesBase>) {
         const [a, b] = sessoesBase[source];
         const sessions = rng.inteiro(a, b);
         geo.push({ date, brandId, source, sessions, leads: sessions > 0 && rng.chance(0.06) ? 1 : 0 });
@@ -673,7 +676,7 @@ function gerarConectores(agora: Date): Connector[] {
     {
       id: 'ga4',
       name: 'GA4',
-      status: 'simulated',
+      status: 'not_connected',
       lastSyncAt: null,
       expectedEveryMinutes: 1440,
       errors24h: 0,

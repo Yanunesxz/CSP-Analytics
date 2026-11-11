@@ -435,9 +435,26 @@ describe('o que podemos fazer', () => {
   it('lista tudo na ordem: status, impacto, esforço e a mais nova', () => {
     const p = painelDoTrafego(base, f(), agora);
     expect(ids(p.lista)).toEqual(['a1', 'fix-cs', 'a3', 'a2', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9']);
-    expect(p.porStatus).toEqual({ idea: 5, approved: 1, running: 1, done: 2, discarded: 1 });
+    expect(p.porStatus).toEqual({ idea: 5, failed: 0, approved: 1, running: 1, done: 2, discarded: 1 });
     expect(p.totalDaLista).toBe(10);
     expect(p.totalSemFiltrosDaLista).toBe(10);
+  });
+
+  it('a que falhou vem logo depois das ideias, porque também pede decisão', () => {
+    const falhou = acao({
+      id: 'f1',
+      kind: 'budget',
+      status: 'failed',
+      campaignId: 'm2',
+      impact: 'low',
+      effort: 'high',
+      createdAt: iso('2026-10-04'),
+      approvedAt: iso('2026-10-04', 12),
+      approvedBy: 'p1',
+    });
+    const p = painelDoTrafego({ ...base, actions: [...listaDeAcoes, falhou] }, f(), agora);
+    expect(ids(p.lista)).toEqual(['a1', 'fix-cs', 'a3', 'a2', 'a4', 'f1', 'a5', 'a6', 'a7', 'a8', 'a9']);
+    expect(p.porStatus.failed).toBe(1);
   });
 
   it('status, impacto e esforço filtram; os chips contam sem o status', () => {
@@ -445,7 +462,7 @@ describe('o que podemos fazer', () => {
       lista: { status: 'idea', impacto: 'high', esforco: null },
     });
     expect(ids(p.lista)).toEqual(['a1', 'fix-cs', 'a3']);
-    expect(p.porStatus).toEqual({ idea: 3, approved: 0, running: 0, done: 0, discarded: 0 });
+    expect(p.porStatus).toEqual({ idea: 3, failed: 0, approved: 0, running: 0, done: 0, discarded: 0 });
     expect(p.totalSemFiltrosDaLista).toBe(10);
 
     const baixo = painelDoTrafego(base, f(), agora, {

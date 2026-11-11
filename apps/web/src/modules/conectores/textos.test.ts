@@ -110,16 +110,18 @@ describe('datas do cartão', () => {
 });
 
 describe('etiqueta e o que falta', () => {
-  it('rótulo e tom de cada estado; simulado neutro e "a ligar"', () => {
+  it('rótulo e tom de cada estado; a ligar e desligado neutros', () => {
     expect(rotuloDoEstado('ok')).toBe('Funcionando');
     expect(rotuloDoEstado('late')).toBe('Atrasado');
     expect(rotuloDoEstado('down')).toBe('Caído');
-    expect(rotuloDoEstado('simulated')).toBe('Simulado · a ligar');
+    expect(rotuloDoEstado('not_connected')).toBe('A ligar');
+    expect(rotuloDoEstado('disabled')).toBe('Desligado');
     expect(rotuloDoEstado(null)).toBe('Sem dados');
     expect(tomDoEstado('ok')).toBe('success');
     expect(tomDoEstado('late')).toBe('warning');
     expect(tomDoEstado('down')).toBe('danger');
-    expect(tomDoEstado('simulated')).toBe('muted');
+    expect(tomDoEstado('not_connected')).toBe('muted');
+    expect(tomDoEstado('disabled')).toBe('muted');
     expect(tomDoEstado(null)).toBe('muted');
   });
 
@@ -180,12 +182,13 @@ describe('aviso do topo', () => {
   ): Pick<PainelDeConectores, 'cartoes' | 'situacao' | 'aLigar' | 'resumo'> => ({
     cartoes,
     situacao,
-    aLigar: cartoes.filter((c) => c.estado === 'simulated'),
+    aLigar: cartoes.filter((c) => c.estado === 'not_connected'),
     resumo: {
       ok: cartoes.filter((c) => c.estado === 'ok').length,
       late: cartoes.filter((c) => c.estado === 'late').length,
       down: cartoes.filter((c) => c.estado === 'down').length,
-      simulated: cartoes.filter((c) => c.estado === 'simulated').length,
+      not_connected: cartoes.filter((c) => c.estado === 'not_connected').length,
+      disabled: cartoes.filter((c) => c.estado === 'disabled').length,
     },
   });
 
@@ -228,7 +231,7 @@ describe('aviso do topo', () => {
   });
 
   it('em dia confirma, lembra o que falta ligar e diz desde quando voltou', () => {
-    const p = painel([cartao('Meta Ads', 'ok'), cartao('GA4', 'simulated')], 'em-dia');
+    const p = painel([cartao('Meta Ads', 'ok'), cartao('GA4', 'not_connected')], 'em-dia');
     expect(avisoGeral(p, dono)).toEqual({
       tom: 'success',
       titulo: 'Tudo funcionando',
@@ -242,8 +245,8 @@ describe('aviso do topo', () => {
     );
   });
 
-  it('só simulados: nenhum ligado ainda', () => {
-    const p = painel([cartao('GA4', 'simulated'), cartao('Search Console', 'simulated')], 'em-dia');
+  it('só a ligar: nenhum ligado ainda', () => {
+    const p = painel([cartao('GA4', 'not_connected'), cartao('Search Console', 'not_connected')], 'em-dia');
     expect(avisoGeral(p, dono)).toEqual({
       tom: 'info',
       titulo: 'Nenhum conector ligado ainda',

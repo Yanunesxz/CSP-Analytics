@@ -60,8 +60,8 @@ export interface CartaoDeConector {
   /** Nome em português, de `labels.ts`. */
   nome: string;
   /**
-   * Estado efetivo: `late` também quando passou do esperado sem o worker marcar; `down` e
-   * `simulated` como vieram. `null` quando a integração não veio no conjunto (Sem dados).
+   * Estado efetivo: `late` também quando passou do esperado sem o worker marcar; `down`,
+   * `not_connected` e `disabled` como vieram. `null` quando a integração não veio no conjunto (Sem dados).
    */
   estado: ConnectorStatus | null;
   ultimaSincronizacao: string | null;
@@ -81,11 +81,14 @@ export interface CartaoDeConector {
 export type Situacao = 'caido' | 'atrasado' | 'em-dia';
 
 export interface PainelDeConectores {
-  /** Um por integração esperada: caídos, atrasados, funcionando, simulados e, por último, sem dados. */
+  /**
+   * Um por integração esperada: caídos, atrasados, funcionando, a ligar, desligados e, por último, sem
+   * dados.
+   */
   cartoes: CartaoDeConector[];
   /** Caídos e atrasados, na ordem dos cartões. O primeiro leva a ação principal da tela. */
   comProblema: CartaoDeConector[];
-  /** Simulados (a ligar), na ordem dos cartões. */
+  /** A ligar (ainda não ligados), na ordem dos cartões. */
   aLigar: CartaoDeConector[];
   /** Quantos conectores em cada estado efetivo; null quando nenhum conector veio. */
   resumo: Record<ConnectorStatus, number | null>;
@@ -97,15 +100,15 @@ export interface PainelDeConectores {
   agora: string;
 }
 
-const PESO: Record<ConnectorStatus, number> = { down: 0, late: 1, ok: 2, simulated: 3 };
-const PESO_SEM_DADOS = 4;
+const PESO: Record<ConnectorStatus, number> = { down: 0, late: 1, ok: 2, not_connected: 3, disabled: 4 };
+const PESO_SEM_DADOS = 5;
 
 function minutosEntre(desde: string, agora: Date): number {
   return Math.max(0, Math.round((agora.getTime() - new Date(desde).getTime()) / 60_000));
 }
 
 function estadoEfetivo(c: ConectorComAtraso): ConnectorStatus {
-  if (c.status === 'down' || c.status === 'simulated') return c.status;
+  if (c.status === 'down' || c.status === 'not_connected' || c.status === 'disabled') return c.status;
   return c.atrasado ? 'late' : 'ok';
 }
 
@@ -203,7 +206,8 @@ export function painelDeConectores(
     ok: contar('ok'),
     late: contar('late'),
     down: contar('down'),
-    simulated: contar('simulated'),
+    not_connected: contar('not_connected'),
+    disabled: contar('disabled'),
   };
 
   let situacao: Situacao | null = null;
@@ -216,7 +220,7 @@ export function painelDeConectores(
   return {
     cartoes,
     comProblema: cartoes.filter((c) => c.temProblema),
-    aLigar: cartoes.filter((c) => c.estado === 'simulated'),
+    aLigar: cartoes.filter((c) => c.estado === 'not_connected'),
     resumo,
     situacao,
     ultimaSincronizacao: base.ultimaSincronizacao,

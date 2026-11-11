@@ -1768,11 +1768,16 @@ O id é o do login (`auth.users`). O e-mail fica só no `auth`; a lista de usuá
 | `deactivation_note` | `text` | sim | — | Obrigatória com `other`; 10 a 500 letras, sem dado pessoal |
 
 - **Gatilhos:**
-  - `private.handle_new_user` (`security definer`, `set search_path = ''`, dono `postgres`; depois de `insert` em
-    `auth.users`) cria o perfil só se `new.invited_at` não for nulo e houver um convite com `email_normalized =
-    lower(new.email)`, `accepted_at` nulo, `revoked_at` nulo, `expires_at > now()` e `invited_by` de perfil ativo com
-    `manage_users` (`invited_by` nulo só no convite do primeiro dono). O nome e o papel vêm só do convite, nunca de
-    `raw_user_meta_data` nem de `raw_app_meta_data`. Sem convite válido, não cria, e a pessoa não lê nada.
+  - `private.handle_new_user` (`security definer`, `set search_path = ''`, dono `postgres`; gatilho
+    `mkt_handle_new_user`, depois de `insert` e de `update of invited_at` em `auth.users`) cria o perfil só se
+    `new.invited_at` não for nulo e houver um convite com `email_normalized = lower(new.email)`, `accepted_at` nulo,
+    `revoked_at` nulo, `expires_at > now()` e `invited_by` de perfil ativo com `manage_users` (`invited_by` nulo só no
+    convite do primeiro dono, e só enquanto não há dono ativo). O nome e o papel vêm só do convite, nunca de
+    `raw_user_meta_data` nem de `raw_app_meta_data`. Sem convite válido, não cria, e a pessoa não lê nada. O
+    `update of invited_at` existe porque o Supabase Auth, no convite (`/auth/v1/invite` e `generate_link` do tipo
+    convite), primeiro insere o login e só depois grava `invited_at`, num `update` da mesma transação: só com o
+    `insert`, o perfil nunca nasceria. Se o login já tem perfil, o gatilho sai sem fazer nada (o convite reenviado
+    regrava `invited_at`, e o papel só muda por `api.change_role`).
   - `profiles_guard` (antes de `update`): `role`, `is_active`, `deactivated_*` e `deactivation_*` só mudam dentro de
     `api.change_role` e `api.revoke_access`, com a chave da transação, `session_user = 'authenticator'` e
     `authz.can('manage_users')`; ninguém muda o próprio papel; o último dono ativo não perde o papel nem o acesso (a

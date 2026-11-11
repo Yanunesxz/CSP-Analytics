@@ -1,8 +1,8 @@
 /**
  * Avisos da tela SEO e GEO (.yn-alert), cada um perto do que explica:
  * - o aviso fixo de que a medição de GEO é parcial (sempre, no topo da seção de assistentes de IA);
- * - o conector da seção caído ou atrasado (Search Console, GA4, CSP 360). Conector simulado não vira aviso:
- *   o selo "Simulado" no canto da seção já diz, e a faixa do modo demonstração também;
+ * - o conector da seção caído ou atrasado (Search Console, GA4, CSP 360). Conector a ligar ou desligado não
+ *   vira aviso: o selo ("A ligar", "Desligado") no canto da seção já diz, e a faixa do modo demonstração também;
  * - na visão Gestor de tráfego, as pendências que travam a medição e por que aqui não há Humano × Claude.
  */
 
@@ -52,7 +52,7 @@ export interface AvisoDoConectorProps {
   cartao: FonteDoPainel | null;
 }
 
-/** O conector da seção caído ou atrasado. Funcionando, simulado ou sem cartão, não aparece. */
+/** O conector da seção caído ou atrasado. Funcionando, a ligar, desligado ou sem cartão, não aparece. */
 export function AvisoDoConector({ nome, cartao }: AvisoDoConectorProps) {
   const { linkCom } = useFiltros();
   const { perfil } = useSessao();
