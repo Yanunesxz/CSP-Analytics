@@ -3,7 +3,29 @@
  * Pura; é a referência da função SQL que fará o mesmo na fase 3.
  */
 
-import { diaSp, diferencaEmDias, fimDoMes, inicioDoMes, somarDias, somarMeses } from './datas';
+import { diaSp, diferencaEmDias, fimDoMes, inicioDoMes, partesDoDia, somarDias, somarMeses } from './datas';
+
+const MESES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+
+/** "vs. 1º a 3 de outubro"; só o dia 1: "vs. 1º de outubro" (decisão 0026). */
+function rotuloDosMesmosDias(fim: string): string {
+  const { mes, dia } = partesDoDia(fim);
+  const nome = MESES[mes - 1] ?? '';
+  return dia === 1 ? `vs. 1º de ${nome}` : `vs. 1º a ${dia} de ${nome}`;
+}
 
 export type Periodo = 'este-mes' | 'mes-passado' | '7d' | '30d' | '90d';
 
@@ -37,14 +59,20 @@ export function intervaloDoPeriodo(periodo: Periodo, agora: Date | string = new 
   if (periodo === 'este-mes') {
     const inicio = inicioDoMes(hoje);
     const mesAnterior = somarMeses(hoje, -1);
+    const anteriorInicio = inicioDoMes(mesAnterior);
+    // Os mesmos dias do mês anterior: do dia 1 ao mesmo dia, ou até o último dia dele se for mais curto (decisão
+    // 0026). Comparar só os dias completos de cada fonte vem com o banco, na fase 4.
+    const mesmoDia = somarDias(anteriorInicio, diferencaEmDias(inicio, hoje));
+    const fimDoAnterior = fimDoMes(mesAnterior);
+    const anteriorFim = mesmoDia < fimDoAnterior ? mesmoDia : fimDoAnterior;
     return {
       inicio,
       fim: hoje,
-      anteriorInicio: inicioDoMes(mesAnterior),
-      anteriorFim: fimDoMes(mesAnterior),
+      anteriorInicio,
+      anteriorFim,
       dias: diferencaEmDias(inicio, hoje) + 1,
       rotulo: 'Este mês',
-      rotuloAnterior: 'vs. mês anterior',
+      rotuloAnterior: rotuloDosMesmosDias(anteriorFim),
     };
   }
 

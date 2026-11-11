@@ -5,6 +5,9 @@
 > 03/11/2026 e as decisões 0004 a 0006, 0010, 0015, 0017, 0019, 0020 e 0034 a 0038. As tabelas citadas estão em
 > [`tabelas.md`](tabelas.md); as contas que usam esses dados, em [`metricas.md`](metricas.md).
 >
+> A seção 3 descreve o CRM como ele é: conferido no código do CRM em 10/11/2026; nada foi lido do banco (decisões
+> 0040 a 0042).
+>
 > **A confirmar** = ponto que a documentação não deixou claro. O worker confere na primeira leitura, e o resultado
 > vai para o `ESTADO.md`.
 
@@ -12,7 +15,7 @@
 
 | Conector | Dono do dado | O que o CSP-MKT lê | Leitura | Releitura | Chave natural | Credencial (decisão 0036) |
 |---|---|---|---|---|---|---|
-| `csp360` | CSP 360 | marcas, funis, representantes, clientes, situação por marca, leads, pedidos, rodadas apps → CRM | a cada 5 min | passada completa 1×/dia | `(csp360, id no CRM)` | papel Postgres só-leitura |
+| `csp360` | CSP 360 | marcas, funis, representantes, clientes, compras por marca (retrato do ERP), leads, pedidos, rodadas apps → CRM | a cada 5 min | passada completa 1×/dia | `(csp360, id no CRM)` | token do papel de leitura, pela API de dados do CRM (decisão 0040) |
 | `meta` | Meta | contas, campanhas, gasto e resultado por campanha e dia, alterações | de hora em hora: hoje e ontem | 1×/dia: 28 dias | `(campaign_id, metric_on)` | usuário do sistema de leitura |
 | `instagram` | Meta | perfil por dia, seguidores, posts e o retrato diário de cada post | de hora em hora | 1×/dia: 3 dias da conta, 30 dias de posts | `(ig_account_id, metric_on)`, `(ig_media_id, captured_on)` | o mesmo usuário do sistema |
 | `tiktok` | TikTok | anunciantes, campanhas, gasto e resultado por campanha e dia | de hora em hora: hoje e ontem | 1×/dia: 28 dias | `(campaign_id, metric_on)` | app de leitura |
@@ -120,7 +123,7 @@ Trocar de provedor (ou de versão da API) é trocar o adaptador; o banco e as co
 | Instante | UTC (`timestamptz`) |
 | Status | para as listas do banco ([`listas.md`](listas.md)): Meta `effective_status`, Google `status` e `serving_status`, TikTok `operation_status` |
 | Texto | só nome de conta, de campanha e de perfil; o começo da legenda do post (até 120 letras, sem as menções `@`); a consulta de busca (até 500 letras); origem, meio e canal do GA4 como vêm; o tipo e os valores de uma alteração (`mkt.valid_activity_details`); o detalhe da checagem dos sites (até 300 letras). Do CRM, só os nomes da marca e do funil, a UTM limpa e a origem do negócio quando conhecida ([`tabelas.md`](tabelas.md), seção 2) |
-| Login do app | `<marca>:<login>` vira resumo HMAC-SHA256 com `REP_LOGIN_HMAC_KEY` antes de gravar; o login em claro nunca é gravado nem vai para o log |
+| Login do app | `<id da marca no CRM>:<id do usuário no app>` vira resumo HMAC-SHA256 com `REP_LOGIN_HMAC_KEY` antes de gravar. Texto vazio, ou só a marca sem id, quer dizer sem login: o worker descarta antes de chamar a ingestão, que só aceita o resumo. O login em claro nunca é gravado nem vai para o log |
 | Dado pessoal | nunca. O adaptador descarta antes de gravar e antes de registrar em log |
 
 ### 2.5 Retentativa e limites
@@ -137,6 +140,8 @@ Trocar de provedor (ou de versão da API) é trocar o adaptador; o banco e as co
   recusadas, valores de texto descartados por parecer dado pessoal, código e mensagem curta do erro. Guarda 90 dias.
 - O worker pega a hora **antes** de consultar e usa como o próximo início. A leitura incremental seguinte começa no
   `watermark_to_at` da última rodada boa, menos a folga.
+- No CSP 360 não há marca d'água: a leitura de 5 min é por janela de 3 dias (seção 3.4, decisão 0041), e as duas
+  colunas guardam a janela lida.
 - Não há tabela `integration_log` (o padrão sugere uma): a rodada fica em `sync_runs`, a escrita em
   `platform_executions` e cada chamada no log JSON do worker e do executor (decisão 0035).
 
@@ -160,26 +165,27 @@ A primeira carga é uma rodada `backfill`, em blocos (no TikTok, 30 dias por cha
 
 ---
 
-## 3. CSP 360 — a réplica (decisões 0006 e 0015)
+## 3. CSP 360 — a réplica (decisões 0006, 0015 e 0040 a 0042)
 
-### 3.1 Credencial e o que pedir ao time do CRM
+### 3.1 Credencial e acesso no CRM
 
-- Um papel Postgres `csp_mkt_reader`, criado pelo time do CRM só para o CSP-MKT: `login nosuperuser nocreatedb
-  nocreaterole noinherit nobypassrls noreplication connection limit 3`, senha trocada a cada 90 dias,
-  `statement_timeout` de 30 s, conexão com TLS e `sslmode=verify-full` pelo pooler do projeto do CRM. Nunca a chave
-  de serviço do CRM.
-- **Toda leitura passa por views** num esquema só do CSP-MKT no banco do CRM, com só as colunas do quadro 3.2 (também
-  as das tabelas simples), e o papel tem `usage` só nesse esquema. O papel não executa função nenhuma. Esse esquema fica
-  fora da lista de esquemas expostos da API do CRM: as views rodam com os direitos de quem as criou.
-- Se o time do CRM preferir dar `select` por coluna em `public`, ele confirma que nenhuma função de `public` é
-  executável por `csp_mkt_reader` (por exemplo, `revoke execute on all functions in schema public from public`,
-  mantendo os `grant` dos papéis do app). Com permissão por coluna, toda leitura lista as colunas: `select *` falha, de
-  propósito.
-- Se a leitura for direta numa tabela com RLS ligada, ou se uma view for `security_invoker`, o papel precisa de uma
-  política de leitura naquela tabela: com RLS ligada, o `grant` sozinho devolve zero linhas, sem erro (a seção 3.4 faz
-  essa leitura vazia falhar alto).
-- `default_transaction_read_only = on` é reforço: a trava é o papel ter só `select`.
-- No Railway: `CSP360_DATABASE_URL` (decisão 0036), só no worker de leitura.
+- O worker lê o CRM pela **API de dados do CRM** (HTTPS), com um token do papel de leitura (decisão 0040). Ele não
+  abre conexão com o banco de lá: um login no banco do CRM alcança mais do que as views.
+- O papel `csp_mkt_reader`, o esquema `csp_mkt` e as 12 views do quadro 3.2 estão na migração de leitura do CRM
+  (`supabase/migracao-csp-mkt-leitura.sql`, no repositório do CRM). O CRM não tem CI de migração: o dono roda o
+  arquivo no SQL Editor de lá. O papel nasce **sem login** e continua sem login. Ele lê só as 12 views, nenhuma tabela.
+- **Toda leitura passa pelas views**, com só as colunas do quadro 3.2 (também as das tabelas simples). Na API do CRM,
+  o esquema `csp_mkt` fica exposto só para o papel de leitura; para os outros papéis continua fechado.
+- **O token** é emitido no CRM para esse papel, por um script de lá, e o dono cola direto no Railway do worker de
+  leitura (`CSP360_API_TOKEN`). Ele nunca passa por chat, Git ou log. Pela API, quem tem o token só faz o que o papel
+  pode: ler as 12 views.
+- **A chave pública da API do CRM** (`CSP360_API_KEY`) vai em toda chamada. Ela não é segredo e, sozinha, não lê as
+  views. `CSP360_API_URL` é o endereço da API. As três variáveis ficam só no worker de leitura (seção 18).
+- **Troca do token a cada 90 dias**, no CRM, pelo dono. A troca derruba o token anterior na hora. O cartão do CSP 360
+  avisa antes de vencer (a forma fica para o PR do worker).
+- Nunca a chave de serviço do CRM.
+- Até o dono rodar a migração, expor o esquema na API para o papel e emitir o token (seção 19), nada sai do CRM e o
+  cartão do CSP 360 fica "A ligar".
 
 ### 3.2 Tabelas e colunas
 
@@ -189,81 +195,85 @@ A primeira carga é uma rodada `backfill`, em blocos (no TikTok, 30 dias por cha
 | `funis_venda` | `id, nome, padrao` | `crm_funnels` | passada diária |
 | `usuarios` | `id, papel, ativo, logins_app` | `sales_reps`, `sales_rep_app_logins` (login como resumo HMAC) | passada diária |
 | `clientes` | `id, codigo, status, criado_em, retrato_carregado, donos_app` | `crm_customers`, `crm_customer_reps` | por id a cada 5 min (os citados) e passada diária |
-| `negocios` | `id, codigo, cliente_id, marca_id, funil_id, origem, criado_em, atualizado_em` | `crm_leads` (`kind = 'deal'`) | a cada 5 min por `atualizado_em`, de todos os funis, e passada diária |
+| `negocios` | `id, codigo, cliente_id, marca_id, funil_id, origem, criado_em, atualizado_em` (`origem` já vem limpa, nota abaixo) | `crm_leads` (`kind = 'deal'`) | a cada 5 min pela janela de 3 dias em `atualizado_em` (seção 3.4), de todos os funis, e passada diária |
 | `leads_sdr` | `id, criado_em, atualizado_em, cliente_id` | `crm_leads` (`kind = 'sdr'`) | idem |
-| `pedidos` | `id, marca_id, cliente_id, status, criado_em, atualizado_em, vendedor_app` | `crm_orders` | a cada 5 min por `coalesce(atualizado_em, criado_em)`, e passada diária |
+| `pedidos` | `id, marca_id, cliente_id, status, criado_em, atualizado_em, vendedor_app` | `crm_orders` | a cada 5 min pela janela de 3 dias em `atualizado_em` (no pedido sem carimbo, `criado_em`), e passada diária |
 | `pedido_itens` | `pedido_id, quantidade, preco_unitario` | `crm_orders.total_cents` (soma) | com os pedidos da rodada |
 | `sincronizacoes` | `id, marca_id, disparo, iniciada_em, terminada_em, ok` | `crm_upstream_runs` | a cada 5 min, as últimas de cada marca |
-| view `clientes_situacao` | `cliente_id, marca_id, situacao, perdido_manual, ultima_compra, calculada_em` | `crm_customer_brands` (`situation`, `is_lost_manual`, `last_purchase_on`, `situation_computed_at`) | com os clientes |
-| view `clientes_utm` | `cliente_id, utm_source, utm_medium, utm_campaign` (das chaves `utm-source`, `utm-medium` e `utm-campaign` dos campos personalizados do cliente; sem `utm-term` nem `pagina-site`) | `crm_customers.first_utm_*` | com os clientes |
-| view `clientes_compras_marca` | `cliente_id, marca_id, primeira_compra, ultima_compra, total_comprado` | `crm_customer_brands` (`erp_first_purchase_on`, `erp_last_purchase_on`, `erp_total_purchased_cents`) | com os clientes |
-| view `negocios_responsavel` | `negocio_id, responsavel_id` | `crm_leads.assigned_rep_id` | com os negócios |
+| view `clientes_utm` | `cliente_id, utm_source, utm_medium, utm_campaign` (das chaves `utm-source`, `utm-medium` e `utm-campaign` dos campos personalizados do cliente; sem `utm-term` nem `pagina-site`; já vêm limpas, nota abaixo) | `crm_customers.first_utm_*` | com os clientes |
+| view `clientes_compras_marca` | `cliente_id, marca_id, primeira_compra, ultima_compra, total_comprado` (`primeira_compra` vem sempre nula) | `crm_customer_brands` (`erp_first_purchase_on`, `erp_last_purchase_on`, `erp_total_purchased_cents` e, calculada na gravação, `erp_earliest_purchase_on`, decisão 0042) | com os clientes |
+| view `negocios_responsavel` | `negocio_id, responsavel_id` (só o negócio cujo responsável é o nome de uma pessoa só) | `crm_leads.assigned_rep_id` (nulo quando o negócio não vem) | com os negócios |
+
+Notas do quadro (conferido no código do CRM em 10/11/2026; nada foi lido do banco):
+
+- **São 12 views**, e a lista é fechada. As views `clientes_situacao` e `negocios_utm` não existem: o worker não lê
+  nem confere nenhuma das duas.
+- **Situação do cliente:** no CRM, a régua da situação só roda na tela (não há SQL), e o CSP-MKT não recalcula
+  (decisão 0012). O "perdido" marcado à mão é coluna do cliente no CRM, por cliente e não por marca, e não está nas
+  views. Enquanto o CRM não entregar a régua em SQL, `crm_customer_brands.situation`, `last_purchase_on` e
+  `situation_computed_at` ficam nulos, e `is_lost_manual` também fica nulo (decisão 0041, item 6). A Base de clientes
+  mostra quem comprou, com "Sem situação"; ativos, inativos e perdidos ficam "Sem dados"
+  ([`metricas.md`](metricas.md), seção 4.7).
+- **Origem e UTM já vêm limpas.** A view entrega `negocios.origem` sem espaço nas pontas, sem o trecho de nome de
+  representante que as listas de reativação gravaram, cortada em 150 letras, e **nula** quando vazia ou quando parece
+  e-mail, telefone, CPF ou CNPJ. As três UTMs de `clientes_utm` seguem a mesma regra (na campanha, número solto passa,
+  porque é o id da campanha). Nome de funil com dado pessoal vem trocado por um rótulo. O teste daqui continua, como
+  segunda barreira (seção 3.5).
+- **`primeira_compra` vem sempre nula:** o CRM não guarda a primeira compra em lugar nenhum. `erp_first_purchase_on`
+  fica nula até o Control mandar o dado (seção 19).
+- **Responsável:** no CRM o responsável do negócio é o nome, em texto. A view só devolve o id quando o nome é de
+  exatamente uma pessoa (quadro 3.3). O nome nunca sai do CRM.
 
 Nunca é pedido: nome, contato, e-mail, telefone, documento, inscrição estadual, endereço, cidade, observações,
 títulos e descrições de negócio, responsável por nome, motivos em texto livre, respostas de formulário, conversas, o
 histórico de marketing (`historico_marketing`, fora da v1: nenhuma conta usa) e a chave de evento da distribuição de
 leads. O documento do cliente não vem: a junção é `clientes.id`, que o CRM já resolveu.
 
-### 3.3 Permissões a pedir
+### 3.3 O que a migração de leitura do CRM cria
 
-```sql
--- No banco do CRM, pelo time do CRM. O nome do esquema é escolha dele; aqui, "csp_mkt".
--- O esquema fica fora da lista de esquemas expostos da API do CRM.
-grant usage on schema csp_mkt to csp_mkt_reader;   -- e nenhum outro esquema
+Resumo do que a migração de leitura do CRM (`supabase/migracao-csp-mkt-leitura.sql`, no repositório do CRM) cria. Vale
+o arquivo de lá; aqui não há cópia do SQL.
 
--- Uma view por tabela lida, só com as colunas do quadro 3.2:
-create view csp_mkt.marcas as select id, sigla, nome_fantasia from public.marcas;
-create view csp_mkt.funis_venda as select id, nome, padrao from public.funis_venda;
-create view csp_mkt.usuarios as select id, papel, ativo, logins_app from public.usuarios;
-create view csp_mkt.clientes as
-  select id, codigo, status, criado_em, retrato_carregado, donos_app from public.clientes;
-create view csp_mkt.negocios as
-  select id, codigo, cliente_id, marca_id, funil_id, origem, criado_em, atualizado_em from public.negocios;
-create view csp_mkt.leads_sdr as select id, criado_em, atualizado_em, cliente_id from public.leads_sdr;
-create view csp_mkt.pedidos as
-  select id, marca_id, cliente_id, status, criado_em, atualizado_em, vendedor_app from public.pedidos;
-create view csp_mkt.pedido_itens as select pedido_id, quantidade, preco_unitario from public.pedido_itens;
-create view csp_mkt.sincronizacoes as
-  select id, marca_id, disparo, iniciada_em, terminada_em, ok from public.sincronizacoes;
--- e as views com regra do quadro abaixo: clientes_situacao, clientes_utm, clientes_compras_marca,
--- negocios_responsavel
+- O papel `csp_mkt_reader`, sem login, que lê só as views do esquema `csp_mkt`.
+- O esquema `csp_mkt`.
+- Nove views simples, uma por tabela lida, só com as colunas do quadro 3.2: `marcas`, `funis_venda`, `usuarios`,
+  `clientes`, `negocios`, `leads_sdr`, `pedidos`, `pedido_itens` e `sincronizacoes`.
+- Três views com regra: `clientes_utm`, `clientes_compras_marca` e `negocios_responsavel` (quadro abaixo).
+- No fim do arquivo, a conferência que o dono roda depois de criar o acesso (seção 19).
 
-grant select on all tables in schema csp_mkt to csp_mkt_reader;
-
--- Só se alguma view for security_invoker, ou se o time preferir select por coluna nas tabelas: em cada tabela
--- lida que tiver RLS ligada (o time do CRM confere), a política de leitura do papel. Sem ela, zero linhas e sem erro.
--- create policy csp_mkt_reader_select on public.<tabela> for select to csp_mkt_reader using (true);
-
--- Quando existir: csp_mkt.negocios_utm (UTM e referrer por lead) e as colunas novas pedidas na Parte 4:
--- pedidos.enviado_em, faturado_em, total; negocios.responsavel_id; leads_sdr.marca_id, origem, codigo;
--- a data de cada mudança de fase do negócio.
-```
-
-| View pedida | O que entrega | Por quê |
+| View | O que entrega | Por quê |
 |---|---|---|
-| `clientes_situacao` | uma linha por cliente e marca: a situação da régua do CRM, o perdido manual e a última compra que a régua usou | o CSP-MKT não recalcula a régua (decisão 0012) |
-| `clientes_utm` | as UTMs de primeiro contato (fonte, meio e campanha), lidas dos campos personalizados pela chave de cada campo | o jsonb inteiro leva texto livre junto |
-| `clientes_compras_marca` | o retrato do ERP por marca: primeira e última compra e total comprado, **sem** os pedidos do CRM | saber quem já comprava antes de agosto de 2026 (decisão 0030) |
-| `negocios_responsavel` | o responsável do negócio como id de `usuarios`, não como nome | representante por código (decisão 0025) |
-| `negocios_utm` (depois) | UTM, `referrer` (só o domínio) e página (só o caminho, sem `?` nem `#`) de cada negócio, gravados pela função de leads dos sites | lead com a própria UTM; busca orgânica e IA pelo `referrer` (decisão 0031) |
+| `clientes_utm` | as UTMs de primeiro contato do cliente (fonte, meio e campanha), lidas dos campos personalizados pelo id de cada campo, achado pela chave. Só vem o cliente com pelo menos uma das três: cliente que não vem fica com `first_utm_*` nulas. É o primeiro valor não vazio de cada campo, campo a campo: os três podem vir de envios diferentes. Quem já é cliente ativo na hora do envio não recebe UTM no cadastro (só a origem do negócio). O valor pode ser editado à mão no CRM. Só há UTM para quem entrou pelo site, desde 09/09/2026 | o jsonb inteiro leva texto livre junto |
+| `clientes_compras_marca` | o retrato do ERP por marca: a última compra e o total de cerca de 24 meses. É cópia do que o Control exportou para o app pela última vez; o CRM só copia. `primeira_compra` vem sempre nula. O retrato da marca é trocado inteiro quando muda: a última compra anterior some. Pode incluir compra feita pelo app e já faturada, com atraso | saber quem já comprava antes de agosto de 2026 (decisão 0030). Como a última compra anda para a frente, a réplica guarda a compra do ERP mais antiga que já viu (`erp_earliest_purchase_on`), e é essa data que a regra do histórico usa (decisão 0042) |
+| `negocios_responsavel` | o responsável do negócio como id de `usuarios`, não como nome. A view só traz o negócio quando o nome (sem espaço nas pontas, sem diferença de maiúscula) é de exatamente uma pessoa, de qualquer papel, ativa ou não. Nome repetido, desconhecido ou vazio: o negócio não vem. O lead do SDR não tem responsável | representante por código (decisão 0025). Negócio que não vem na view fica com `assigned_rep_id` nulo ("Sem representante"), mesmo que antes tivesse |
+| `clientes_situacao` (não existe) | nada: a régua da situação só roda na tela do CRM | o CSP-MKT não recalcula a régua (decisão 0012). A situação fica nula e a Base mostra "Sem situação" até o CRM entregar a régua em SQL (nota do quadro 3.2 e seção 19) |
+| `negocios_utm` (não existe) | nada: não há UTM, `referrer` nem página por negócio | `crm_leads.utm_*` e `referrer_host` ficam nulos. Vale a UTM de primeiro contato do cliente (decisão 0031), e o lead do site sem UTM fica com a origem `site`, sem separar busca orgânica de assistente de IA ([`metricas.md`](metricas.md), seções 3.1 e 3.2) |
+
+O que o CRM passar a entregar preenche coluna que já existe aqui (seção 3.6): a data de envio, a de faturado e o total
+do pedido; o responsável do negócio por id; a marca, a origem e o código do lead do SDR; a data de cada mudança de fase
+do negócio; a UTM e o `referrer` por lead; a primeira compra por marca; a régua da situação em SQL.
 
 ### 3.4 Leitura
 
-- **Incremental, a cada 5 min:** páginas de 1.000, pela marca d'água `(instante, id)` menos 15 min de folga.
-
-```sql
--- Exemplo: negócios de todos os funis (a função ingest decide quais entram), lidos pelo csp_mkt_reader.
-select id, codigo, cliente_id, marca_id, funil_id, origem, criado_em, atualizado_em
-  from csp_mkt.negocios
- where (atualizado_em, id) > ($1, $2)                 -- marca d'água menos 15 min
- order by atualizado_em, id
- limit 1000;
-```
-
-- **Clientes citados:** os clientes que os leads e os pedidos da rodada citam e que ainda não estão na réplica são
-  lidos por id (até 1.000 por chamada), com as três views. Linha que cita cliente novo puxa o cliente na mesma rodada.
+- **A cada 5 min, por janela de 3 dias** (decisão 0041, item 4): em `negocios`, `leads_sdr` e `pedidos`, cada rodada
+  relê as linhas com carimbo (`atualizado_em`) em hoje e nos dois dias anteriores, em UTC. No pedido sem carimbo vale
+  `criado_em`. Não há marca d'água.
+- **Paginação por chave, pela API** (decisão 0040): páginas de até 1.000 linhas, em ordem de chave (o carimbo e o id,
+  ou só o id), pedindo sempre o que vem depois da última chave lida. Nunca por número de página. Cada chamada pede a
+  view com a lista exata de colunas do quadro 3.2.
+- **Por que a marca d'água não serve:** os carimbos do CRM não dizem quando o CRM gravou. `negocios.atualizado_em`
+  nasce na criação e nenhum gatilho a atualiza. A função dos sites grava o instante do envio; a tela do CRM grava
+  `criado_em` e `atualizado_em` só com o dia (fica 00:00 UTC), ao criar e a cada edição. `pedidos.atualizado_em` é o
+  relógio do app: pode ser nulo e pode chegar atrasado quando a sincronização dos apps fica presa, e status ou cliente
+  trocados à mão no CRM não o regravam. `clientes` não tem `atualizado_em`. Com marca d'água e folga de minutos, o
+  negócio aberto ou alterado pela tela do CRM só apareceria na passada do dia seguinte.
+- **Clientes citados:** o cliente citado por uma linha lida é relido na mesma rodada, sempre, exista ou não na réplica.
+  A leitura é por id, em lotes, com as duas views de cliente (`clientes_utm` e `clientes_compras_marca`). A mudança em
+  cliente que nenhuma linha da janela cita chega na passada completa.
 - **Passada completa, 03:00:** as tabelas do quadro 3.2 com passada diária, inteiras, em páginas de 1.000 por id.
   Cada tabela lida inteira passa por `ingest.delete_missing`, que apaga o que não apareceu, sem cópia (decisão 0015).
+  É ela que pega o que a janela não vê: a alteração que o CRM não carimba (renomear usuário, excluir cliente), a linha
+  com carimbo mais antigo que a janela e o cliente que nenhuma linha citou.
   As rodadas apps → CRM (`sincronizacoes`) ficam fora: a leitura traz só as últimas de cada marca, e o `pg_cron` apaga
   as de mais de 90 dias.
 - **Trava de exclusão em massa, no banco:** `ingest.delete_missing` conta antes de apagar; acima de 20% das linhas de
@@ -275,11 +285,30 @@ select id, codigo, cliente_id, marca_id, funil_id, origem, criado_em, atualizado
 - **Leitura vazia falha alto:** na primeira carga e na passada completa, `clientes`, `pedidos` ou `negocios` com zero
   linhas terminam a rodada `failed` com `EMPTY_SOURCE`, e `first_success_at` não é preenchida (a tela continua
   "Sem dados", nunca 0).
-- **Funil de leads:** a leitura de `negocios` (5 min e passada completa) traz todos os funis. `ingest.upsert_crm_leads`
-  grava o negócio que está no funil marcado em `crm_funnels.is_lead_funnel` ou que já existe em `crm_leads`, e ignora o
-  resto. `ingest.delete_missing` em `crm_leads` (`kind = 'deal'`) apaga só o id que não existe mais em `negocios`, em
-  qualquer funil: o negócio que sai do funil de leads continua lead aqui. Até o time do CRM confirmar qual funil vale,
-  a migração marca o funil em que a função de leads dos sites grava hoje.
+- **Funil de leads, por regra** (decisão 0041, item 1): a leitura de `negocios` (5 min e passada completa) traz todos
+  os funis. É funil de leads (`crm_funnels.is_lead_funnel`) o funil padrão do CRM (`funis_venda.padrao`, aqui
+  `is_default`: a ingestão faz `is_lead_funnel` seguir `is_default`) e o funil antigo dos leads do site, marcado uma
+  vez, pelo id, por uma função `setup.*`, para o histórico encerrado entrar. Não há trava de um só funil de leads. O
+  lead do site nasce no funil padrão desde 05/11/2026, na primeira fase; os negócios abertos do funil antigo foram
+  movidos para o padrão com o mesmo id e o mesmo `criado_em`, e os encerrados ficaram no funil antigo.
+- **Negócio sem funil:** no CRM, negócio com `funil_id` nulo também é do funil padrão (é como nasce o negócio da
+  conversão do SDR). Aqui ele conta como do funil padrão e entra.
+- **O que entra em `crm_leads`:** `ingest.upsert_crm_leads` grava o negócio que está num funil de leads, o negócio sem
+  funil e o que já existe em `crm_leads`, e ignora o resto. `ingest.delete_missing` em `crm_leads` (`kind = 'deal'`)
+  apaga só o id que não existe mais em `negocios`, em qualquer funil: o negócio que sai do funil de leads continua
+  lead aqui.
+- **Lead é o card** (decisão 0041, item 2): quem já tem negócio aberto no funil de leads e manda o formulário de novo
+  não ganha negócio. O CRM anota o envio no que existe, e aqui o reenvio não vira lead. Por isso "Leads" pode ficar
+  abaixo de "Leads informados pela plataforma". Quem já é cliente ativo e manda o formulário abre negócio no funil de
+  leads: conta como lead e não ganha UTM. A chave do lead é o id do negócio: o código mostrado pode ser reaproveitado
+  no CRM depois de uma limpeza.
+- **O lead do SDR convertido conta uma vez** (decisão 0041, item 3): a conversão abre também um negócio com a origem
+  "SDR WhatsApp", sem funil e sem marca. A ligação entre os dois é o cliente, e o de-para leva `sdr whatsapp` para
+  `sdr` ([`metricas.md`](metricas.md), seção 3.3).
+- **Em aberto, com o dono** (decisão 0041): o funil padrão é o funil de vendas do time comercial, e nele também há
+  negócio aberto à mão, com a origem "Carteira" ou "Prospecção ativa". Se esse negócio conta como lead, quem decide é
+  o dono, antes da primeira carga. Até lá ele entra na réplica, e essas origens aparecem na pendência de origem sem
+  de-para da tela de Leads.
 - **Ordem na rodada:** marcas → funis → representantes → clientes e views → leads → pedidos com itens → rodadas apps →
   CRM.
 
@@ -287,25 +316,33 @@ select id, codigo, cliente_id, marca_id, funil_id, origem, criado_em, atualizado
 
 | CRM | CSP-MKT |
 |---|---|
-| `marcas.sigla` `CS`, `PL` | `brands.code` `cs`, `plumene` |
+| `marcas.sigla` `CS`, `PL` | `brands.code` `cs`, `plumene`. Quem converte é o worker, antes de chamar a ingestão |
 | `pedidos.status` `orcamento`, `enviado`, `faturado`, `cancelado` | `quote`, `sent`, `sent` + `is_invoiced`, `cancelled` |
 | Σ `quantidade × preco_unitario` | `total_cents`, em decimal, × 100 e arredondado, até o CRM mandar `pedidos.total` |
-| `vendedor_app`, `donos_app` (`<marca>:<login>`) | o worker troca o login pelo resumo HMAC antes de gravar → `sales_rep_app_logins` → `sales_reps` (código `REP-` novo para chave nova) |
+| `total_comprado` do retrato do ERP (reais, com casas decimais) | `erp_total_purchased_cents`: em decimal, × 100 e arredondado. Total negativo ou fora do formato vem nulo. É só informação: não decide nada (decisão 0042) |
+| `ultima_compra` e `primeira_compra` do retrato do ERP | `erp_last_purchase_on` (a última leitura) e `erp_first_purchase_on` (hoje sempre nula). `erp_earliest_purchase_on` guarda a compra do ERP mais antiga já vista: a primeira compra, quando o CRM a entregar; até lá, a menor última compra lida. Só é trocada por uma data anterior, nunca anda para a frente (decisão 0042) |
+| `vendedor_app`, `donos_app`, `logins_app` (`<id da marca no CRM>:<id do usuário no app>`) | texto vazio, ou só a marca sem id, quer dizer sem login: o worker descarta. O resto o worker troca pelo resumo HMAC antes de chamar a ingestão, que só aceita o resumo → `sales_rep_app_logins` → `sales_reps` (código `REP-` novo para chave nova) |
 | `clientes.status` `prospecto`, `ativo`, `inativo` | `prospect`, `active`, `inactive` |
-| `situacao` `lead`, `ativo`, `inativo-recente`, `inativo-antigo`, `perdido`, "sem base" | `lead`, `active`, `inactive_recent`, `inactive_old`, `lost`, nulo |
+| `situacao` `lead`, `ativo`, `inativo-recente`, `inativo-antigo`, `perdido`, "sem base" (só quando o CRM entregar a régua em SQL; hoje nada chega) | `lead`, `active`, `inactive_recent`, `inactive_old`, `lost`, nulo (hoje, sempre nulo) |
 | `sincronizacoes.disparo` | `mkt.upstream_trigger` |
-| `negocios.origem` | `crm_origin_raw` só quando está no de-para, é uma fonte de UTM conhecida ou é a `utm_source` de primeiro contato do cliente; outro texto não é gravado e o lead fica `is_origin_unmapped` ([`tabelas.md`](tabelas.md), seção 2; a classificação é SQL, `metricas.md` 3.1) |
-| UTM do CRM | cortada em 150 letras; vira nulo o valor com `@` ou que pareça dado pessoal (`PERSONAL_DATA_DROPPED`) |
+| `negocios.origem` | `crm_origin_raw` só quando está no de-para, é uma fonte de UTM conhecida ou é a `utm_source` de primeiro contato do cliente; outro texto não é gravado e o lead fica `is_origin_unmapped` ([`tabelas.md`](tabelas.md), seção 2; a classificação é SQL, `metricas.md` 3.1). A origem já vem limpa da view (nota do quadro 3.2): a que a view zerou chega nula e não vira origem sem de-para. O lead do site traz a `utm_source` como veio, sem normalizar maiúsculas, ou `site` quando não veio UTM |
+| UTM do CRM | cortada em 150 letras; vira nulo o valor com `@` ou que pareça dado pessoal (`PERSONAL_DATA_DROPPED`). A UTM já vem limpa da view `clientes_utm`: o teste daqui continua, como segunda barreira, e o que a view já tirou não entra nessa contagem |
 | lead do SDR | código `LEAD-` gerado aqui; marca nula (decisão 0014) |
+| negócio da conversão do SDR | nasce no CRM com a origem "SDR WhatsApp", sem `funil_id` e sem marca; conta como do funil padrão. O de-para leva `sdr whatsapp` para `sdr`, e o lead conta uma vez, ligado ao lead do SDR pelo cliente (decisão 0041, item 3) |
+| instante exatamente à meia-noite UTC (`criado_em` gravado pela tela do CRM, só com o dia) | é data pura: no dia do lead e do cliente vale a data como está, sem converter para São Paulo. Os outros instantes convertem (decisão 0041, item 5; [`metricas.md`](metricas.md), seção 3.4) |
 
 ### 3.6 Quando o CRM muda ou cai
 
-- Antes de ler, o worker confere as colunas no `information_schema` do CRM. Faltou coluna: a rodada falha com
-  `SCHEMA_DRIFT`, nada é gravado pela metade, o cartão fica "Caído" (decisão 0015).
+- Antes de ler, o worker confere as 12 views do esquema `csp_mkt`: pede cada uma com a lista exata de colunas do
+  quadro 3.2. Faltou view ou coluna: a API recusa a chamada, a rodada falha com `SCHEMA_DRIFT`, nada é gravado pela
+  metade, o cartão fica "Caído" (decisões 0015 e 0040). `clientes_situacao` e `negocios_utm` não entram na conferência
+  enquanto não existirem (decisão 0041, item 7).
+- `EMPTY_SOURCE` (seção 3.4) vale só para `clientes`, `pedidos` e `negocios`. As views com regra (`clientes_utm`,
+  `clientes_compras_marca` e `negocios_responsavel`) podem voltar vazias de verdade.
 - CRM fora do ar: leads, clientes e pedidos param no último retrato; o resto do sistema segue. Quando volta, a leitura
-  retoma da marca d'água (com a folga), e a passada diária confere tudo.
-- Coluna nova que o CRM passar a gravar (data de envio, faturado, UTM por lead, responsável por id, marca do SDR)
-  preenche coluna que já existe aqui, sem mudar a estrutura.
+  de 5 min relê a janela de 3 dias, e a passada diária confere tudo.
+- Coluna nova que o CRM passar a gravar (data de envio, faturado, UTM por lead, responsável por id, marca do SDR,
+  primeira compra por marca, situação por marca) preenche coluna que já existe aqui, sem mudar a estrutura.
 
 ---
 
@@ -614,7 +651,7 @@ escrita (decisão 0017).
 
 | Fonte | O que para | O que continua | O que a tela diz | Quando volta |
 |---|---|---|---|---|
-| CSP 360 | leads, clientes e pedidos no último retrato | mídia, Instagram, SEO e GEO; o custo usa os clientes até a última leitura | "O CSP 360 não responde desde {hora}. Leads e pedidos param aí; os números de mídia seguem." | a leitura retoma da marca d'água, e a passada diária confere tudo |
+| CSP 360 | leads, clientes e pedidos no último retrato | mídia, Instagram, SEO e GEO; o custo usa os clientes até a última leitura | "O CSP 360 não responde desde {hora}. Leads e pedidos param aí; os números de mídia seguem." | a leitura de 5 min relê a janela de 3 dias, e a passada diária confere tudo |
 | Meta, TikTok, Google | gasto e campanhas do canal | o resto | faixa na tela do canal e na Visão geral | a releitura de 28 ou 30 dias cobre a falta |
 | Instagram | números do perfil e dos posts | o resto | faixa na tela do Instagram | releitura de 3 dias; mais de 90 dias sem leitura fica sem número |
 | GA4, Search Console | blocos de IA e de busca | o resto | selo de cada fonte na tela de SEO e GEO | releitura de 14 e 10 dias |
@@ -624,7 +661,7 @@ escrita (decisão 0017).
 | n8n | avisos fora do sistema | avisos na tela, contadores | — | a fila manda o que ficou, sem repetir |
 | Banco do CSP-MKT | tudo | — | "Não deu para carregar", com o código | — |
 
-## 18. Credenciais (decisões 0005, 0017 e 0036)
+## 18. Credenciais (decisões 0005, 0017, 0036 e 0040)
 
 Só os nomes. Os valores ficam no Railway, no Vault, nos segredos das Edge Functions e do GitHub, nas credenciais do
 próprio n8n e, só a `MKT_SETUP_DATABASE_URL`, no `.env` local de quem configura; nunca no código, no README, no chat ou
@@ -633,7 +670,9 @@ com prefixo `VITE_`.
 | Onde | Nome | Para quê |
 |---|---|---|
 | Railway (worker de leitura) | `WORKER_DATABASE_URL` | o worker no banco do CSP-MKT, papel `mkt_worker` |
-| | `CSP360_DATABASE_URL` | réplica do CRM, papel `csp_mkt_reader` (sai `CSP360_SUPABASE_URL` e `CSP360_READONLY_KEY`) |
+| | `CSP360_API_URL` | o endereço da API de dados do CRM, por onde o worker lê as 12 views (seção 3.1); não é segredo |
+| | `CSP360_API_KEY` | a chave pública da API do CRM; não é segredo e, sozinha, não lê as views |
+| | `CSP360_API_TOKEN` | o token do papel `csp_mkt_reader`, emitido no CRM e trocado lá a cada 90 dias; segredo, só aqui (saem `CSP360_SUPABASE_URL` e `CSP360_READONLY_KEY`) |
 | | `META_APP_ID`, `META_APP_SECRET` | app da Meta (Marketing API e Instagram) |
 | | `META_ACCESS_TOKEN_READ` | token do usuário do sistema de leitura |
 | | `TIKTOK_READ_APP_ID`, `TIKTOK_READ_APP_SECRET`, `TIKTOK_READ_ACCESS_TOKEN` | app de leitura (sai `TIKTOK_APP_ID` e `TIKTOK_APP_SECRET`) |
@@ -675,6 +714,9 @@ aviso vai para o WhatsApp de cada perfil, decisão 0019). O `.env.example` muda 
 - Search Console: se a conta de serviço entra como usuária da propriedade.
 - GA4: o fuso de cada propriedade.
 - Meta, TikTok e Google: quanto cada uma gasta acima do orçamento diário (decisão 0021).
+- CSP 360: se a API de dados do CRM aceita o token do papel; a página de 1.000 linhas; o tempo de cada página
+  (decisão 0040). E quatro números da conferência que o dono roda no CRM depois de criar o acesso: os negócios sem
+  funil, os pedidos sem carimbo, os funis padrão e o fuso do banco. Eles ajustam a decisão 0041, se preciso.
 
 **A confirmar na primeira escrita** (numa conta de teste ou antes de ligar a escrita numa conta de verdade):
 
@@ -683,12 +725,20 @@ aviso vai para o WhatsApp de cada perfil, decisão 0019). O `.env.example` muda 
 
 **Depende de outros** (não trava o banco; o que faltar fica "Sem dados" ou "A ligar"):
 
-- **Time do CRM:** o papel `csp_mkt_reader`, o esquema de views e as permissões da seção 3.3 (e, se alguma leitura for
-  direta numa tabela com RLS ligada, a política de leitura do papel nela); as views `clientes_situacao`, `clientes_utm`,
-  `clientes_compras_marca` (com a primeira e a última compra por marca, sem os pedidos do CRM) e `negocios_responsavel`;
-  qual funil vale como funil de leads; como a conversão do SDR preenche a origem do negócio; as colunas de data (envio,
-  faturado, mudança de fase); a UTM e o `referrer` por lead (`negocios_utm`); o formato do login dos apps; a campanha
-  de origem do lead de formulário de plataforma, se o grupo usar.
+- **No CRM, falta ligar** (quem faz é o dono; não é pedido ao time): o papel `csp_mkt_reader`, o esquema `csp_mkt` e
+  as 12 views estão escritos na migração de leitura do CRM e ainda não foram criados no banco de lá. Falta aprovar o PR
+  da branch do acesso no CRM, rodar a migração no SQL Editor de lá e a conferência do fim do arquivo. Depois da decisão
+  0040: expor o esquema `csp_mkt` na API só para o papel de leitura e emitir o token (seção 3.1).
+- **Time do CRM** (o que continua aberto): a régua da situação do cliente em SQL (hoje só roda na tela do CRM; sem
+  ela, a situação fica "Sem dados"); a primeira compra por marca vinda do Control (sem ela, quem voltou a comprar antes
+  da primeira leitura conta como novo uma vez, decisão 0042); a UTM e o `referrer` por lead; o responsável do negócio
+  por id (hoje é o nome, e só vira id quando é de uma pessoa só); as datas de envio e de faturado e a de cada mudança
+  de fase; a chave única em `pedido_itens` (sem ela, duas rodadas sobrepostas da sincronização dos apps podem duplicar
+  item, e o total do pedido dobra); a função de leads dos sites na `main` do CRM (hoje é publicada a partir de uma
+  branch; dela dependem a origem, a UTM de primeiro contato e o funil dos leads); ampliar a sincronização dos apps
+  (o total e a origem do pedido); a campanha de origem do lead de formulário de plataforma, se o grupo usar.
+- **Respondido em 10/11/2026**, pela leitura do código do CRM: o papel e as views; qual funil vale como funil de leads
+  (seção 3.4); como a conversão do SDR preenche a origem do negócio e o formato do login dos apps (seção 3.5).
 - **Meta:** Business Verification e App Review para a escrita (o item mais longo).
 - **TikTok:** perfil de desenvolvedor aprovado e os dois apps.
 - **Google:** projeto do Google Cloud com o nível de acesso pedido; as contas de serviço como usuárias da conta Google

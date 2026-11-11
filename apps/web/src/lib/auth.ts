@@ -11,11 +11,11 @@ import type { Profile } from '@csp-mkt/shared';
 
 export type ModoDeAcesso = 'demonstracao' | 'supabase';
 
-/** Perfil usado no modo demonstração. Não é pessoa real. */
+/** Perfil usado no modo demonstração. Não é pessoa real e não tem e-mail: a tela mostra "A cadastrar". */
 export const PERFIL_DEMONSTRACAO: Profile = {
   id: 'demo-owner',
   name: 'Dono (demonstração)',
-  email: 'dono@example.com',
+  email: '',
   role: 'owner',
 };
 

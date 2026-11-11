@@ -157,10 +157,12 @@ Toda conta vive na consulta (pura, com teste) e vira view SQL na fase 3; a tela 
 ## Limites do protótipo e pendências (fase 3)
 
 - **Situação por marca**: no protótipo cada cliente tem uma situação só; no CSP 360 a régua é por marca.
-  A view `clientes_situacao` pedida ao time do CRM (Parte 4 do prompt) precisa vir por marca.
+  Conferido no código do CRM em 10/11/2026: a régua só roda na tela de lá e a leitura não traz a situação. Até a
+  régua existir em SQL no CRM, vale o estado "CSP 360 sem a situação" (decisão 0041).
 - **Reativado olha os pedidos conhecidos**: sem pedido anterior no conjunto, a conta parte do pedido mais
-  antigo conhecido (no CSP 360, o histórico começa em agosto de 2026). Na fase 3, usar também a última
-  compra por marca do `retrato_marcas` para não contar como reativado quem comprou antes da janela.
+  antigo conhecido (no CSP 360, o histórico começa em agosto de 2026). O modelo usa também a compra do ERP
+  mais antiga que a réplica já viu, por marca, para não contar como reativado quem comprou antes da janela: o
+  retrato do ERP traz só a última compra (decisão 0042).
 - **Endereço do CSP 360**: os links são de exemplo; o endereço real e os parâmetros da lista de clientes do
   CSP 360 (marca, representante, situação) se combinam com o time do CRM.
 - **Atalho dos KPIs**: feito na revisão de UX da fase 2 (`linkCom` passou a aceitar `?recorte=` e âncora;

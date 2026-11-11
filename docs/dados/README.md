@@ -15,7 +15,7 @@
 | [`papeis-e-rls.md`](papeis-e-rls.md) | Papéis, matriz de acesso, privilégios, políticas em SQL, funções de ação e o plano do teste de RLS |
 | [`plano.md`](plano.md) | Ordem das migrações, como reverter, CI, seed, o que o dono providencia e o que muda no PR da aprovação |
 | [`metricas.md`](metricas.md) | Views e funções de KPI: período, filtros, "Sem dados", lead, cliente novo e atribuição, cada número de cada tela, as divergências do protótipo resolvidas e os testes |
-| [`integracoes.md`](integracoes.md) | Réplica do CSP 360 (colunas e permissões a pedir), cada conector, CSV de reserva, saúde do conector, execução das ações, contexto do Claude, n8n e credenciais |
+| [`integracoes.md`](integracoes.md) | Réplica do CSP 360 (views e colunas lidas, e o que ainda falta do CRM), cada conector, CSV de reserva, saúde do conector, execução das ações, contexto do Claude, n8n e credenciais |
 
 Decisões novas desta fase, em [`docs/decisoes/`](../decisoes/):
 
@@ -96,7 +96,7 @@ responde negado. Detalhe na decisão 0013 e em [`papeis-e-rls.md`](papeis-e-rls.
 | Campanhas | Meta, TikTok, Google Ads | 1×/hora | `campaigns`, `campaign_managed_by_history` | `mkt.v_campaigns` | Canais, Tráfego |
 | Gasto e resultado por dia | Meta, TikTok, Google Ads (ou CSV) | 1×/hora + releitura diária | `ad_campaign_daily` | `api.kpi_channel`, `api.kpi_overview` | Canais, Visão geral, Chegada, Tráfego |
 | Alterações feitas nas plataformas | Meta (`activities`), Google (`change_event`) | 1×/dia | `ad_activity_log` | — | Diário (fase 4) |
-| Leads | CRM (`negocios` de todos os funis, gravados só os do funil de leads; `leads_sdr`) | 5 min | `crm_leads` (e o de-para `crm_origin_map`, por migração) | `mkt.v_leads` | Leads, Chegada, Visão geral, SEO e GEO |
+| Leads | CRM (`negocios` de todos os funis, gravados só os de funil de leads; `leads_sdr`) | 5 min | `crm_leads` (e o de-para `crm_origin_map`, por migração) | `mkt.v_leads` | Leads, Chegada, Visão geral, SEO e GEO |
 | Clientes | CRM (`clientes` e views do CRM) | 5 min (citados) + passada diária | `crm_customers`, `crm_customer_brands`, `crm_customer_reps` | `mkt.v_customer_orders`, `mkt.v_customer_brand_status` | Base, Chegada |
 | Pedidos | CRM (`pedidos`, `pedido_itens`) | 5 min + passada diária | `crm_orders` | `mkt.v_first_orders` | Visão geral, Base, Chegada, Leads |
 | Representantes | CRM (`usuarios`, chaves dos apps como resumo) | 1×/dia | `sales_reps`, `sales_rep_app_logins` | — | filtros, Chegada, Base |
@@ -119,11 +119,19 @@ responde negado. Detalhe na decisão 0013 e em [`papeis-e-rls.md`](papeis-e-rls.
 O histórico de marketing do CRM (`historico_marketing`) não é replicado na v1: nenhuma conta usa
 ([`tabelas.md`](tabelas.md), "Fica fora da v1").
 
+Conferido no código do CRM em 10/11/2026; nada foi lido do banco. A leitura passa pelas 12 views do esquema `csp_mkt`
+([`integracoes.md`](integracoes.md), seção 3.2), pela API de dados do CRM (decisão 0040). É funil de leads o funil
+padrão do CRM e o funil antigo dos leads do site, e lead é o negócio, não cada envio do formulário (decisão 0041).
+Ainda não chegam: a situação do cliente (a régua só roda na tela do CRM; ativos, inativos e perdidos ficam "Sem
+dados"); a primeira compra do retrato do ERP (vem só a última; a réplica guarda a compra do ERP mais antiga que já viu,
+decisão 0042); a UTM e o `referrer` por lead (vale a UTM de primeiro contato do cliente); e o responsável do negócio
+quando o nome gravado no CRM não é de uma pessoa só (o lead fica "Sem representante").
+
 ## Latência e releitura
 
 | Fonte | Leitura | Releitura (o número muda depois) | Origem da regra |
 |---|---|---|---|
-| CRM | a cada 5 min, incremental com folga de 15 min | passada completa 1×/dia (também apaga o que sumiu) | decisão 0006, 0015 |
+| CRM | a cada 5 min, por janela de 3 dias (hoje e os dois dias anteriores) | passada completa 1×/dia (também apaga o que sumiu) | decisão 0006, 0015, 0041 |
 | Meta Ads | de hora em hora: hoje e ontem | 1×/dia: últimos 28 dias | a Meta fecha o número em 28 dias |
 | TikTok Ads | de hora em hora: hoje e ontem | 1×/dia: últimos 28 dias, em blocos de 30 | janela de atribuição |
 | Google Ads | de hora em hora: hoje e ontem | 1×/dia: últimos 30 dias (até 90, se a janela de conversão da conta for maior) | janela de conversão |
@@ -138,7 +146,9 @@ as linhas do CSV, porque a API vence), `ga4_traffic_daily` e `seo_query_daily` (
 de a leitura trazer campanha apagada e arquivada; senão a troca apaga o gasto delas. Toda tela mostra "atualizado há X
 min" com a última rodada bem-sucedida das fontes que ela usa (`mkt.v_connector_health`), e a comparação com o período
 anterior usa só os dias completos de cada fonte ([`metricas.md`](metricas.md), seção 2.1). Os detalhes de cada
-conector ficam em `integracoes.md`.
+conector ficam em `integracoes.md`. No CRM, os carimbos não dizem quando a linha foi gravada: a tela de lá grava o
+carimbo do negócio só com o dia, e o do pedido é o relógio do app. Por isso a leitura de 5 min relê a janela de 3 dias,
+e a alteração que o CRM não carimba chega na passada completa (decisão 0041).
 
 ## Convenções (decisão 0016)
 
@@ -211,9 +221,9 @@ tem página pública).
    `SUPABASE_SERVICE_ROLE_KEY` (segredos das Edge Functions e do job manual), a `ANTHROPIC_API_KEY`, os segredos dos
    apps (`META_APP_SECRET`, `TIKTOK_READ_APP_SECRET`, `TIKTOK_WRITE_APP_SECRET`) e as chaves das contas de serviço do
    Google; trocar a senha do dono do banco (`postgres`, no painel do Supabase e no segredo `SUPABASE_DB_URL_PRODUCAO`
-   do GitHub); trocar a `N8N_ENCRYPTION_KEY` e as credenciais de e-mail e de WhatsApp guardadas no n8n; pedir ao time
-   do CRM a troca da senha de `csp_mkt_reader`; rodar `api.revoke_access` em quem estiver
-   envolvido.
+   do GitHub); trocar a `N8N_ENCRYPTION_KEY` e as credenciais de e-mail e de WhatsApp guardadas no n8n; trocar no
+   CRM o token do papel `csp_mkt_reader` (o dono emite outro lá, o que derruba o anterior) e a `CSP360_API_TOKEN` no
+   Railway; rodar `api.revoke_access` em quem estiver envolvido.
 2. Avaliar se o incidente pode trazer risco ou dano relevante aos titulares.
 3. Se puder, o encarregado comunica a ANPD e os titulares em até 3 dias úteis (Resolução CD/ANPD nº 15/2024).
 4. Registrar o incidente (o que, quando, quais dados, medidas), mesmo sem comunicação, e guardar o registro por 5 anos,

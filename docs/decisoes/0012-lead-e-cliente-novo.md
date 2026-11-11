@@ -22,3 +22,4 @@ Cliente novo de uma marca = primeiro `pedidos` dessa marca com `status = 'enviad
 - O funil de Chegada de clientes é lead → prospecto → cadastro → 1º pedido enviado → faturado, e "cliente novo" é a quarta etapa.
 - Custo por cliente novo = investimento do período ÷ clientes novos atribuídos (decisão 0009).
 - As duas medidas de venda (pedidos enviados e faturado) aparecem lado a lado, sempre; a definição não troca no meio da série.
+- Em 10/11/2026: o CRM não entrega a situação. A régua só roda na tela de lá, e o "perdido" marcado à mão não está nas views que o CSP-MKT lê. Até a régua existir em SQL no CRM, ativos, inativos e perdidos ficam "Sem dados" na Base de clientes, sem valor inventado (decisão 0041, item 6); o CSP-MKT não recalcula a régua. Lead é o negócio do funil de leads, e não cada envio do formulário (decisão 0041, itens 1 e 2). Cliente novo é quem fez o 1º pedido pelos apps: o CRM só tem pedido que nasceu neles (decisão 0042).

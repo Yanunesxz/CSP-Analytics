@@ -1,6 +1,6 @@
 # Estado do projeto — CSP-MKT
 
-> **Atualizado em:** 2026-11-03 · **por:** sessão de IA (Claude Code), branch `feat/modelo-de-dados`
+> **Atualizado em:** 2026-11-11 · **por:** sessão de IA (Claude Code), branch `docs/crm-como-e`
 > Atualize este arquivo em **todo PR**. Ele é o que a próxima pessoa ou IA lê primeiro.
 > Nada de senha, token ou dado pessoal aqui.
 
@@ -14,34 +14,52 @@
 
 ## Em produção
 
-- Versão: nenhuma (nada publicado)
-- O que está funcionando: nada ainda
+- Versão: nenhuma em produção de verdade. A Vercel publica a `main` em https://csp-mkt.vercel.app desde 2026-11-04 (no projeto da Vercel, Root Directory `apps/web`; sem variável de ambiente; `noindex`; abre para quem tiver o link). Desde 2026-11-10, a pedido do dono, sem dados de exemplo: o `buildCommand` é o `pnpm build` normal e, sem as variáveis do Supabase, o site abre vazio, com a faixa "Modo demonstração · sem dados de exemplo". Os números aparecem quando o front ler o banco (fase 4).
+- O que está funcionando: as 13 telas, vazias no site da Vercel e com dados de exemplo inventados só no `pnpm dev:exemplo` local, com "CSP MKT" no menu e "Criado por Yan Nunes" no rodapé (decisão 0039); nenhum dado real
 
 ## Em andamento
 
 | O quê | Quem | Branch / PR | Situação |
 |---|---|---|---|
-| Arquivos do padrão, CLAUDE.md, ESTADO.md, decisões 0001–0012 | sessão de IA | `chore/iniciar-projeto` | publicada; PR para a `main` a abrir |
-| Fase 2: protótipo no modo demonstração (13 telas, estados, Visualizador × Gestor de tráfego, Humano × Claude) | sessão de IA | `feat/prototipo-demonstracao` (sobre `chore/iniciar-projeto`) | portão fechado em 03/11/2026; publicada; PR a abrir |
-| Fase 3: modelo de dados (`docs/dados/`, decisões 0013–0038) | sessão de IA | `feat/modelo-de-dados` (sobre `feat/prototipo-demonstracao`) | aprovado pelo dono em 03/11/2026; publicada; PR a abrir |
+| Fase 3, parte 2: migrações 01 a 10, views de `api` e o teste de RLS no PGlite (camada 1) | sessão de IA | `feat/banco-e-rls` | em andamento |
+| O CRM como ele é: código do CSP 360 lido em 10/11/2026 (nada foi lido do banco); acesso de leitura escrito no repositório do CRM e ainda não rodado lá; desenho de `docs/dados/` atualizado | sessão de IA | `docs/crm-como-e` | decisões 0040 a 0042 aceitas em 11/11/2026; falta ligar o acesso no CRM |
 
-O protótipo abre com `pnpm dev:exemplo` (dados de exemplo, sem `.env`). Telas: Visão geral, Chegada de clientes, Base de clientes, Leads, Meta Ads, TikTok Ads, Google Ads, Instagram, SEO e GEO, Tráfego com IA, Conectores, Usuários, Configurações e Diagnóstico. Cada tela tem o seu `docs/telas/<módulo>.md`; tarefas T1–T6, revisão de UX e pendências de desenho em `docs/telas/README.md`; o contrato dos módulos em `docs/telas/00-contrato.md`. `pnpm verify` verde em 30/10/2026 (18 testes no shared, 436 no web, build). Conferido no navegador em 30/10/2026: 1280px claro e escuro, 375px claro e escuro, a T1, a gaveta, os estados de `?estado=` e o Diagnóstico.
+Já na `main`: desde 03/11/2026, por avanço direto e sem PR, os arquivos do padrão e as decisões 0001–0012, o protótipo da fase 2, o modelo de dados da fase 3 e a prévia na Vercel, com "Este mês" contra os mesmos dias do mês anterior; desde 04/11/2026, "CSP MKT" no menu e o crédito no rodapé (decisão 0039, branch `feat/nome-csp-mkt`); desde 10/11/2026, o site da Vercel sem dados de exemplo (branch `fix/site-sem-dados-de-exemplo`).
+
+Aceitas pelo dono em 11/11/2026:
+
+- **0040:** o worker lê o CRM pela API de dados, com um token do papel de leitura, sem login no banco.
+- **0041:** a réplica ajustada ao CRM como ele é: funil de leads por regra, lead é o negócio e não o envio, leitura de 5 min por janela de 3 dias, e o que não chega fica "Sem dados".
+- **0042:** cliente antigo pela compra do ERP mais antiga que a réplica já viu, porque a primeira compra não vem do CRM.
+- **Pergunta em aberto (0041), antes da primeira carga:** o negócio aberto à mão pelo time comercial (origem "Carteira" ou "Prospecção ativa") conta como lead? Recomendação: entra na réplica e não conta como lead.
+
+Acessos das conexões, abertos pelo dono em 04/11/2026 com a lista da sessão de IA "Conexões". Nenhum token nem chave foi gerado: o token da Meta e as chaves do Google nascem no dia de subir o worker, direto no Railway.
+
+- **Supabase de teste** (`csp-mkt-teste`, região São Paulo): login com a configuração de `docs/dados/plano.md` (cadastro aberto e login anônimo desligados, TOTP ligado, senha de 12 caracteres ou mais, endereço `http://localhost:5173`) e os 8 segredos `*_TESTE` no GitHub, com a URL do banco pelo Session pooler (porta 5432). A lista de esquemas expostos fica só com `api` depois da primeira migração (o teste de RLS confere).
+- **Meta:** app `CSP-MKT` no Limited Access, com o caso de uso da API de Marketing e o do Instagram com login do Facebook; usuário do sistema de leitura `csp-mkt-leitura` (funcionário, só ver desempenho nas contas, páginas e perfis das duas marcas), sem token. Pela documentação lida em 04/11/2026, o Limited Access lê as contas do próprio portfólio e permite 1 usuário do sistema e 1 administrador; o Full Access (10 usuários do sistema, e com ele o de escrita) pede 500 chamadas à API de Marketing em 15 dias, com menos de 15% de erro, e o App Review do Marketing API Access Tier.
+- **Google:** projeto `csp-mkt` com Google Ads API, Google Analytics Data API e Google Search Console API; nível Explorer pedido (2.880 operações por dia em contas reais; o developer token acabou em 09/09/2026, conferido na documentação em 04/11/2026); contas de serviço `csp-mkt-ads-leitura` (Somente leitura no Google Ads) e `csp-mkt-google-leitura` (Leitor no GA4 e Restrito no Search Console), sem chave. A de escrita do Ads fica para quando o executor existir.
+- **TikTok:** hoje as marcas anunciam só na Meta e no Google Ads; o conector do TikTok fica "A ligar".
+- **A confirmar:** se os nomes criados são os da lista (os de cima); se a verificação do negócio na Meta foi enviada ou já existia; a aprovação do Explorer; se as propriedades GA4 dos sites já existiam; se o Search Console aceitou a conta de serviço; se a organização do Google Cloud deixa criar chave de conta de serviço (`iam.disableServiceAccountKeyCreation`); a verificação em duas etapas em cada conta.
+
+O protótipo abre com `pnpm dev:exemplo` (dados de exemplo, sem `.env`). Telas: Visão geral, Chegada de clientes, Base de clientes, Leads, Meta Ads, TikTok Ads, Google Ads, Instagram, SEO e GEO, Tráfego com IA, Conectores, Usuários, Configurações e Diagnóstico. Cada tela tem o seu `docs/telas/<módulo>.md`; tarefas T1–T6, revisão de UX e pendências de desenho em `docs/telas/README.md`; o contrato dos módulos em `docs/telas/00-contrato.md`. `pnpm verify` verde em 30/10/2026 (18 testes no shared, 436 no web, build). Conferido no navegador em 30/10/2026: 1280px claro e escuro, 375px claro e escuro, a T1, a gaveta, os estados de `?estado=` e o Diagnóstico. Em 04/11/2026, com "CSP MKT" no menu e o crédito no rodapé: `pnpm verify` verde (18 testes no shared, 438 no web, build) e a casca conferida no navegador em 1280px e 375px, claro e escuro, com a gaveta. Em 10/11/2026, com o site sem dados de exemplo: `pnpm verify` verde (18 testes no shared, 439 no web, build normal), todas as telas do build normal conferidas no navegador nas duas visões, sem nenhum número inventado, e a Visão geral e as Configurações em 1280px e 375px, claro e escuro. O e-mail do usuário da demonstração passou a "A cadastrar".
 
 O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquemas do banco, fluxo de cada dado, latência, convenções, dado pessoal e prazo de guarda. O detalhe está em `tabelas.md` (dicionário, com o DDL proposto), `listas.md`, `papeis-e-rls.md` (matriz de acesso, políticas, funções de ação e os casos do teste de RLS), `plano.md` (migrações, CI, seed e o que o dono providencia), `metricas.md` (a view ou função de cada número das telas, com as divergências do protótipo resolvidas) e `integracoes.md` (réplica do CSP 360, cada conector, execução das ações do Claude, avisos e credenciais). As decisões 0013 a 0020 e 0034 a 0038 são técnicas; as 0021 a 0033 são de produto, aprovadas como recomendadas. Antes da aprovação, a proposta passou por três conferências independentes (segurança e LGPD; números; padrão e integrações), foi corrigida, passou por uma segunda rodada (coerência entre os arquivos, cobertura do protótipo, integrações e regras do projeto) e por uma revisão independente das correções. O que só se confirma na primeira leitura ou na primeira escrita de cada plataforma está em `docs/dados/integracoes.md`, seção 19 (por exemplo, como a Meta conta o gasto depois de zerar o teto da conta).
 
 ## Quebrado ou arriscado
 
-- Nada em produção. Riscos conhecidos: a aprovação da Meta para o Claude executar (Full Access: App Review + Business Verification) é o item mais longo e ainda não começou; os sites não medem nada (`NEXT_PUBLIC_GA_ID` vazio em produção); a `sincronizar-apps` do CRM não traz `orders.total`, `invoiced_total` nem `source`; a função de leads dos sites está fora da `main` do CRM.
+- Nada em produção (o site da Vercel mostra as telas vazias, sem dado nenhum). Riscos conhecidos: a aprovação da Meta para o Claude executar (Full Access) é o item mais longo: o app e o usuário de leitura existem desde 04/11/2026, mas as 500 chamadas em 15 dias que o App Review pede só começam com o worker lendo, e a verificação do negócio está a confirmar; os sites não medem nada (`NEXT_PUBLIC_GA_ID` vazio em produção); a `sincronizar-apps` do CRM não traz `orders.total`, `invoiced_total` nem `source`; a função de leads dos sites está fora da `main` do CRM.
+- **Leitura do CRM** (conferida no código do CRM em 10/11/2026; nada foi lido do banco). Dois riscos atingem o número de sucesso: o retrato do ERP não traz a primeira compra, e o cliente antigo que voltou a comprar antes da primeira leitura conta como novo uma vez; e a compra digitada direto no Control não vira pedido no CRM, então esse cliente não conta como novo e depois aparece como antigo (decisão 0042; as 4 semanas de medição dizem o tamanho). Os outros: a situação do cliente fica "Sem dados", porque a régua só roda na tela do CRM (decisão 0041); o responsável do negócio só vem quando o nome gravado no CRM é de uma pessoa só, e o resto fica "Sem representante" (decisão 0025); a UTM é só a de primeiro contato do cliente e não há `referrer` por lead, então o lead do site sem UTM aparece como "Site" (decisões 0009 e 0031); o item de pedido pode duplicar no CRM e dobrar o valor do pedido e o ROAS (pedido ao time do CRM).
 - **O CI não roda no GitHub:** o token usado no `git push` não tem o escopo `workflow`, então o workflow ficou em `docs/ci.yml`. Até ele voltar para `.github/workflows/ci.yml` (pelo site do GitHub ou com um token com esse escopo), rode `pnpm verify` antes de todo push.
 - O Google Ads aposentou o developer token em 09/09/2026 (o acesso passou a ser pelo projeto do Google Cloud): `GOOGLE_ADS_DEVELOPER_TOKEN` e o OAuth do Google Ads no `.env.example` não valem mais. A proposta usa contas de serviço (decisão 0036); o `.env.example` muda na fase 4.
-- Números do protótipo são de exemplo e ainda seguem as regras de antes das decisões 0026 a 0033 (a tela passa a ler as contas do banco na fase 4): não tirar conclusão de negócio deles.
+- Os números do `pnpm dev:exemplo` (local) são de exemplo; o site da Vercel não mostra nenhum desde 10/11/2026. "Este mês" já compara com os mesmos dias do mês anterior (decisão 0026, desde 03/11/2026); as outras regras ainda são as de antes das decisões 0027 a 0033 (a tela passa a ler as contas do banco na fase 4): não tirar conclusão de negócio deles.
 
 ## Próximos passos
 
-1. **Migrações 01 a 10** em `supabase/migrations/` e as views de `api` adiantadas, com o teste de RLS no PGlite (camada 1) no `pnpm verify` (o PR da aprovação, com o status das decisões, o `CLAUDE.md` e o `README.md`, já foi feito em 2026-11-03).
-2. **Portão da fase 3, parte 2:** o CI aplica as migrações no projeto Supabase de teste e roda o teste de RLS pela API (camada 2) com `owner`, `traffic_manager` e sem login. Depende do projeto de teste, do CI de volta em `.github/workflows/` e dos segredos do GitHub. O resultado entra aqui.
-3. Em paralelo: o que o dono providencia (`docs/dados/plano.md`) e os pedidos ao time do CRM (`docs/dados/integracoes.md`, seções 3 e 19).
-4. Dívidas do protótipo, para a fase 4 (quando o front ligar no banco):
+1. **Migrações 01 a 10** em `supabase/migrations/` e as views de `api` adiantadas, com o teste de RLS no PGlite (camada 1) no `pnpm verify` (a aprovação, com o status das decisões, o `CLAUDE.md` e o `README.md`, está na `main` desde 2026-11-03).
+2. **Portão da fase 3, parte 2:** o CI aplica as migrações no projeto Supabase de teste e roda o teste de RLS pela API (camada 2) com `owner`, `traffic_manager` e sem login. O projeto de teste e os segredos do GitHub existem desde 04/11/2026; falta o CI de volta em `.github/workflows/`. O resultado entra aqui.
+3. **Fase 4, conexões** (depois do portão): o worker em Python (`apps/worker`), começando pelo CSP 360, pela Meta e pelo Google Ads, com os testes em respostas gravadas. No mesmo dia: o token da Meta e as chaves do Google, direto no Railway, e os ids de cada conta, página, perfil e propriedade pelos scripts de cadastro. A contagem das 500 chamadas da Meta começa aí. O token de leitura do CRM também entra nesse dia, emitido lá pelo dono (decisão 0040).
+4. Em paralelo: o dono responde a pergunta do negócio aberto à mão; o que o dono providencia (`docs/dados/plano.md`); no CRM, o dono aprova o PR do acesso de leitura, roda a migração de leitura no SQL Editor de lá e a conferência do fim do arquivo e, depois da decisão 0040, liga o acesso pela API e emite o token; e o que continua aberto com o time do CRM (`docs/dados/integracoes.md`, seção 19).
+5. Dívidas do protótipo, para a fase 4 (quando o front ligar no banco):
    - uma janela de confirmação única em `components/ui` (`canais/Modal.tsx` e `trafego-ia/Janela.tsx` são cópias; `usuarios/JanelaDeConvite.tsx` monta a própria);
    - `Kpi` com variação neutra (investimento, impressões) e `Meter` sem cor de atenção; ordenação da tabela empilhada no celular; rótulo do `GraficoBarras` que corta em 375px;
    - listas fechadas que ficaram nos módulos e vão para `packages/shared` (`ROTULO_DA_ACAO`, `RESUMO_DO_PAPEL`, `Ga4Channel`, `SiteCheckItem`, `assistenteDoHost`); complementos de exemplo do SEO para `data/sample`; endereço de exemplo do CSP 360 num lugar só;
@@ -62,14 +80,17 @@ O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquema
 ## Pendências que dependem do cliente
 
 - **Melhorias de tela da fase 2** (não bloqueiam; detalhe em `docs/telas/README.md`): Visão geral em 375px; Humano × Claude no canal em 375px; os links para Tráfego com IA já levarem `?visao=gestor`; "Propor impulsionar post" no Instagram; a coluna de representante na Base de clientes; "Tentar de novo" nas duas visões. "Este mês", "Parar tudo" e "o gestor aprova?" viraram as decisões 0026, 0022 e 0023.
-- Dois projetos Supabase (produção e teste) na região de São Paulo, com a configuração de `docs/dados/plano.md` ("O que o dono providencia"), e verificação em duas etapas nas contas de Supabase, Vercel, Railway, GitHub, n8n e das plataformas.
+- O projeto Supabase de **produção** na região de São Paulo, com a configuração de `docs/dados/plano.md` ("O que o dono providencia"); o de teste existe desde 04/11/2026. Verificação em duas etapas nas contas de Supabase, Vercel, Railway, GitHub, n8n e das plataformas (a confirmar).
 - Quem cuida da LGPD do grupo: encarregado, canal do titular e a confirmação das bases legais do quadro de dado pessoal (`docs/dados/README.md`).
-- Do time do CRM: o papel só-leitura e as views do CSP-MKT (`docs/dados/integracoes.md`, seção 3) e qual funil vale como funil de leads.
-- Contas por marca em cada plataforma (Meta, Google Ads, TikTok, GA4, Search Console), quem é administrador de cada uma, e as contas de serviço do Google (decisão 0036).
-- Começar a Business Verification e o App Review da Meta (item mais longo da lista).
-- Preencher `NEXT_PUBLIC_GA_ID` e `NEXT_PUBLIC_GOOGLE_ADS_CONVERSAO` na Vercel dos dois sites.
+- Responder a pergunta do negócio aberto à mão ("Em andamento").
+- No CRM (o dono faz; não é pedido ao time): aprovar o PR do acesso de leitura, rodar a migração de leitura no SQL Editor de lá e a conferência do fim do arquivo; depois da decisão 0040, ligar o acesso pela API e emitir o token.
+- Do time do CRM: a régua da situação do cliente em SQL; a primeira compra por marca vinda do Control; a UTM e o `referrer` por lead; o responsável do negócio por id; as datas de envio e de faturado e a mudança de fase; a chave única nos itens do pedido; a função de leads dos sites na `main`; ampliar a `sincronizar-apps`. A lista vigente fica em `docs/dados/integracoes.md`, seção 19.
+- Os ids de cada marca para os scripts de cadastro: contas de anúncio da Meta (`act_…`), páginas e perfis do Instagram, contas do Google Ads (e a de administrador, se houver), propriedades GA4 e do Search Console. Os acessos e as contas de serviço estão em "Em andamento".
+- Meta: confirmar a verificação do negócio; o App Review do Marketing API Access Tier só depois de o worker fazer as 500 chamadas em 15 dias (item mais longo da lista).
+- Preencher `NEXT_PUBLIC_GA_ID` e `NEXT_PUBLIC_GOOGLE_ADS_CONVERSAO` na Vercel dos dois sites. Site público com GA4 pede o aviso de cookies (regra 3 do padrão), no repositório de cada site.
 - Devolver o CI para `.github/workflows/ci.yml` (criar o arquivo pelo site do GitHub com o conteúdo de `docs/ci.yml`, ou dar ao token o escopo `workflow`).
 - Quantas horas por semana custa hoje juntar os números dos painéis (campo "Quanto custa hoje" do prompt).
-- Renomear o repositório para `yn-csp-mkt` ou manter `CSP-MKT` com a exceção registrada na decisão 0001.
+- Renomear o repositório para `cliente-csp-mkt` (sistema de cliente desde a decisão 0039) ou manter `CSP-MKT` com a exceção registrada na decisão 0001.
+- Pôr no contrato que o crédito "Criado por Yan Nunes" faz parte da entrega; tirá-lo é a versão sem marca (decisão 0039).
 - Confirmar as suposições da Parte 3 do prompt que mudam tela: Instagram só métricas na v1; representantes só como dimensão; "cliente antigo" = quem já fez pedido antes do período.
-- Lista completa na Parte 4 de `docs/PROMPT-CSP-MKT.md` e na seção 19 de `docs/dados/integracoes.md`.
+- Lista completa na seção 19 de `docs/dados/integracoes.md`. A Parte 4 de `docs/PROMPT-CSP-MKT.md` é o histórico: o papel e as views, qual funil vale, a origem da conversão do SDR e o formato do login dos apps já estão respondidos.

@@ -165,5 +165,6 @@ O investimento é por campanha. Por isso a consulta trata os filtros assim (fun�
   do carimbo de faturado.
 - **Tempo até o primeiro contato** do representante (Parâmetros por área): depende da mesma data de etapa.
 - **Valor faturado**: "Sem dados" até o Control abrir o canal de faturamento (decisão 0004).
-- Qual funil do CRM conta como lead ("Venda Direta — Leads" ou a cópia) é decisão do time do CRM (Parte 4 do
-  prompt); até lá, o funil desta tela segue o que a réplica trouxer.
+- Qual funil do CRM conta como lead está respondido (decisão 0041): o funil padrão do CRM e o funil antigo dos
+  leads do site; negócio sem funil conta como do padrão. Fica em aberto, com o dono, se o negócio aberto à mão pelo
+  time comercial conta como lead.

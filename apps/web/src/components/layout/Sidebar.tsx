@@ -1,8 +1,9 @@
 /**
- * Menu lateral (.yn-sidebar): assinatura, seletor de marca (.yn-context ligado a ?marca=),
- * navegação em grupos com aria-current="page" e title em cada link, usuário no fim com
- * Perfil (Configurações → Sua conta) · Tema · Sair. Item com `acao` só aparece quando o papel permite;
- * a rota exige a mesma ação (ROTAS_PROTEGIDAS em @csp-mkt/shared, conferido em rotas.test.ts).
+ * Menu lateral (.yn-sidebar): nome do cliente (CSP MKT, decisão 0039), seletor de marca
+ * (.yn-context ligado a ?marca=), navegação em grupos com aria-current="page" e title em cada link,
+ * usuário no fim com Perfil (Configurações → Sua conta) · Tema · Sair. Item com `acao` só aparece
+ * quando o papel permite; a rota exige a mesma ação (ROTAS_PROTEGIDAS em @csp-mkt/shared, conferido
+ * em rotas.test.ts).
  */
 
 import {
@@ -136,10 +137,9 @@ export function Sidebar({ recolhido, aoRecolher, aoNavegar, aoEscolherMarca }: S
   return (
     <aside className="yn-sidebar" id="menu" aria-label="Menu">
       <div className="yn-sidebar__head">
-        <div className="yn-sidebar__brand" title="YAN NUNES · MKT">
-          <span>
-            Yan <span className="yn-light">Nunes</span>
-          </span>
+        {/* Sistema de cliente: o nome do grupo, sem a assinatura Yan Nunes (decisão 0039) */}
+        <div className="yn-sidebar__brand" title="CSP MKT">
+          <span>CSP</span>
           <span className="yn-sidebar__product">MKT</span>
         </div>
         <button

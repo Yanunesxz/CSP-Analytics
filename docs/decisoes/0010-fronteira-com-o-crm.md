@@ -20,3 +20,4 @@ O CSP-MKT é o dono de marketing: campanhas, gasto, criativos, atribuição e a�
 
 - O time do CRM não constrói campanhas, atribuição nem conectores de mídia.
 - Pendências com o CRM (credencial só-leitura, view de situação do cliente, ampliar a `sincronizar-apps`, mesclar a função de leads) estão na Parte 4 de `docs/PROMPT-CSP-MKT.md`.
+- Em 10/11/2026: a lista acima deixou de valer como está. O papel de leitura e as views estão na migração de leitura do CRM, e a pergunta do funil de leads está respondida (decisão 0041). A lista vigente do que continua aberto com o time do CRM fica em `docs/dados/integracoes.md`, seção 19; a Parte 4 do prompt é histórico.

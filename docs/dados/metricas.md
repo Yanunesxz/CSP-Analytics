@@ -7,6 +7,8 @@
 > protótipo aprovado (`apps/web/src/data/queries.ts` e `queries/*.ts`), os testes delas e as decisões 0001 a 0038.
 > As decisões 0013 a 0038 foram aceitas em 03/11/2026; onde a conta depende de uma de produto (0021 a 0033), o texto
 > diz qual.
+> Em 10/11/2026 as seções 3.1 a 3.5, 4.7 e 10 passaram a descrever o CRM como ele é (decisões 0041 e 0042), conferido
+> no código do CRM; nada foi lido do banco.
 
 ## Como ler
 
@@ -138,7 +140,8 @@ end $$;
 ### 2.1 Dia e período (decisão 0026)
 
 - **Dia** é o do calendário de `America/Sao_Paulo` (UTC−3 o ano inteiro, sem horário de verão). Um instante vira dia
-  por `mkt.sp_day`. O dia que a plataforma entrega (`metric_on`) fica como veio (decisão 0016).
+  por `mkt.sp_day`. O dia que a plataforma entrega (`metric_on`) fica como veio (decisão 0016). No dia do lead, o
+  instante do CRM exatamente à meia-noite UTC é data pura e também fica como veio (decisão 0041, item 5; seção 3.4).
 - **Hoje** é o relógio do banco, no fuso de São Paulo. `mkt.now()` lê o relógio de `test.clock` só quando
   `to_regclass('test.clock')` não é nulo. Essa tabela só existe no PGlite (testes e modo demonstração), criada pelo
   arquivo de apoio (`supabase-shim.sql`). O arquivo também dá `usage` no esquema `test` e `select` em `test.clock` a
@@ -289,7 +292,7 @@ estratégia, limites, diário) sempre tem base: zero é zero.
 |---|---|---|
 | Gasto, campanhas, impressões | o conector da plataforma já trouxe dado **e** a conta da marca nele já foi lida (`ad_accounts.first_read_at`) | TikTok "A ligar": a linha do TikTok fica "Sem dados"; o total soma só os canais com base e a tela diz quais faltam |
 | Leads, clientes, pedidos | `csp360` já trouxe dado | — |
-| Situação do cliente | alguma linha de `crm_customer_brands` tem situação (a view do CRM existe) | sem a view: Ativos, Inativos e Perdidos "Sem dados" |
+| Situação do cliente | alguma linha de `crm_customer_brands` tem situação. Nenhuma tem enquanto a régua só rodar na tela do CRM: nenhuma view a entrega (decisão 0041, item 6) | Ativos, Inativos e Perdidos "Sem dados"; quem comprou aparece em "Sem situação" (seção 4.7) |
 | Instagram | o conector já trouxe dado e o perfil ativo da marca já foi lido (`mkt.ig_covered`) | perfil de uma marca ainda não ligado: a marca fica "Sem dados", a outra mostra os números |
 | Search Console, GA4 | o conector já trouxe dado e a propriedade ativa da marca daquele tipo já foi lida (`mkt.web_covered`) | um site já mede e o outro não: o segundo fica "Sem dados", não 0 |
 | Checagem dos sites | existe checagem do site da marca | — |
@@ -448,12 +451,23 @@ A regra de `classificarOrigem` (`packages/shared/src/rules.ts`) passa para SQL, 
    `direct` → `direct`; outra → `referral`.
 3. Sem UTM e com `referrer` (quando o CRM passar a gravar): redirecionador do Google Ads → `google`; assistente de IA
    → `ai_assistant`; buscador → `organic`; os próprios sites (`web_properties.host`) → `site`; outro site →
-   `referral`. É o que separa busca orgânica e IA do lead do site que chega sem UTM.
+   `referral`. É o que separa busca orgânica e IA do lead do site que chega sem UTM. O CRM não guarda o `referrer` do
+   lead: `crm_leads.referrer_host` fica nulo (decisão 0041, item 6), e esta regra ainda não classifica nenhum lead.
+   Até o CRM gravar, o lead de busca orgânica ou de assistente de IA que chega sem UTM vem com a origem `site` e
+   conta como `site`: SG13 a SG16 mostram só o lead cuja fonte de UTM é o buscador ou o assistente (0 quando não há
+   nenhum, não "Sem dados"), e SG17 abre o orgânico em "Sem endereço de origem".
 4. Sem UTM e sem `referrer`: o texto `negocios.origem` do CRM passa pelo de-para `crm_origin_map` (rótulos do ClickUp,
-   `site`).
+   `site`, `sdr whatsapp`).
 5. Fora do de-para, o texto gravado é uma fonte de UTM conhecida e vai para a mesma classificação. Texto fora do de-para
    e das fontes conhecidas não é gravado (`is_origin_unmapped`, [`tabelas.md`](tabelas.md), seção 2) e o lead fica
-   `referral`; sem texto nenhum → `direct`.
+   `referral`; sem texto nenhum → `direct`. No lead do site, o texto do CRM traz só a fonte: a função de leads dos
+   sites grava nele a `utm_source` do envio, como veio, ou `site` quando não veio UTM. A view do CRM já entrega o texto
+   limpo: sem espaço nas pontas, sem o nome de representante que as listas de reativação gravaram, cortado em 150
+   letras, e nulo quando está vazio ou parece e-mail, telefone, CPF ou CNPJ. O lead cujo texto a view anulou fica
+   `direct` e não entra em `unmapped_origin_count`. Sem o meio, a fonte de buscador (`google`, `bing`) que não herda a
+   UTM de primeiro contato cai em `organic`, mesmo vinda de anúncio: é o caso do segundo negócio do mesmo cliente e do
+   negócio de quem já era cliente ativo na hora do envio. Se o de-para levar essas fontes para `google`, vale o
+   de-para (a decidir na migração 05).
 6. **A campanha casada vence** (decisão 0031): lead atribuído a uma campanha tem a origem igual à plataforma dela.
 
 A lista de assistentes de IA mora só em `mkt.ai_source_of`, e a de fontes de UTM, só em `mkt.utm_source_family`: a
@@ -558,7 +572,12 @@ sites, até a versão em TypeScript sair, mais os novos: `utm_source=chatgpt.com
 
 1. **UTM do lead:** a do próprio lead, quando o CRM passar a gravar por envio. Até lá, a UTM de primeiro contato do
    cliente vale **só** para o negócio do site que a gravou: o primeiro negócio do cliente cuja origem no CRM é igual à
-   `utm_source` de primeiro contato. Os outros leads do cliente ficam sem UTM.
+   `utm_source` de primeiro contato. Os outros leads do cliente ficam sem UTM. O CRM não guarda UTM por lead:
+   `crm_leads.utm_*` fica nulo (decisão 0041, item 6), e toda UTM é a herdada. Cada campo (fonte, meio, campanha) é o
+   primeiro valor não vazio que chegou, campo a campo: os três podem vir de envios diferentes. Quem já tem negócio
+   aberto no funil de leads e manda o formulário de novo não ganha negócio (seção 3.3): a UTM de primeiro contato
+   pode ficar sem negócio com a mesma origem, e então nenhum lead a herda. Quem já era cliente ativo na hora do envio
+   abre negócio, mas o cadastro não recebe UTM: fica só a origem do negócio.
 2. **Campanha:** primeiro pelo id. Quando a `utm_campaign` é o id da campanha na plataforma (`{{campaign.id}}` na
    Meta, `__CAMPAIGN_ID__` no TikTok, `{campaignid}` no Google, no sufixo do link), casa com `campaigns.external_id`:
    o id nunca se repete. Sem candidata pelo id, a chave da `utm_campaign` (`mkt.utm_key`: minúsculas, espaços simples)
@@ -597,10 +616,29 @@ select c.*,
 | `lead` | sem cliente (lead do SDR ainda não convertido) |
 
 Lead de quem já comprava a marca não converte: a etapa para em `registered`. O negócio que nasce da conversão de um lead
-do SDR conta uma vez, como o lead do SDR, com a marca do negócio quando o SDR não tem (a confirmar com o time do CRM
-como a conversão preenche `negocios.origem`; o de-para leva esse texto para `sdr`).
+do SDR conta uma vez, como o lead do SDR, com a marca do negócio quando o SDR não tem (decisão 0041, item 3). A
+conversão grava a origem "SDR WhatsApp" em `negocios.origem` e abre o negócio sem funil e sem marca: no CRM, negócio
+sem funil é do funil padrão, e o lead fica "Sem marca" até o negócio ganhar uma. A ligação entre os dois é o cliente,
+e o de-para leva `sdr whatsapp` para `sdr`: sem essa linha, o mesmo lead contaria duas vezes.
+
+Um lead é um negócio do CRM (o card do funil), não um envio de formulário (decisão 0041, item 2). Quem já tem negócio
+aberto no funil de leads e manda o formulário de novo não vira lead novo: o CRM anota o envio no negócio que existe.
+Por isso os leads daqui podem ficar abaixo dos leads informados pela plataforma (`platform_leads`, seção 4.2). Quem já
+é cliente ativo e manda o formulário abre negócio e conta como lead. A chave do lead é o id do negócio: o código
+mostrado pode ser reaproveitado no CRM depois de uma limpeza.
 
 ### 3.4 `mkt.v_leads`
+
+Lead é o lead do SDR ou o negócio de um funil de leads (`crm_funnels.is_lead_funnel`). São dois os funis de leads
+(decisão 0041, item 1): o funil padrão do CRM, onde o lead do site nasce desde 05/11/2026, e o funil antigo dos leads
+do site, que guarda o histórico encerrado. Negócio sem funil conta como do funil padrão. O funil padrão é o funil de
+vendas do time comercial: nele também está o negócio que a equipe abre à mão, com a origem "Carteira" ou "Prospecção
+ativa". Se esse negócio conta como lead está em aberto com o dono (decisão 0041, "Fica em aberto"). Até decidir, essas
+origens aparecem na pendência de origem sem de-para da tela de Leads (`unmapped_origin_count`).
+
+O dia do lead (`created_on`) é o dia de São Paulo do instante em que ele chegou. A exceção é o instante exatamente à
+meia-noite UTC (decisão 0041, item 5): a tela do CRM grava só o dia, que chega como 00:00 UTC, e convertido cairia no
+dia anterior. Esse instante é data pura: vale a data como veio. Só o lead do site tem hora de verdade.
 
 ```sql
 create or replace view mkt.v_leads with (security_invoker = true) as
@@ -608,7 +646,12 @@ with own_hosts as (
   select coalesce(array_agg(distinct w.host), '{}') as hosts from mkt.web_properties w
 ),
 base as (
-  select l.*, mkt.sp_day(l.source_created_at) as created_on, m.origin as mapped_origin
+  select l.*,
+         -- Meia-noite UTC em ponto é data pura (a tela do CRM grava só o dia): vale a data como veio (decisão 0041).
+         case when (l.source_created_at at time zone 'UTC')::time = time '00:00'
+              then (l.source_created_at at time zone 'UTC')::date
+              else mkt.sp_day(l.source_created_at) end as created_on,
+         m.origin as mapped_origin
     from mkt.crm_leads l
     left join mkt.crm_origin_map m on m.raw_value = lower(btrim(l.crm_origin_raw))
 ),
@@ -731,10 +774,18 @@ select l.id, l.code, l.kind, l.brand_id, l.customer_id, l.assigned_rep_id, l.ref
 - Pedido que conta: `status = 'sent'` (o faturado incluso) e com cliente. "A vincular" fica fora até vincular;
   orçamento e cancelado nunca contam (decisão 0015).
 - Data do pedido: `sent_at` quando o CRM mandar; até lá, a criação no app (`source_created_at`).
-- **Histórico** (decisão 0030): o CRM só tem pedido desde agosto de 2026. O cliente **não é novo** na marca se o retrato
-  do ERP mostra compra na marca antes do 1º pedido do CRM: a primeira ou a última compra do ERP
-  (`erp_first_purchase_on`, `erp_last_purchase_on`) anterior a ele. O total comprado no ERP não decide: ele pode ter
-  compra feita só pelo ERP depois da estreia, e um cliente novo de setembro viraria antigo para trás.
+- **Histórico** (decisões 0030 e 0042): o CRM só tem pedido desde agosto de 2026. O cliente **não é novo** na marca se
+  a compra do ERP mais antiga que a réplica já viu na marca (`erp_earliest_purchase_on`) é anterior ao dia do 1º pedido
+  do CRM. Essa data é a primeira compra, quando o CRM a entregar; até lá, a menor última compra lida até hoje. Ela
+  nunca anda para a frente. A última compra do retrato (`erp_last_purchase_on`) não serve para isso: o retrato é
+  trocado inteiro quando o Control exporta de novo e pode incluir a compra feita pelo app, depois de faturada. O total
+  comprado no ERP não decide: ele pode ter compra feita só pelo ERP depois da estreia, e um cliente novo de setembro
+  viraria antigo para trás.
+- **Dois limites que ficam** (decisão 0042). Quem voltou a comprar antes da primeira leitura: o retrato já foi trocado
+  pela compra nova, a data antiga não existe mais no CRM, e esse cliente conta como novo uma vez. Compra digitada
+  direto no Control: não vira pedido no CRM; quem vira cliente assim não conta como cliente novo e depois aparece como
+  antigo. Só a primeira compra por marca, vinda do Control, corrige o primeiro.
+- **Cliente novo aqui é quem fez o 1º pedido pelos apps:** o CRM só tem pedido que nasceu neles, e a tela diz isso.
 - **Grupo:** o 1º pedido do grupo é o mais antigo entre as marcas (desempate pela marca); o cliente não é novo no grupo
   se o retrato de alguma marca mostra compra antes dele.
 
@@ -754,14 +805,13 @@ firsts as (
     from sent s
    order by s.customer_id, s.brand_id, s.order_at, s.id
 ),
-erp as (   -- retrato do ERP por marca, sem os pedidos do CRM: só as datas decidem
-  select cb.customer_id, cb.brand_id, cb.erp_first_purchase_on, cb.erp_last_purchase_on
+erp as (   -- a compra do ERP mais antiga já vista por marca (decisão 0042): só essa data decide
+  select cb.customer_id, cb.brand_id, cb.erp_earliest_purchase_on
     from mkt.crm_customer_brands cb
 ),
 flagged as (
   select f.*,
-         coalesce(e.erp_first_purchase_on < f.first_order_on or e.erp_last_purchase_on < f.first_order_on, false)
-           as is_known_before,
+         coalesce(e.erp_earliest_purchase_on < f.first_order_on, false) as is_known_before,
          row_number() over (partition by f.customer_id order by f.first_order_at, f.brand_id) = 1 as is_group_first,
          min(f.first_order_on) over (partition by f.customer_id) as group_first_order_on
     from firsts f
@@ -770,8 +820,7 @@ flagged as (
 select f.*,
        exists (select 1 from erp e
                 where e.customer_id = f.customer_id
-                  and (e.erp_first_purchase_on < f.group_first_order_on
-                       or e.erp_last_purchase_on < f.group_first_order_on)) as is_group_known_before
+                  and e.erp_earliest_purchase_on < f.group_first_order_on) as is_group_known_before
   from flagged f;
 ```
 
@@ -1117,19 +1166,25 @@ Escopo (seção 2.4): a marca escolhida, ou o grupo em "As duas".
 - **Da base:** situação no escopo diferente de `lead` e (comprou no escopo, ou tem situação). Comprou = pedido
   enviado no CRM ou compra no retrato do ERP.
 - **Situação:** `crm_customer_brands.situation` da marca; em "As duas", a melhor entre as marcas. Sem nenhuma linha com
-  situação, ativos, inativos e perdidos são nulos.
+  situação, ativos, inativos e perdidos são nulos. É o que acontece enquanto a régua só rodar na tela do CRM: nenhuma
+  view a entrega, a situação e o perdido marcado à mão ficam nulos, e toda a base aparece em "Sem situação" (BA5 igual
+  a BA1; decisão 0041, item 6). O CSP-MKT não recalcula (decisão 0012).
 - **Última compra** no escopo: a maior entre o último pedido enviado do CRM e `erp_last_purchase_on`.
-- **Antigo no período:** pedido do CRM no escopo antes do início, ou `erp_first_purchase_on` (ou
-  `erp_last_purchase_on`) antes do início.
+- **Antigo no período:** pedido do CRM no escopo antes do início, ou a compra do ERP mais antiga já vista
+  (`erp_earliest_purchase_on`, a mesma data da regra do histórico: seção 3.5, decisão 0042) antes do início.
 - **Recompra:** antigo com pedido enviado no período. Taxa = recompraram ÷ antigos.
 - **Reativado:** antigo cujo 1º pedido do período veio 90 dias ou mais depois da compra anterior a ele. A compra
   anterior é `greatest(previous_order_on_in_brand, erp_last_purchase_on)` (em "As duas", `previous_order_on_in_group`
-  e o maior `erp_last_purchase_on` das marcas), e `erp_last_purchase_on` só conta quando é anterior a esse pedido. Sem
-  compra anterior conhecida, não é antigo e não é reativado (o protótipo contava a partir do pedido mais antigo do
-  conjunto; isso sai).
+  e o maior `erp_last_purchase_on` das marcas), e `erp_last_purchase_on` só conta quando é anterior a esse pedido.
+  Quando não é (o retrato já traz a compra nova), vale no lugar dela `erp_earliest_purchase_on`, se anterior ao pedido
+  (decisão 0042). Sem compra anterior conhecida, não é antigo e não é reativado (o protótipo contava a partir do
+  pedido mais antigo do conjunto; isso sai).
 - **A base existe com o que há:** `mkt.v_customer_brand_status` começa na união dos pares cliente × marca de
-  `crm_customer_brands` e dos pedidos. Enquanto as views do CRM não existirem, a Base mostra quem tem pedido, com
-  situação nula, e não 0 cliente com pedidos enviados na Visão geral.
+  `crm_customer_brands` (o retrato do ERP por marca, da view `clientes_compras_marca` do CRM) e dos pedidos. A Base
+  mostra quem tem pedido ou compra no retrato do ERP, com situação nula, e não 0 cliente com pedidos enviados na Visão
+  geral.
+- **Os limites da seção 3.5 valem aqui:** quem voltou a comprar antes da primeira leitura não aparece como antigo nem
+  como reativado, e a receita dele conta em novos.
 - **Receita de antigos × novos:** Σ dos pedidos enviados do período, de antigos e dos outros.
 - **Faixas de dias sem comprar** (`mkt.recency_bucket`): 0–30, 31–90, 91–180, 181–365, 366 ou mais; fica fora quem não
   tem compra ou tem dias negativos.
@@ -1149,7 +1204,8 @@ select o.id as order_id, o.customer_id, o.brand_id, o.total_cents, o.is_invoiced
  where o.status = 'sent' and o.customer_id is not null;
 
 -- Situação e última compra por cliente e marca (a régua é a do CRM; o CSP-MKT não recalcula).
--- Começa na união dos pares da view do CRM e dos pedidos: sem a view, quem tem pedido continua na base.
+-- A situação e o perdido à mão ficam nulos enquanto a régua só rodar na tela do CRM (decisão 0041, item 6).
+-- Começa na união dos pares do retrato do ERP (clientes_compras_marca) e dos pedidos: quem tem pedido continua na base.
 create or replace view mkt.v_customer_brand_status with (security_invoker = true) as
 with pairs as (
   select customer_id, brand_id from mkt.crm_customer_brands
@@ -1160,8 +1216,9 @@ o_agg as (
   select customer_id, brand_id, max(order_on) as last_order_on, count(*) as orders_count
     from mkt.v_customer_orders group by customer_id, brand_id
 )
-select p.customer_id, p.brand_id, cb.situation, coalesce(cb.is_lost_manual, false) as is_lost_manual,
-       cb.erp_first_purchase_on, cb.erp_last_purchase_on,
+select p.customer_id, p.brand_id, cb.situation, cb.is_lost_manual,
+       cb.erp_earliest_purchase_on,   -- a compra do ERP mais antiga já vista: decide antigo e reativado (decisão 0042)
+       cb.erp_last_purchase_on,
        greatest(o.last_order_on, cb.erp_last_purchase_on) as last_purchase_on,
        (coalesce(o.orders_count, 0) > 0 or cb.erp_last_purchase_on is not null) as has_purchase
   from pairs p
@@ -1171,8 +1228,8 @@ select p.customer_id, p.brand_id, cb.situation, coalesce(cb.is_lost_manual, fals
 
 O reativado sai do primeiro pedido do período de cada cliente: a compra anterior a ele é
 `greatest(previous_order_on_in_brand, erp_last_purchase_on)` (ou com `_in_group` em "As duas"), com
-`erp_last_purchase_on` só quando é anterior a esse pedido. Reativado = essa compra existe e a distância é de 90 dias ou
-mais.
+`erp_last_purchase_on` só quando é anterior a esse pedido e, quando não é, `erp_earliest_purchase_on` no lugar dela, se
+anterior. Reativado = essa compra existe e a distância é de 90 dias ou mais.
 
 ### 4.8 Instagram, Search Console e GA4
 
@@ -1310,7 +1367,9 @@ select h.code, h.setup_state, h.expected_every_minutes, h.late_tolerance_minutes
 - **Rodada apps → CSP 360:** a última rodada OK de `crm_upstream_runs` por marca; atrasada depois de 10 min de
   frequência + 5 de folga; sem linha → "Sem dados".
 - **"Atualizado há"** de cada tela = a `last_success_at` mais antiga entre as fontes com base que a tela usa (seção
-  6.11). Na tela de Conectores, a mais recente.
+  6.11). Na tela de Conectores, a mais recente. Ela diz quando foi a última rodada boa, não que cada linha está em
+  dia: a rodada de 5 min do CSP 360 relê só o que tem carimbo nos últimos 3 dias, e a alteração que o CRM não carimba
+  chega na passada completa diária (decisão 0041, item 4).
 
 ---
 
@@ -1450,7 +1509,7 @@ sai de `authz.display_name(profile_id)`, que devolve só o nome e só para quem 
 | CH11 | Por origem (dois gráficos) | `by_origin[]` | origens com lead no período: leads, viraram (por lead), conversão; ordem: leads, depois `mkt.list_rank('lead_origin', origin)` | todos | N1 | [CH] "por origem, do maior para o menor; empate segue a ordem das origens" |
 | CH12 | Por marca (só em "As duas") | `by_brand[]` | por marca: leads da marca ou sem marca, viraram, conversão, dias | todos | N1 | [CH] "por marca só com As duas…" |
 | CH13 | Coorte | `cohort[]` | os 4 meses que terminam no mês do fim do período: leads que chegaram no mês, viraram até hoje, conversão | M Ca Cp Op Or Rep | N1 | [Q] "coorte com os 4 meses certos também no dia 31…"; [CH] "coorte dos últimos 4 meses" |
-| CH14 | Por representante | `by_sales_rep[]`, `leads_without_sales_rep` | quem recebeu o lead (0025): leads, viraram, conversão, dias; ordem: viraram, leads, código (regra de código da seção 8); sem representante = total − soma | todos | N1 | [CH] "por representante e os leads ainda sem representante" |
+| CH14 | Por representante | `by_sales_rep[]`, `leads_without_sales_rep` | quem recebeu o lead (0025): leads, viraram, conversão, dias; ordem: viraram, leads, código (regra de código da seção 8); sem representante = total − soma (o lead do SDR e o negócio cujo responsável o CRM não entrega por id: nome repetido, desconhecido ou vazio) | todos | N1 | [CH] "por representante e os leads ainda sem representante" |
 | CH15 | Opções do painel | `options.campaigns[]`, `options.sales_reps[]` | campanhas da marca e do canal, por nome (até 200); representantes que já receberam lead da marca, por código (regras de nome e de código da seção 8) | M Ca | — | [CH] "opções de campanha (da marca) e de representante" |
 
 ### 6.3 Base de clientes — `api.kpi_customer_base`, `api.list_customers`
@@ -1756,7 +1815,7 @@ Vale em CH14, CH15, BA13, BA15, BA16, LE8, LE13, SG7, SG17 e CA14.
 | `[Q]` "conectores com atraso", `[CO]` | `connectors.test.ts` | seção 6.9 |
 | `[RU]` "classificarOrigem" | `lead-origin.test.ts` | paridade TS × SQL até o TS sair; novos: `utm_source=chatgpt.com` → `ai_assistant` e `utm_source=perplexity.ai` → `ai_assistant` |
 | `[SI]` `usuarios` | `users.test.ts` | "dados de exemplo: só o dono…" fica só no modo demonstração |
-| — (novos) | `leads-view.test.ts`, `first-orders.test.ts`, `new-customers.test.ts` | SDR que virou negócio conta uma vez; UTM herdada só no negócio do site; UTM repetida; UTM com o id da campanha casa pelo id; campanha casada decide o canal; o retrato do ERP marca o cliente antigo pelas datas (cliente que estreou em setembro e depois comprou só pelo ERP continua novo); novo na marca × novo no grupo; primeiro toque; pedido "A vincular" e cancelado fora; cliente sem lead conta como novo e não é atribuído; texto de origem fora do de-para não é gravado e fica `referral` |
+| — (novos) | `leads-view.test.ts`, `first-orders.test.ts`, `new-customers.test.ts` | SDR que virou negócio conta uma vez; UTM herdada só no negócio do site; UTM repetida; UTM com o id da campanha casa pelo id; campanha casada decide o canal; a compra do ERP mais antiga já vista marca o cliente antigo (cliente que estreou em setembro e depois comprou só pelo ERP continua novo; cliente antigo que recompra pelo app continua antigo depois de o retrato trazer a compra nova; cliente cuja primeira leitura já traz a data nova conta como novo, o limite da 0042); data pura: lead com instante à meia-noite UTC fica no dia que veio, e os outros instantes, no dia de São Paulo; negócio do funil padrão, do funil antigo dos leads do site e sem funil contam como lead; novo na marca × novo no grupo; primeiro toque; pedido "A vincular" e cancelado fora; cliente sem lead conta como novo e não é atribuído; texto de origem fora do de-para não é gravado e fica `referral` |
 | — (novos) | `coverage.test.ts` | conector sem `first_success_at` → nulo; com base e sem linha → 0; canal sem conta da marca lida → nulo; perfil ou propriedade de uma marca sem leitura → nulo nela e número na outra |
 | — (novos) | `list-rank.test.ts`, `sort.test.ts` | cada array de `mkt.list_rank` igual ao `labels.ts`; `REP-9` antes de `REP-10`; nome com acento na mesma ordem no PGlite e no Supabase |
 | — (novos) | `spend-limits.test.ts` | conta sem limite bloqueia aumento (`no_spend_limit`); orçamento atual nulo usa o anterior dos parâmetros; sem base, a trava barra; reativar conta como aumento; limite 0 sem gasto fica "Passou do limite", como o protótipo, e o alerta da mesma linha diz "Acima do limite" |
@@ -1765,12 +1824,22 @@ Vale em CH14, CH15, BA13, BA15, BA16, LE8, LE13, SG7, SG17 e CA14.
 
 ## 10. Em aberto
 
-- **Com o time do CRM:** como a conversão do SDR preenche `negocios.origem` (para juntar o lead do SDR ao negócio,
-  seção 3.3); as views da Parte 4 (`clientes_situacao`, `clientes_utm`, `clientes_compras_marca`,
-  `negocios_responsavel`); o retrato do ERP **sem** os pedidos do CRM, com a primeira e a última compra por marca
-  (`erp_first_purchase_on`, `erp_last_purchase_on`); a data de envio, o carimbo de faturado e a UTM e o `referrer` por
-  lead (lacunas 3, 4, 9 e 10). Sem eles, as contas funcionam com o que há e melhoram sozinhas quando as colunas forem
-  preenchidas.
+- **Com o time do CRM** (a lista vigente fica em [`integracoes.md`](integracoes.md), seção 19): a régua da situação do
+  cliente em SQL; a primeira compra por marca, que o Control tem e hoje não desce para o app; a UTM e o `referrer` por
+  lead; o responsável do negócio por id; as datas de envio e de faturado e a mudança de fase; a chave única nos itens
+  do pedido (item duplicado dobra o total do pedido e o ROAS); a função de leads dos sites na `main` do CRM; ampliar a
+  sincronização dos apps (totais e origem do pedido). Sem eles, as contas funcionam com o que há, com os limites das
+  seções 3.5 e 4.7, e melhoram quando as colunas forem preenchidas.
+- **Respondido em 10/11/2026** (conferido no código do CRM; nada foi lido do banco): o papel de leitura e as 12 views
+  estão na migração de leitura do CRM (`clientes_utm`, `clientes_compras_marca` e `negocios_responsavel` entre elas;
+  não há view de situação nem de UTM por lead); o funil de leads é o funil padrão do CRM mais o funil antigo dos leads
+  do site (seção 3.4); a conversão do SDR grava a origem "SDR WhatsApp" (seção 3.3); o login dos apps é
+  `<id da marca no CRM>:<id do usuário no app>`.
+- **No CRM, falta ligar** (o dono faz; não é pedido ao time): aprovar o PR do acesso, rodar a migração de leitura no
+  SQL Editor de lá e a conferência do fim do arquivo; depois da decisão 0040, expor o esquema de leitura na API só
+  para o papel de leitura e emitir o token.
+- **O dono decide** (decisão 0041, "Fica em aberto"): se o negócio aberto à mão, com origem "Carteira" ou "Prospecção
+  ativa", conta como lead (seção 3.4).
 - **O dono responde** as decisões 0026 a 0033 (e a 0021, de que depende a régua do limite). Cada uma diz o que muda
   se a resposta for outra.
 - **Medir na fase 4:** o tempo de `mkt.v_leads` e de `mkt.v_new_customers` com volume de anos; se passar da meta,
@@ -1778,5 +1847,6 @@ Vale em CH14, CH15, BA13, BA15, BA16, LE8, LE13, SG7, SG17 e CA14.
 - **De-para de origem:** a migração 05 só leva valores genéricos (fonte de UTM, canal, rótulo do ClickUp), revistos
   antes do commit; texto com nome de pessoa nunca entra no repositório. Valor novo aparece em `unmapped_origin_count` e
   é conferido no CSP 360.
-- **Representante do lead:** enquanto o CRM não der o responsável por id, quase todo lead fica "Sem representante"
-  (decisão 0025).
+- **Representante do lead:** o CRM guarda o responsável do negócio pelo nome e entrega o id só quando o nome é de
+  exatamente uma pessoa. Com nome repetido, desconhecido ou vazio, o lead fica "Sem representante" (decisão 0025). O
+  lead do SDR não tem responsável.

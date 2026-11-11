@@ -32,7 +32,8 @@ Motivo: compara o que é comparável e não pinta queda que não existe. A T1 co
 ## Consequências
 
 - O caso "este mês vai do dia 1 até hoje e compara com o mês anterior inteiro" de `periodo.test.ts` muda e vai para
-  `supabase/tests/kpi/period.test.ts`.
+  `supabase/tests/kpi/period.test.ts`. O protótipo já compara com os mesmos dias desde 03/11/2026 (`lib/periodo.ts`); os
+  dias completos de cada fonte entram com o banco.
 - A tela monta o rótulo a partir das datas que a função devolve.
 - A régua do limite, a verba e a estratégia não mudam: usam o mês corrente (decisão 0021).
 - Se o dono preferir o mês inteiro, é uma linha em `mkt.period_window` (`docs/dados/metricas.md`, seção 2.1).

@@ -40,3 +40,8 @@ por marca). Sem ele, todo cliente antigo pareceria novo no primeiro pedido depoi
 - O pedido ao time do CRM da view `clientes_compras_marca` (o retrato do ERP **sem** os pedidos do CRM, com a primeira
   e a última compra por marca) passa a ser necessário para a regra do histórico (`docs/dados/integracoes.md`,
   seção 3).
+- Em 10/11/2026: a view `clientes_compras_marca` existe na leitura do CRM, mas não como a linha acima descreve. A
+  primeira compra vem sempre nula, o retrato é trocado inteiro quando o Control exporta de novo e pode incluir a compra
+  feita pelo app, depois de faturada. Só com a última compra, que anda para a frente, o cliente antigo que volta a
+  comprar pelo app contaria como novo. A regra do histórico passa a usar a compra do ERP mais antiga que a réplica já
+  viu (decisão 0042); o resto desta decisão não muda. A 0042 diz também o que ela não resolve.

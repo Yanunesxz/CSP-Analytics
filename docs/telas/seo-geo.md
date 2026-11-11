@@ -63,7 +63,7 @@ por uma linha; os títulos dos gráficos e tabelas são os destaques de leitura.
 | Sessões por assistente | As mesmas sessões, por assistente, com a parte de cada um nas sessões de IA. |
 | Parcela de IA nas sessões | Sessões do canal "Assistente de IA" ÷ sessões de todos os canais do GA4, no período. |
 | Sessões por canal | Sessões de cada canal do grupo de canais do CSP-MKT no GA4 (Busca orgânica, Assistente de IA, Direto, Busca paga, Social pago, Social orgânico, Indicação), só os que tiveram sessão. |
-| Leads da busca orgânica / de assistentes de IA | Leads do CSP 360 criados no período cuja origem é busca orgânica ou assistente de IA (pelo endereço de origem, `referrer`, quando não há UTM — regra `classificarOrigem`). |
+| Leads da busca orgânica / de assistentes de IA | Leads do CSP 360 criados no período cuja origem é busca orgânica ou assistente de IA (regra `classificarOrigem`; em 10/11/2026 o CRM ainda não grava o `referrer` por lead: sem UTM, o lead chega como "site", decisão 0041). |
 | Clientes novos da busca / de IA | Desses leads (de qualquer data), os que fizeram o 1º pedido enviado no período, um por cliente do CSP 360 (decisão 0012). |
 | Leads por fonte | Os mesmos leads e clientes novos por buscador (Google, Bing, DuckDuckGo…) e por assistente; lead sem endereço de origem aparece como "Sem endereço de origem". |
 | Comparação | A mesma conta no período anterior: "vs. mês anterior" ou "vs. N dias anteriores". Com a chave desligada, a linha some. |

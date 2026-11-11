@@ -50,3 +50,15 @@ responsável do negócio guardado pelo nome; e linha apagada que a leitura incre
 - O que sai do CRM sai daqui em até 24 h, dentro do prazo de 15 dias do padrão, com a passada completa em dia: o
   cartão do CSP 360 avisa quando ela atrasa (`connector_jobs`).
 - A passada completa diária custa uma leitura inteira das tabelas do CRM por dia, paginada.
+- Em 10/11/2026: o código do CRM foi lido (nada foi lido do banco) e a decisão 0041 ajusta esta ao CRM como ele é. O
+  funil de leads deixa de ser um só, marcado por migração: é o funil padrão do CRM e o funil antigo dos leads do site,
+  e negócio sem funil conta como do padrão. A leitura de 5 min deixa de ser pelo carimbo com 15 min de folga e passa a
+  ser por janela de 3 dias, porque a tela do CRM grava o carimbo do negócio só com o dia; a passada completa diária
+  continua. A leitura é pela API de dados (decisão 0040): o worker confere as colunas pedindo cada view com a lista
+  de colunas, e não no `information_schema`, e `SCHEMA_DRIFT` vale para as 12 views que existem.
+- Em 10/11/2026: o que não chega fica "Sem dados" (decisão 0041, item 6). A view de situação não existe no CRM: em
+  `crm_customer_brands` a situação fica nula e `is_lost_manual` aceita nulo. O retrato do ERP por marca vem sem a
+  primeira compra (decisão 0042). `assigned_rep_id` já vem em parte: o CRM guarda o responsável pelo nome, e a leitura
+  devolve o id só quando o nome é de uma pessoa só (decisão 0025). A UTM e o `referrer` por lead continuam sem existir
+  no CRM: `utm_*` e `referrer_host` de `crm_leads` ficam nulos, e vale a UTM de primeiro contato do cliente (decisão
+  0031). A origem e a UTM já chegam limpas da view do CRM; o teste daqui continua, como segunda barreira.

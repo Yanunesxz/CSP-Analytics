@@ -46,3 +46,9 @@ Motivo: hoje só o primeiro contato tem UTM no CRM, e a pergunta da T1 é "qual 
 - Lead de cliente que já comprava a marca não conta como conversão.
 - Quando o CRM gravar a UTM por lead, o último toque pode ser reavaliado com decisão nova, sem mudar o modelo.
 - As regras ficam em `mkt.v_leads` e `mkt.v_new_customers` (`docs/dados/metricas.md`, seção 3).
+- Em 10/11/2026: conferido no código do CRM. A UTM continua só no cliente, e não há UTM por lead: cada campo guarda o
+  primeiro valor não vazio, os três podem vir de envios diferentes, e quem já é cliente ativo na hora do envio não
+  recebe UTM no cadastro. Quem já tem negócio aberto no funil de leads e manda o formulário de novo não ganha negócio:
+  o segundo envio, mesmo vindo de outra campanha, não vira lead nem troca a UTM gravada (decisão 0041, item 2). O
+  crédito fica com o primeiro contato. A chave do lead é o id do negócio: o código mostrado pode ser reaproveitado no
+  CRM.
