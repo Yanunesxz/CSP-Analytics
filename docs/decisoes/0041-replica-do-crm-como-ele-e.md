@@ -1,7 +1,7 @@
 # 0041 — Réplica do CRM: ajustes ao CRM como ele é
 
 - **Data:** 2026-11-10
-- **Status:** proposta em 2026-11-10 (aguarda o dono; complementa a 0012 e a 0015)
+- **Status:** aceita em 2026-11-11 (aprovada pelo dono; complementa a 0012 e a 0015)
 
 ## Contexto
 

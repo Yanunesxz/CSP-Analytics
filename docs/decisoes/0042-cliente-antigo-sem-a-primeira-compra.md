@@ -1,7 +1,7 @@
 # 0042 — Cliente antigo sem a primeira compra do ERP
 
 - **Data:** 2026-11-10
-- **Status:** proposta em 2026-11-10 (aguarda o dono; complementa a 0030)
+- **Status:** aceita em 2026-11-11 (aprovada pelo dono; complementa a 0030)
 
 ## Contexto
 

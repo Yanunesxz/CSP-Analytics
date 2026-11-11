@@ -1,7 +1,7 @@
 # 0040 — Leitura do CRM pela API de dados, sem login no banco
 
 - **Data:** 2026-11-10
-- **Status:** proposta em 2026-11-10 (aguarda o dono; muda o caminho de acesso das decisões 0006, 0017 e 0036)
+- **Status:** aceita em 2026-11-11 (aprovada pelo dono; muda o caminho de acesso das decisões 0006, 0017 e 0036)
 
 ## Contexto
 
@@ -57,4 +57,4 @@ dois motivos: não conferir colunas antes de ler e não paginar por chave. Os do
 - O token tem validade conhecida: o cartão do CSP 360 avisa antes de vencer (a forma fica para o PR do worker).
 - A confirmar na primeira leitura: se a API do CRM aceita o token do papel, a página de 1.000 linhas e o tempo de cada
   página.
-- Enquanto esta decisão não for aceita, o papel fica sem login e fora da API: nada sai do CRM.
+- Até o acesso pela API ser ligado no CRM, o papel fica sem login e fora da API: nada sai do CRM.
