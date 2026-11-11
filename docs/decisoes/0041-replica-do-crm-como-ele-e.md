@@ -41,12 +41,10 @@ o código do CRM foi lido de ponta a ponta (nada foi lido do banco) e o acesso d
    `EMPTY_SOURCE` vale só para `clientes`, `pedidos` e `negocios`: as views com regra podem voltar vazias de verdade.
 8. **Papel do representante.** A lista `rep_crm_role` troca `relationship` por `customer_service`. Papel fora da lista
    entra nulo, sem derrubar a rodada.
-
-## Fica em aberto (pede o dono, antes da primeira carga)
-
-- **Negócio aberto à mão conta como lead?** A tela do CRM abre negócio com a origem "Carteira" (o padrão do campo) e
-  "Prospecção ativa". É trabalho do time comercial, não chegada de marketing. Recomendação: entra na réplica e não
-  conta como lead. Até decidir, essas origens aparecem na pendência de origem sem de-para da tela de Leads.
+9. **Negócio aberto à mão não conta como lead** (resposta do dono em 11/11/2026). A tela do CRM abre negócio com a
+   origem "Carteira" (o padrão do campo) e "Prospecção ativa". É trabalho do time comercial, não chegada de
+   marketing. Esse negócio entra na réplica e fica fora de Leads, da conversão e do custo por lead; as duas origens
+   não aparecem na pendência de origem sem de-para.
 
 ## Alternativas consideradas
 
