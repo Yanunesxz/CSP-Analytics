@@ -477,15 +477,21 @@ describe('o código LEAD- do lead do SDR (gatilho crm_leads_code)', () => {
 describe('de-para de origem (crm_origin_map)', () => {
   it('só valores genéricos, normalizados, sem dado pessoal, e o lead consegue guardar cada um', async () => {
     await caso(db, postgres, async (s) => {
-      const mapa = await s.linhas<{ raw_value: string; origin: string; certo: boolean }>(
-        `select raw_value, origin::text,
+      const mapa = await s.linhas<{
+        raw_value: string;
+        origin: string | null;
+        is_lead: boolean;
+        certo: boolean;
+      }>(
+        `select raw_value, origin::text, is_lead,
                 raw_value = lower(btrim(raw_value)) and mkt.valid_crm_text(raw_value)
                   and not mkt.has_personal_data(raw_value) as certo
            from mkt.crm_origin_map order by raw_value`,
       );
       expect(mapa.length).toBeGreaterThanOrEqual(10);
       for (const m of mapa) expect(m.certo, m.raw_value).toBe(true);
-      expect(Object.fromEntries(mapa.map((m) => [m.raw_value, m.origin]))).toMatchObject({
+      const deLead = mapa.filter((m) => m.is_lead);
+      expect(Object.fromEntries(deLead.map((m) => [m.raw_value, m.origin]))).toMatchObject({
         site: 'site',
         whatsapp: 'sdr',
         // A origem que a conversão do lead do SDR grava no negócio (decisão 0041, item 3).
@@ -494,11 +500,16 @@ describe('de-para de origem (crm_origin_map)', () => {
         'google ads': 'google',
         direto: 'direct',
       });
-      // O "google" sozinho fica para a classificação: pago ou orgânico depende do meio. O negócio aberto à mão
-      // ("carteira", "prospecção ativa") espera o dono (decisão 0041, "Fica em aberto"): sem de-para por enquanto.
-      for (const fora of ['google', 'carteira', 'prospecção ativa', 'prospeccao ativa']) {
-        expect(mapa.map((m) => m.raw_value)).not.toContain(fora);
-      }
+      for (const m of deLead) expect(m.origin, m.raw_value).not.toBeNull();
+      // O negócio aberto à mão pelo time comercial não é lead (decisão 0041, item 9): só as duas origens dele, com e
+      // sem acento, estão no de-para sem origem de lead.
+      expect(Object.fromEntries(mapa.filter((m) => !m.is_lead).map((m) => [m.raw_value, m.origin]))).toEqual({
+        carteira: null,
+        'prospecção ativa': null,
+        'prospeccao ativa': null,
+      });
+      // O "google" sozinho fica para a classificação: pago ou orgânico depende do meio.
+      expect(mapa.map((m) => m.raw_value)).not.toContain('google');
       let i = 0;
       for (const m of mapa) {
         i += 1;
@@ -513,19 +524,27 @@ describe('de-para de origem (crm_origin_map)', () => {
     });
   });
 
-  it('valor só normalizado, não vazio, um por texto e com uma origem da lista', async () => {
+  it('valor só normalizado, não vazio, um por texto e com uma origem da lista, ou sem origem e marcado como não lead', async () => {
     await caso(db, postgres, async (s) => {
-      const de = (texto: string, origem: string) =>
-        [`insert into mkt.crm_origin_map (raw_value, origin) values ($1, $2)`, [texto, origem]] as [
-          string,
-          unknown[],
-        ];
+      const de = (texto: string, origem: string | null, lead?: boolean | null) =>
+        (lead === undefined
+          ? [`insert into mkt.crm_origin_map (raw_value, origin) values ($1, $2)`, [texto, origem]]
+          : [
+              `insert into mkt.crm_origin_map (raw_value, origin, is_lead) values ($1, $2, $3)`,
+              [texto, origem, lead],
+            ]) as [string, unknown[]];
       await s.erro('23514', ...de('Feira', 'referral'));
       await s.erro('23514', ...de(' feira', 'referral'));
       await s.erro('23514', ...de('', 'referral'));
       await s.erro('23514', ...de('feira', 'evento'));
       await s.erro('23505', ...de('site', 'direct'));
+      // A origem de lead tem a origem; a que não é de lead não tem (decisão 0041, item 9). O padrão é ser de lead.
+      await s.erro('23514', ...de('feira', null));
+      await s.erro('23514', ...de('feira', null, true));
+      await s.erro('23514', ...de('feira', 'referral', false));
+      await s.erro('23502', ...de('feira', 'referral', null));
       await s.linhas(...de('feira', 'referral'));
+      await s.linhas(...de('balcão', null, false));
     });
   });
 });

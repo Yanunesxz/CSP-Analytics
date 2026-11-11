@@ -464,7 +464,9 @@ Regras de todas as tabelas `crm_*`:
   está em `crm_origin_map`, que é uma fonte de UTM conhecida da classificação (`mkt.is_known_origin_text`, a mesma
   lista de `mkt.classify_lead_origin`) ou que é igual à `utm_source` de primeiro contato do cliente, já replicada e
   limpa (é o que liga o negócio do site à UTM dele, [`metricas.md`](metricas.md), seção 3.2). Outro texto vira nulo e
-  o lead fica com `is_origin_unmapped = true`. Valor novo é conferido no CSP 360 e entra no de-para por migração.
+  o lead fica com `is_origin_unmapped = true`. Valor novo é conferido no CSP 360 e entra no de-para por migração. As
+  origens do negócio aberto à mão estão no de-para marcadas como não lead (`is_lead = false`, decisão 0041, item 9):
+  são gravadas como as outras e não deixam o negócio `is_origin_unmapped`.
 - **O texto já vem limpo do CRM:** a view entrega a origem do negócio e as três UTMs sem espaço nas pontas, cortadas
   em 150 letras e nulas quando vazias ou quando parecem e-mail, telefone, CPF ou CNPJ (na campanha, número solto
   passa, porque é o id da campanha). A origem vem sem o trecho de nome de representante que as listas de reativação
@@ -513,7 +515,12 @@ $$;
   `crm_leads`.
 - **Negócio aberto à mão** (decisão 0041, item 9): o funil padrão é o funil de vendas do time comercial, e nele
   também há negócio aberto à mão. O negócio com a origem "Carteira" ou "Prospecção ativa" entra em `crm_leads` e não
-  conta como lead: fica fora de `mkt.v_leads`, e a origem dele não aparece na pendência de origem sem de-para.
+  conta como lead: fica fora de `mkt.v_leads`, e a origem dele não aparece na pendência de origem sem de-para. Quem
+  diz isso é o de-para: `crm_origin_map` traz `carteira`, `prospecção ativa` e `prospeccao ativa` com `is_lead = false`
+  e sem origem de lead; a ingestão guarda a origem como as outras do de-para, sem `is_origin_unmapped`, e a
+  `mkt.v_leads` deixa de fora o negócio cuja origem o de-para marca como não lead. A regra segue a origem atual, pelo
+  texto (o Editar do CRM troca a origem de qualquer negócio), e o envio do site anotado num negócio aberto à mão não
+  conta como lead: os limites estão em [`integracoes.md`](integracoes.md), seção 3.4.
 
 ```sql
 create table if not exists mkt.crm_funnels (
@@ -537,23 +544,29 @@ create table if not exists mkt.crm_funnels (
 tela do CRM, "SDR WhatsApp" na conversão do SDR ou o texto de uma importação antiga. Este de-para leva cada valor para
 a origem do lead (`mkt.lead_origin`); `sdr whatsapp` vai para `sdr` (decisão 0041, item 3). Valor que não está aqui e
 é uma fonte de UTM conhecida segue a regra da função de classificação (`mkt.classify_lead_origin`, em `metricas.md`);
-o resto não é gravado (seção "Regras", acima).
+o resto não é gravado (seção "Regras", acima). A origem do negócio aberto à mão pelo time comercial ("Carteira", o
+padrão do campo na tela do CRM, e "Prospecção ativa") diz que o negócio não é lead (decisão 0041, item 9): está aqui
+com `is_lead = false` e sem origem de lead, e a `mkt.v_leads` deixa esse negócio de fora. O lead do SDR é sempre lead.
 
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 |---|---|---|---|---|
 | `raw_value` | `text` | não | — | Valor normalizado (minúsculas, sem espaço nas pontas) |
-| `origin` | `mkt.lead_origin` | não | — | Origem do lead |
+| `origin` | `mkt.lead_origin` | sim | — | Origem do lead; nula só na origem que não é de lead |
+| `is_lead` | `boolean` | não | `true` | O negócio com esta origem é lead. Falso só em `carteira`, `prospecção ativa` e `prospeccao ativa` (decisão 0041, item 9). Verdadeiro se e só se `origin` não é nula |
 
-- **Grava:** migração. A migração 05 só leva valores genéricos (fonte de UTM, canal, rótulo do ClickUp), revistos antes
-  do commit; texto com nome de pessoa nunca entra no repositório. **RLS:** lê `view_leads`.
+- **Grava:** migração. A migração 05 só leva valores genéricos (fonte de UTM, canal, rótulo do ClickUp, as duas origens
+  do negócio aberto à mão, com e sem acento), revistos antes do commit; texto com nome de pessoa nunca entra no
+  repositório. **RLS:** lê `view_leads`.
 
 ```sql
 create table if not exists mkt.crm_origin_map (
   id uuid primary key default gen_random_uuid(),
   raw_value text not null unique check (raw_value = lower(btrim(raw_value)) and raw_value <> ''),
-  origin mkt.lead_origin not null,
+  origin mkt.lead_origin,
+  is_lead boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default date_trunc('milliseconds', now())
+  updated_at timestamptz not null default date_trunc('milliseconds', now()),
+  check (is_lead = (origin is not null))
 );
 ```
 
@@ -578,8 +591,8 @@ Dimensão compartilhada: a base de clientes do CRM é uma só (decisão 0003).
 - As três UTMs vêm da view `clientes_utm` do CRM, que só traz o cliente com pelo menos uma delas: quem não está na
   view fica com as três nulas. É a UTM de primeiro contato: o primeiro valor não vazio de cada campo, campo a campo,
   então as três podem vir de envios diferentes. Quem já é cliente ativo na hora do envio não recebe UTM no cadastro
-  (fica só a origem do negócio), e o valor pode ser editado à mão no CRM. Só há UTM para quem entrou pelo site, desde
-  09/09/2026. A view já entrega o valor limpo (seção "Regras").
+  (fica só a origem do negócio, quando ele abre um), e o valor pode ser editado à mão no CRM. Só há UTM para quem
+  entrou pelo site, desde 09/09/2026. A view já entrega o valor limpo (seção "Regras").
 
 ```sql
 create table if not exists mkt.crm_customers (
@@ -694,8 +707,8 @@ create index if not exists crm_customer_reps_rep on mkt.crm_customer_reps (sales
 | `brand_id` | `uuid` | **sim** | — | Marca; nulo = "Sem marca" (lead do SDR, negócio sem marca; decisão 0014) |
 | `customer_id` | `uuid` | sim | — | Cliente no CRM; nulo = "A cadastrar" |
 | `crm_funnel_id` | `uuid` | sim | — | Funil do negócio; nulo no SDR. Negócio sem funil no CRM conta como do funil padrão (decisão 0041, item 1) e grava o id dele quando a réplica tem um só funil padrão; sem como saber qual é (nenhum ou mais de um), fica nulo |
-| `crm_origin_raw` | `text` | sim | — | `negocios.origem` normalizado, só quando está no de-para ou é uma fonte de UTM conhecida; outro texto não é gravado (seção "Regras") |
-| `is_origin_unmapped` | `boolean` | não | `false` | O negócio tinha origem no CRM, mas fora do de-para e das fontes conhecidas: a origem fica `referral` e a tela de Leads conta a pendência |
+| `crm_origin_raw` | `text` | sim | — | `negocios.origem` normalizado, só quando está no de-para, é uma fonte de UTM conhecida ou é a `utm_source` de primeiro contato do cliente; outro texto não é gravado (seção "Regras"). A origem que o de-para marca como não lead também é gravada: o negócio fica fora de `mkt.v_leads` (decisão 0041, item 9) |
+| `is_origin_unmapped` | `boolean` | não | `false` | O lead tinha origem no CRM, mas fora do de-para e das fontes conhecidas e diferente da `utm_source` de primeiro contato do cliente: a origem não é gravada, fica `referral`, e a tela de Leads conta a pendência |
 | `utm_source`, `utm_medium`, `utm_campaign` | `text` | sim | — | UTM do próprio lead. Nulas: o CRM não tem UTM por lead, e vale a de primeiro contato do cliente (decisões 0031 e 0041, item 6). Preenche quando o CRM passar a gravar por envio (lacuna 10 do levantamento do CRM); limpa na entrada |
 | `referrer_host` | `text` | sim | — | Domínio de onde a pessoa veio. Nulo: o CRM não tem `referrer` por lead. Preenche quando o CRM passar a gravar (lacuna 9) |
 | `assigned_rep_id` | `uuid` | sim | — | Quem recebeu o lead no CRM (`sales_reps`), pela view `negocios_responsavel`. Nulo quando o CRM não entrega o id ("Sem representante") e no lead do SDR |
@@ -718,12 +731,16 @@ create index if not exists crm_customer_reps_rep on mkt.crm_customer_reps (sales
   num funil de leads (`crm_funnels.is_lead_funnel`: o funil padrão do CRM e o funil antigo dos leads do site) ou que
   já existe em `crm_leads`, e ignora o resto ([`integracoes.md`](integracoes.md), seção 3.4). O negócio sem funil no
   CRM conta como do funil padrão e entra: é como nasce o negócio da conversão do SDR (decisão 0041, item 1). O negócio
-  aberto à mão no funil padrão também entra, mas não conta como lead (decisão 0041, item 9).
-- **Lead é o negócio** (decisão 0041, item 2): quem já tem negócio aberto no funil de leads e manda o formulário de
+  aberto à mão no funil padrão também entra, mas não conta como lead (decisão 0041, item 9): a origem dele fica em
+  `crm_origin_raw`, e o de-para (`crm_origin_map.is_lead = false`) o tira de `mkt.v_leads`.
+- **Lead é o negócio** (decisão 0041, item 2): quem já tem negócio em aberto no funil padrão e manda o formulário de
   novo não ganha negócio novo; o CRM anota o envio no que existe. O envio repetido não vira outro lead nem muda
-  `source_created_at`, e por isso "Leads" pode ficar abaixo de "Leads informados pela plataforma". Quem já é cliente
-  ativo e manda o formulário abre negócio no funil de leads: conta como lead e não ganha UTM. A chave do lead é o id
-  do negócio (`external_id`): o código mostrado (`code`) pode ser reaproveitado no CRM depois de uma limpeza.
+  `source_created_at`, e por isso "Leads" pode ficar abaixo de "Leads informados pela plataforma". O negócio sem funil
+  e o encerrado não seguram o envio, que abre negócio novo ([`integracoes.md`](integracoes.md), seção 3.4). Quem já é
+  cliente ativo, sem negócio em aberto no funil padrão, e manda o formulário abre negócio no funil de leads: conta como
+  lead e não ganha UTM. Se o negócio em aberto é um negócio aberto à mão, que não é lead (decisão 0041, item 9), o
+  envio anotado nele não conta em lugar nenhum. A chave do lead é o id do negócio (`external_id`): o código mostrado
+  (`code`) pode ser reaproveitado no CRM depois de uma limpeza.
 - **Responsável:** no CRM o responsável do negócio é o nome, em texto, e o nome nunca sai de lá. A view
   `negocios_responsavel` só devolve o id de `usuarios` quando o nome (sem espaço nas pontas, sem diferença de
   maiúscula) é de exatamente uma pessoa, de qualquer papel, ativa ou não. Nome repetido, desconhecido ou vazio: o

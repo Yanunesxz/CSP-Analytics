@@ -1,6 +1,6 @@
 # Estado do projeto — CSP-MKT
 
-> **Atualizado em:** 2026-11-11 · **por:** sessão de IA (Claude Code), branch `docs/crm-como-e`
+> **Atualizado em:** 2026-11-11 · **por:** sessão de IA (Claude Code), branch `feat/banco-e-rls`
 > Atualize este arquivo em **todo PR**. Ele é o que a próxima pessoa ou IA lê primeiro.
 > Nada de senha, token ou dado pessoal aqui.
 
@@ -21,10 +21,11 @@
 
 | O quê | Quem | Branch / PR | Situação |
 |---|---|---|---|
-| Fase 3, parte 2: migrações 01 a 10, views de `api` e o teste de RLS no PGlite (camada 1) | sessão de IA | `feat/banco-e-rls` | em andamento |
-| O CRM como ele é: código do CSP 360 lido em 10/11/2026 (nada foi lido do banco); acesso de leitura escrito no repositório do CRM e ainda não rodado lá; desenho de `docs/dados/` atualizado | sessão de IA | `docs/crm-como-e` | decisões 0040 a 0042 aceitas em 11/11/2026; falta ligar o acesso no CRM |
+| Fase 3, parte 2: migrações 01 a 11, com o teste de RLS no PGlite (camada 1) e o roteiro da camada 2 (`scripts/testar-rls.mjs`) | sessão de IA | `feat/banco-e-rls` | publicada em 11/11/2026, sem PR; falta ir para a `main`, o CI e a camada 2 no projeto de teste |
+| Padrão SystemDesing v0.4.0 → v0.5.2 (segurança), com o CI de volta em `.github/workflows/ci.yml` | sessão de IA na nuvem | `claude/padrao-v0.5.2` (PR em rascunho) | o CI dela tem só o job `verificar` e apaga o `docs/ci.yml`; os jobs do portão desta fase (`rls-teste` e os outros) estão só no `docs/ci.yml` da `feat/banco-e-rls` |
+| Acesso de leitura do CSP-MKT no CRM (decisão 0040): escrito no repositório do CRM e ainda não rodado lá | sessão de IA | no repositório do CRM, sem PR aprovado | falta o dono aprovar, rodar a migração de leitura e ligar o acesso pela API |
 
-Já na `main`: desde 03/11/2026, por avanço direto e sem PR, os arquivos do padrão e as decisões 0001–0012, o protótipo da fase 2, o modelo de dados da fase 3 e a prévia na Vercel, com "Este mês" contra os mesmos dias do mês anterior; desde 04/11/2026, "CSP MKT" no menu e o crédito no rodapé (decisão 0039, branch `feat/nome-csp-mkt`); desde 10/11/2026, o site da Vercel sem dados de exemplo (branch `fix/site-sem-dados-de-exemplo`).
+Já na `main`: desde 03/11/2026, por avanço direto e sem PR, os arquivos do padrão e as decisões 0001–0012, o protótipo da fase 2, o modelo de dados da fase 3 e a prévia na Vercel, com "Este mês" contra os mesmos dias do mês anterior; desde 04/11/2026, "CSP MKT" no menu e o crédito no rodapé (decisão 0039, branch `feat/nome-csp-mkt`); desde 10/11/2026, o site da Vercel sem dados de exemplo (branch `fix/site-sem-dados-de-exemplo`); desde 11/11/2026, por avanço direto e sem PR, o CRM como ele é em `docs/dados/` e as decisões 0040 a 0042, com o item 9 da 0041 (branch `docs/crm-como-e`).
 
 Aceitas pelo dono em 11/11/2026:
 
@@ -32,6 +33,28 @@ Aceitas pelo dono em 11/11/2026:
 - **0041:** a réplica ajustada ao CRM como ele é: funil de leads por regra, lead é o negócio e não o envio, leitura de 5 min por janela de 3 dias, e o que não chega fica "Sem dados".
 - **0042:** cliente antigo pela compra do ERP mais antiga que a réplica já viu, porque a primeira compra não vem do CRM.
 - **Respondido em 11/11/2026 (0041, item 9):** o negócio aberto à mão pelo time comercial (origem "Carteira" ou "Prospecção ativa") entra na réplica e não conta como lead.
+
+Banco, rodada de 11/11/2026 (`feat/banco-e-rls`). As migrações 01 a 11 mudaram no próprio arquivo, porque ainda não foram para a `main` nem para banco nenhum:
+
+- **Caminho de busca:** toda função dos sete esquemas passou a `set search_path = pg_catalog, pg_temp`. Com o caminho vazio, um serviço com conexão própria rodava código como o dono das funções por um tipo trocado no `pg_temp`. O RLS-27 confere o caminho, e `supabase/tests/caminho-de-busca.test.ts` prova a correção como cada serviço.
+- **Réplica do CRM pelas decisões 0041 e 0042:**
+  - funil de leads por regra: o padrão do CRM e o antigo dos leads do site, marcado uma vez pelo id por `setup.mark_lead_funnel`, depois da primeira passada completa;
+  - negócio sem funil no funil padrão;
+  - "sdr whatsapp" vai para `sdr`;
+  - `customer_service` no lugar de `relationship`;
+  - nulo no que o CRM não entrega;
+  - a chave do lead é o id: o NEG- que o CRM reaproveita não trava a leitura;
+  - o nome do funil passa pelo teste de dado pessoal;
+  - a compra do ERP mais antiga já vista só anda para trás, e a passada completa não a apaga;
+  - o negócio aberto à mão (item 9): o de-para marca "carteira" e "prospecção ativa" como não lead. O negócio entra na réplica com a origem guardada, sem pendência de origem sem de-para, e a `mkt.v_leads` (fase 4) o deixa de fora;
+  - na especificação da `mkt.v_leads` (fase 4), só o negócio da conversão ("SDR WhatsApp") se liga ao lead do SDR, e pelo dia. Antes, o negócio aberto à mão com a origem "WhatsApp" sumia de Leads e trocava a marca do lead do SDR, e a conversão feita no mesmo dia contava duas vezes.
+- **Tráfego e regras:**
+  - o contexto do Claude aceita só as chaves de cada lugar;
+  - o telefone com 0 ou 55 e com separadores é barrado;
+  - a campanha que a leitura importou antes de a criação ser confirmada passa para o Claude na confirmação, e a campanha antiga do humano, mesmo renomeada com o código, continua dele;
+  - a confirmação não mexe em campanha de outra conta;
+  - o "Como reverter" de cada migração vale só depois de reverter as seguintes.
+- **Conferência:** antes do commit, as mudanças passaram por revisão independente em três frentes (segurança, conformidade e testes), com verificação de cada achado e testes com mutantes. `pnpm verify` verde em 11/11/2026: 20 testes no shared, 441 no web, 482 no supabase (mais 3 marcados para a fase 4) e o build. `scripts/conferir-migracoes.mjs` não acusa nada.
 
 Acessos das conexões, abertos pelo dono em 04/11/2026 com a lista da sessão de IA "Conexões". Nenhum token nem chave foi gerado: o token da Meta e as chaves do Google nascem no dia de subir o worker, direto no Railway.
 
@@ -49,14 +72,27 @@ O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquema
 
 - Nada em produção (o site da Vercel mostra as telas vazias, sem dado nenhum). Riscos conhecidos: a aprovação da Meta para o Claude executar (Full Access) é o item mais longo: o app e o usuário de leitura existem desde 04/11/2026, mas as 500 chamadas em 15 dias que o App Review pede só começam com o worker lendo, e a verificação do negócio está a confirmar; os sites não medem nada (`NEXT_PUBLIC_GA_ID` vazio em produção); a `sincronizar-apps` do CRM não traz `orders.total`, `invoiced_total` nem `source`; a função de leads dos sites está fora da `main` do CRM.
 - **Leitura do CRM** (conferida no código do CRM em 10/11/2026; nada foi lido do banco). Dois riscos atingem o número de sucesso: o retrato do ERP não traz a primeira compra, e o cliente antigo que voltou a comprar antes da primeira leitura conta como novo uma vez; e a compra digitada direto no Control não vira pedido no CRM, então esse cliente não conta como novo e depois aparece como antigo (decisão 0042; as 4 semanas de medição dizem o tamanho). Os outros: a situação do cliente fica "Sem dados", porque a régua só roda na tela do CRM (decisão 0041); o responsável do negócio só vem quando o nome gravado no CRM é de uma pessoa só, e o resto fica "Sem representante" (decisão 0025); a UTM é só a de primeiro contato do cliente e não há `referrer` por lead, então o lead do site sem UTM aparece como "Site" (decisões 0009 e 0031); o item de pedido pode duplicar no CRM e dobrar o valor do pedido e o ROAS (pedido ao time do CRM).
-- **O CI não roda no GitHub:** o token usado no `git push` não tem o escopo `workflow`, então o workflow ficou em `docs/ci.yml`. Até ele voltar para `.github/workflows/ci.yml` (pelo site do GitHub ou com um token com esse escopo), rode `pnpm verify` antes de todo push.
+- **Negócio aberto à mão (decisão 0041, item 9):** a regra segue o texto da origem atual. O negócio que alguém edita no CRM para "Carteira" ou "Prospecção ativa" sai de Leads, também nos dias passados. E quem tem negócio em aberto, aberto à mão e gravado no funil padrão, e manda o formulário do site não vira lead: a função de leads dos sites só anota o envio nesse negócio. Nesse caso, o cliente novo que vier do envio fica sem crédito de campanha. Pedido ao time do CRM (`docs/dados/integracoes.md`, seções 3.4 e 19).
+- **Banco, o que ficou registrado na rodada de 11/11/2026:**
+  - o cliente que falta numa passada completa do CRM (linha recusada, ou leitura incompleta abaixo da trava de 20%) sai pela cascata e leva a compra do ERP mais antiga; se voltar, conta como novo. Guardar a data também nesse caso pede decisão do dono, porque muda as 24 h da decisão 0015;
+  - na janela entre a execução enviada e a confirmada, a campanha com o código da ação que a leitura trouxer antes da criada pela central nasce do Claude;
+  - a confirmação que aponta por engano para outra campanha da mesma conta regrava o status dela;
+  - um nome de campanha com cara de telefone (data e número, como "promo-11-2026-1111") recusa o contexto inteiro do Claude, que falha antes de chamar a API.
+- **O CI do portão não roda no GitHub:** daqui, o token do `git push` não tinha o escopo `workflow`, e o CI ficou em `docs/ci.yml`. Uma sessão na nuvem já pôs o arquivo de volta em `.github/workflows/ci.yml` na branch `claude/padrao-v0.5.2`, mas só com o job `verificar`. Quando as duas branches forem para a `main`, o `docs/ci.yml` dá conflito (mudado numa, apagado na outra) e o `docs/dados/plano.md` também. Os jobs do portão precisam ir para o `.github/workflows/ci.yml`. Até lá, rode `pnpm verify` e `node scripts/conferir-migracoes.mjs --base origin/main` antes de todo push.
 - O Google Ads aposentou o developer token em 09/09/2026 (o acesso passou a ser pelo projeto do Google Cloud): `GOOGLE_ADS_DEVELOPER_TOKEN` e o OAuth do Google Ads no `.env.example` não valem mais. A proposta usa contas de serviço (decisão 0036); o `.env.example` muda na fase 4.
 - Os números do `pnpm dev:exemplo` (local) são de exemplo; o site da Vercel não mostra nenhum desde 10/11/2026. "Este mês" já compara com os mesmos dias do mês anterior (decisão 0026, desde 03/11/2026); as outras regras ainda são as de antes das decisões 0027 a 0033 (a tela passa a ler as contas do banco na fase 4): não tirar conclusão de negócio deles.
 
 ## Próximos passos
 
-1. **Migrações 01 a 10** em `supabase/migrations/` e as views de `api` adiantadas, com o teste de RLS no PGlite (camada 1) no `pnpm verify` (a aprovação, com o status das decisões, o `CLAUDE.md` e o `README.md`, está na `main` desde 2026-11-03).
-2. **Portão da fase 3, parte 2:** o CI aplica as migrações no projeto Supabase de teste e roda o teste de RLS pela API (camada 2) com `owner`, `traffic_manager` e sem login. O projeto de teste e os segredos do GitHub existem desde 04/11/2026; falta o CI de volta em `.github/workflows/`. O resultado entra aqui.
+1. **Banco na `main`:** as migrações 01 a 11, o teste de RLS no PGlite (camada 1) e os documentos estão na branch `feat/banco-e-rls`, publicada em 11/11/2026, com a `main` de 11/11/2026 junta. Falta o PR, com a autorização do dono. Depois da `main`, mudança nesses arquivos vira migração nova: `scripts/conferir-migracoes.mjs --base origin/main` barra a edição, no CI quando ele rodar o passo das migrações e, até lá, à mão antes do push.
+2. **Portão da fase 3, parte 2:** o CI aplica as migrações no projeto Supabase de teste e roda o teste de RLS pela API (camada 2) com `owner`, `traffic_manager` e sem login. O projeto de teste e os segredos do GitHub existem desde 04/11/2026. Falta:
+   - o CI de volta em `.github/workflows/ci.yml` com os jobs do portão: juntar ao CI do PR do padrão (`claude/padrao-v0.5.2`) o que só existe no `docs/ci.yml` desta branch, ou seja, os jobs `mudancas`, `rls-teste`, `producao` e `primeiro-dono`, o gatilho `workflow_dispatch` e os passos de `scripts/conferir-migracoes.mjs` e `scripts/testar-rls.mjs`;
+   - a primeira rodada verde do job `rls-teste`, com o caso novo do RLS-11 (telefone com separadores);
+   - fixar no CI a versão da CLI do Supabase dessa rodada (hoje `latest`);
+   - no projeto de teste, ver se dá para revogar `TEMPORARY` de `PUBLIC` sem quebrar o Supabase. É uma defesa a mais contra o `pg_temp`, que cobriria também funções de fora que as nossas chamam, como as do Vault;
+   - levar a armadilha do `pg_temp` para `scripts/testar-rls-servicos.sql`.
+
+   O resultado entra aqui.
 3. **Fase 4, conexões** (depois do portão): o worker em Python (`apps/worker`), começando pelo CSP 360, pela Meta e pelo Google Ads, com os testes em respostas gravadas. No mesmo dia: o token da Meta e as chaves do Google, direto no Railway, e os ids de cada conta, página, perfil e propriedade pelos scripts de cadastro. A contagem das 500 chamadas da Meta começa aí. O token de leitura do CRM também entra nesse dia, emitido lá pelo dono (decisão 0040).
 4. Em paralelo: o que o dono providencia (`docs/dados/plano.md`); no CRM, o dono aprova o PR do acesso de leitura, roda a migração de leitura no SQL Editor de lá e a conferência do fim do arquivo e, depois da decisão 0040, liga o acesso pela API e emite o token; e o que continua aberto com o time do CRM (`docs/dados/integracoes.md`, seção 19).
 5. Dívidas do protótipo, para a fase 4 (quando o front ligar no banco):
@@ -83,11 +119,15 @@ O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquema
 - O projeto Supabase de **produção** na região de São Paulo, com a configuração de `docs/dados/plano.md` ("O que o dono providencia"); o de teste existe desde 04/11/2026. Verificação em duas etapas nas contas de Supabase, Vercel, Railway, GitHub, n8n e das plataformas (a confirmar).
 - Quem cuida da LGPD do grupo: encarregado, canal do titular e a confirmação das bases legais do quadro de dado pessoal (`docs/dados/README.md`).
 - No CRM (o dono faz; não é pedido ao time): aprovar o PR do acesso de leitura, rodar a migração de leitura no SQL Editor de lá e a conferência do fim do arquivo; depois da decisão 0040, ligar o acesso pela API e emitir o token.
-- Do time do CRM: a régua da situação do cliente em SQL; a primeira compra por marca vinda do Control; a UTM e o `referrer` por lead; o responsável do negócio por id; as datas de envio e de faturado e a mudança de fase; a chave única nos itens do pedido; a função de leads dos sites na `main`; ampliar a `sincronizar-apps`. A lista vigente fica em `docs/dados/integracoes.md`, seção 19.
+- Do time do CRM: a régua da situação do cliente em SQL; a primeira compra por marca vinda do Control; a UTM e o `referrer` por lead; o responsável do negócio por id; as datas de envio e de faturado e a mudança de fase; a chave única nos itens do pedido; a função de leads dos sites na `main`, abrindo negócio novo quando o negócio aberto do cliente foi aberto à mão; ampliar a `sincronizar-apps`. A lista vigente fica em `docs/dados/integracoes.md`, seção 19.
+- Do dono, para o de-para de origem: a tela de negócio do CRM tem mais cinco origens além de "Carteira" e "Prospecção ativa". Com o de-para de hoje, "Feira" e "Outro" caem na pendência de origem sem de-para, "Instagram" conta como Meta, "WhatsApp" como SDR e "Indicação" como indicação. A resposta muda o de-para numa migração nova, de jeitos diferentes:
+  - "Feira" e "Outro" ganham linha nova;
+  - "WhatsApp" e "Indicação" já têm linha: a migração muda a que existe;
+  - "Instagram" e "WhatsApp" são também a `utm_source` que a função de leads dos sites grava no negócio do site. Marcar uma delas como não lead tiraria também esses leads do site, e trocar a origem delas reclassificaria esses leads. Por isso essas duas pedem outra regra (decisão nova) ou mudança no CRM.
 - Os ids de cada marca para os scripts de cadastro: contas de anúncio da Meta (`act_…`), páginas e perfis do Instagram, contas do Google Ads (e a de administrador, se houver), propriedades GA4 e do Search Console. Os acessos e as contas de serviço estão em "Em andamento".
 - Meta: confirmar a verificação do negócio; o App Review do Marketing API Access Tier só depois de o worker fazer as 500 chamadas em 15 dias (item mais longo da lista).
 - Preencher `NEXT_PUBLIC_GA_ID` e `NEXT_PUBLIC_GOOGLE_ADS_CONVERSAO` na Vercel dos dois sites. Site público com GA4 pede o aviso de cookies (regra 3 do padrão), no repositório de cada site.
-- Devolver o CI para `.github/workflows/ci.yml` (criar o arquivo pelo site do GitHub com o conteúdo de `docs/ci.yml`, ou dar ao token o escopo `workflow`).
+- Aprovar o PR do padrão (`claude/padrao-v0.5.2`), que devolve o CI para `.github/workflows/ci.yml`, já com os jobs do portão desta fase juntos (Próximos passos, item 2).
 - Quantas horas por semana custa hoje juntar os números dos painéis (campo "Quanto custa hoje" do prompt).
 - Renomear o repositório para `cliente-csp-mkt` (sistema de cliente desde a decisão 0039) ou manter `CSP-MKT` com a exceção registrada na decisão 0001.
 - Pôr no contrato que o crédito "Criado por Yan Nunes" faz parte da entrega; tirá-lo é a versão sem marca (decisão 0039).

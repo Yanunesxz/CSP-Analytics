@@ -867,7 +867,9 @@ end $$;
 -- funil é do funil padrão, que é de leads (decisão 0041, item 1; é como nasce o negócio da conversão do SDR): ele
 -- entra com o funil padrão quando há um só, e sem funil quando não há como saber qual é. A origem do CRM só é guardada
 -- se está no de-para, se é uma fonte conhecida ou se é a utm_source de primeiro contato do cliente; outro texto não é
--- gravado e o lead fica is_origin_unmapped. UTM limpa, referrer só o domínio, responsável pelo código do
+-- gravado e o lead fica is_origin_unmapped. O negócio aberto à mão também entra: a origem dele ("carteira", "prospecção
+-- ativa") está no de-para, marcada como não lead, e é guardada como as outras; quem o deixa fora de Leads é a
+-- mkt.v_leads (fase 4; decisão 0041, item 9). UTM limpa, referrer só o domínio, responsável pelo código do
 -- representante: o negócio que vem sem ele (fora da view negocios_responsavel) fica sem, mesmo que antes tivesse. O
 -- código do SDR vem do gatilho (LEAD-, não anda na releitura); o do negócio é o NEG- do CRM.
 create or replace function private.ingest_crm_lead(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,

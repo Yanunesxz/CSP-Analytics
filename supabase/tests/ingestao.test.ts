@@ -785,6 +785,111 @@ describe('a réplica do CRM', () => {
     });
   });
 
+  it('o negócio aberto à mão ("Carteira" ou "Prospecção ativa"): entra com a origem guardada, sem pendência de de-para, e o de-para diz que não é lead (decisão 0041, item 9)', async () => {
+    await caso(db, postgres, async (s) => {
+      const rodada = await abrirRodada(s, 'csp360', 'crm_incremental');
+      const negocio = (externo: string, codigo: string, origem: string) => ({
+        brand: 'cs',
+        key: { kind: 'deal', external_id: externo },
+        values: {
+          code: codigo,
+          funnel_external_id: 'funil-teste-0001',
+          origin: origem,
+          source_created_at: '2026-11-04T00:00:00Z',
+        },
+      });
+      expect(
+        await gravar(s, 'upsert_crm_leads', rodada, [
+          negocio('neg-mao-0001', 'NEG-9301', 'Carteira'),
+          negocio('neg-mao-0002', 'NEG-9302', 'Prospecção ativa'),
+          negocio('neg-mao-0003', 'NEG-9303', ' PROSPECCAO ATIVA '),
+          // As outras origens da tela do CRM continuam de lead.
+          negocio('neg-mao-0004', 'NEG-9304', 'Feira'),
+          negocio('neg-mao-0005', 'NEG-9305', 'Instagram'),
+          {
+            key: { kind: 'sdr', external_id: 'sdr-mao-0001' },
+            values: { origin: 'Carteira', source_created_at: '2026-11-04T13:00:00Z' },
+          },
+        ]),
+      ).toEqual([]);
+      const linha = (
+        kind: string,
+        external_id: string,
+        crm_origin_raw: string | null,
+        is_origin_unmapped: boolean,
+        is_lead: boolean | null,
+      ) => ({
+        kind,
+        external_id,
+        funil: kind === 'deal' ? 'funil-teste-0001' : null,
+        crm_origin_raw,
+        is_origin_unmapped,
+        is_lead,
+      });
+      expect(
+        await s.linhas(
+          `select l.kind, l.external_id, f.external_id as funil, l.crm_origin_raw, l.is_origin_unmapped, m.is_lead
+             from mkt.crm_leads l
+             left join mkt.crm_funnels f on f.id = l.crm_funnel_id
+             left join mkt.crm_origin_map m on m.raw_value = l.crm_origin_raw
+            where l.external_id like '%-mao-%' order by 1, 2`,
+        ),
+      ).toEqual([
+        linha('deal', 'neg-mao-0001', 'carteira', false, false),
+        linha('deal', 'neg-mao-0002', 'prospecção ativa', false, false),
+        linha('deal', 'neg-mao-0003', 'prospeccao ativa', false, false),
+        linha('deal', 'neg-mao-0004', null, true, null),
+        linha('deal', 'neg-mao-0005', 'instagram', false, null),
+        linha('sdr', 'sdr-mao-0001', 'carteira', false, false),
+      ]);
+      // A regra da mkt.v_leads (fase 4; metricas.md, seção 3.4) deixa de fora só o negócio cuja origem o de-para marca
+      // como não lead: o lead do SDR é sempre lead, e a origem sem de-para continua na pendência.
+      expect(
+        await s.linhas(
+          `select l.external_id, l.is_origin_unmapped
+             from mkt.crm_leads l
+             left join mkt.crm_origin_map m on m.raw_value = lower(btrim(l.crm_origin_raw))
+            where l.external_id like '%-mao-%' and (l.kind = 'sdr' or coalesce(m.is_lead, true))
+            order by 1`,
+        ),
+      ).toEqual([
+        { external_id: 'neg-mao-0004', is_origin_unmapped: true },
+        { external_id: 'neg-mao-0005', is_origin_unmapped: false },
+        { external_id: 'sdr-mao-0001', is_origin_unmapped: false },
+      ]);
+      // O CRM troca a origem ("Carteira" é o padrão do campo, e o Editar troca a de qualquer negócio): a releitura
+      // segue o CRM, nos dois sentidos. O negócio que perde a origem de não lead volta a ser lead também quando a
+      // origem nova fica fora do de-para ("Feira", que vira pendência) ou não vem.
+      expect(
+        await gravar(s, 'upsert_crm_leads', rodada, [
+          negocio('neg-mao-0001', 'NEG-9301', 'Indicação'),
+          negocio('neg-mao-0002', 'NEG-9302', 'Feira'),
+          negocio('neg-mao-0003', 'NEG-9303', ''),
+          negocio('neg-mao-0004', 'NEG-9304', 'Carteira'),
+        ]),
+      ).toEqual([]);
+      const relida = (
+        external_id: string,
+        crm_origin_raw: string | null,
+        is_origin_unmapped: boolean,
+        is_lead: boolean | null,
+      ) => ({ external_id, crm_origin_raw, is_origin_unmapped, is_lead });
+      expect(
+        await s.linhas(
+          `select l.external_id, l.crm_origin_raw, l.is_origin_unmapped, m.is_lead
+             from mkt.crm_leads l
+             left join mkt.crm_origin_map m on m.raw_value = l.crm_origin_raw
+            where l.external_id in ('neg-mao-0001', 'neg-mao-0002', 'neg-mao-0003', 'neg-mao-0004') order by 1`,
+        ),
+      ).toEqual([
+        relida('neg-mao-0001', 'indicação', false, true),
+        relida('neg-mao-0002', null, true, null),
+        relida('neg-mao-0003', null, false, null),
+        relida('neg-mao-0004', 'carteira', false, false),
+      ]);
+    });
+  });
+
   it('leads: o responsável pelo código do representante; o negócio que vem sem ele fica sem, mesmo que antes tivesse (decisão 0041, item 6)', async () => {
     await caso(db, postgres, async (s) => {
       const rodada = await abrirRodada(s, 'csp360', 'crm_incremental');

@@ -1,19 +1,21 @@
 -- Migração 05 · réplica mínima do CSP 360 (docs/dados/plano.md, "Ordem"; decisões 0006, 0012, 0014, 0015, 0041 e
 --   0042)
 --
--- O que faz: cria crm_funnels, crm_origin_map (com o de-para inicial, só valores genéricos de canal), crm_customers,
---   crm_customer_brands, crm_customer_reps, crm_leads, crm_orders e crm_upstream_runs (docs/dados/tabelas.md, seção 2):
---   só ids, marca, datas, situação, origem e UTM, representante por id e a chave clientes.id; nunca nome, telefone,
---   e-mail, documento ou texto livre de pessoa. O CRM como ele é, conferido no código de lá em 10/11/2026 (decisão
---   0041): o funil de leads é por regra, e mais de um pode ser (o funil padrão do CRM e o funil antigo dos leads do
---   site); o que o CRM não entrega fica nulo, sem valor inventado (a situação do cliente e o perdido marcado à mão); e
---   a compra do ERP mais antiga já vista fica guardada por cliente e marca (decisão 0042). A UTM, a origem e o nome do
---   funil que vêm do CRM passam por mkt.valid_crm_text no check (sem @ e, fora o nome de campanha, sem dado pessoal), a
---   última barreira depois da limpeza das funções ingest.*. O lead aceita marca nula ("Sem marca", decisão 0014);
---   pedido, situação e carteira, não. Cada tabela nasce com a RLS ligada, a leitura de quem tem a permissão (view_leads
---   nos leads, funis e de-para; view_connectors nas rodadas apps → CRM; view_numbers no resto) e a do worker. E o código
---   LEAD- do lead do SDR, por gatilho: vem da sequência, não gasta número na releitura, nunca muda e é único; o NEG- do
---   negócio é o do CRM e pode repetir até a passada completa apagar o negócio antigo (a chave é o id, decisão 0041).
+-- O que faz: cria crm_funnels, crm_origin_map (com o de-para inicial: só valores genéricos de canal e as origens do
+--   negócio aberto à mão, que não é lead), crm_customers, crm_customer_brands, crm_customer_reps, crm_leads, crm_orders
+--   e crm_upstream_runs (docs/dados/tabelas.md, seção 2): só ids, marca, datas, situação, origem e UTM, representante
+--   por id e a chave clientes.id; nunca nome, telefone, e-mail, documento ou texto livre de pessoa. O CRM como ele é,
+--   conferido no código de lá em 10/11/2026 (decisão 0041): o funil de leads é por regra, e mais de um pode ser (o
+--   funil padrão do CRM e o funil antigo dos leads do site); o que o CRM não entrega fica nulo, sem valor inventado (a
+--   situação do cliente e o perdido marcado à mão); o negócio aberto à mão pelo time comercial entra e não é lead (o
+--   de-para marca a origem dele, item 9); e a compra do ERP mais antiga já vista fica guardada por cliente e marca
+--   (decisão 0042). A UTM, a origem e o nome do funil que vêm do CRM passam por mkt.valid_crm_text no check (sem @ e,
+--   fora o nome de campanha, sem dado pessoal), a última barreira depois da limpeza das funções ingest.*. O lead aceita
+--   marca nula ("Sem marca", decisão 0014); pedido, situação e carteira, não. Cada tabela nasce com a RLS ligada, a
+--   leitura de quem tem a permissão (view_leads nos leads, funis e de-para; view_connectors nas rodadas apps → CRM;
+--   view_numbers no resto) e a do worker. E o código LEAD- do lead do SDR, por gatilho: vem da sequência, não gasta
+--   número na releitura, nunca muda e é único; o NEG- do negócio é o do CRM e pode repetir até a passada completa
+--   apagar o negócio antigo (a chave é o id, decisão 0041).
 -- Risco: baixo. Só cria; as tabelas nascem vazias, menos o de-para (valores genéricos, nenhum nome de pessoa). Nada lê
 --   o CRM: a réplica é gravada pelo worker, pelas funções ingest.* (migração 10); o funil antigo dos leads do site é
 --   marcado por setup.mark_lead_funnel (migração 10), pelo script de configuração.
@@ -22,7 +24,7 @@
 --     mkt.crm_customers, mkt.crm_origin_map, mkt.crm_funnels;
 --   drop function private.crm_leads_code();
 -- Conferir (o de-para inicial; os funis de leads; e cada tabela com a política da sua permissão):
---   select raw_value, origin from mkt.crm_origin_map order by origin, raw_value;
+--   select raw_value, origin, is_lead from mkt.crm_origin_map order by is_lead, origin, raw_value;
 --   select external_id, is_default, is_lead_funnel from mkt.crm_funnels where is_lead_funnel order by 1;
 --   select tablename, policyname, qual from pg_policies
 --    where schemaname = 'mkt' and tablename like 'crm\_%' and 'authenticated' = any(roles) order by 1;
@@ -48,13 +50,17 @@ create table if not exists mkt.crm_funnels (
 alter table mkt.crm_funnels enable row level security;
 
 -- De-para da origem do negócio (negocios.origem, texto sem lista no CRM) para a origem do lead. Só a migração grava:
--- valor novo é conferido no CSP 360 e entra aqui por migração.
+-- valor novo é conferido no CSP 360 e entra aqui por migração. A origem que diz que o negócio não é lead tem is_lead
+-- falso e nenhuma origem de lead (decisão 0041, item 9): o negócio fica na réplica, com a origem guardada e sem a
+-- pendência de origem sem de-para, e a mkt.v_leads (fase 4) o deixa de fora. O lead do SDR é sempre lead.
 create table if not exists mkt.crm_origin_map (
   id uuid primary key default gen_random_uuid(),
   raw_value text not null unique check (raw_value = lower(btrim(raw_value)) and raw_value <> ''),
-  origin mkt.lead_origin not null,
+  origin mkt.lead_origin,
+  is_lead boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default date_trunc('milliseconds', now())
+  updated_at timestamptz not null default date_trunc('milliseconds', now()),
+  check (is_lead = (origin is not null))
 );
 alter table mkt.crm_origin_map enable row level security;
 
@@ -77,6 +83,15 @@ insert into mkt.crm_origin_map (raw_value, origin) values
   ('busca orgânica', 'organic'),
   ('busca organica', 'organic'),
   ('direto', 'direct')
+on conflict (raw_value) do nothing;
+
+-- O negócio que o time comercial abre à mão na tela do CRM, com a origem "Carteira" (o padrão do campo) ou "Prospecção
+-- ativa", não é lead (decisão 0041, item 9): é trabalho do time comercial, não chegada de marketing. Entra sem origem
+-- de lead e com is_lead falso, com e sem acento, como os outros textos do de-para.
+insert into mkt.crm_origin_map (raw_value, origin, is_lead) values
+  ('carteira', null, false),
+  ('prospecção ativa', null, false),
+  ('prospeccao ativa', null, false)
 on conflict (raw_value) do nothing;
 
 -- Clientes (dimensão compartilhada, sem marca: a base do CRM é uma só). As UTMs de primeiro contato vêm da view

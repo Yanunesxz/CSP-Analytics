@@ -243,7 +243,7 @@ o arquivo de lá; aqui não há cópia do SQL.
 
 | View | O que entrega | Por quê |
 |---|---|---|
-| `clientes_utm` | as UTMs de primeiro contato do cliente (fonte, meio e campanha), lidas dos campos personalizados pelo id de cada campo, achado pela chave. Só vem o cliente com pelo menos uma das três: cliente que não vem fica com `first_utm_*` nulas. É o primeiro valor não vazio de cada campo, campo a campo: os três podem vir de envios diferentes. Quem já é cliente ativo na hora do envio não recebe UTM no cadastro (só a origem do negócio). O valor pode ser editado à mão no CRM. Só há UTM para quem entrou pelo site, desde 09/09/2026 | o jsonb inteiro leva texto livre junto |
+| `clientes_utm` | as UTMs de primeiro contato do cliente (fonte, meio e campanha), lidas dos campos personalizados pelo id de cada campo, achado pela chave. Só vem o cliente com pelo menos uma das três: cliente que não vem fica com `first_utm_*` nulas. É o primeiro valor não vazio de cada campo, campo a campo: os três podem vir de envios diferentes. Quem já é cliente ativo na hora do envio não recebe UTM no cadastro (só a origem do negócio, quando ele abre um). O valor pode ser editado à mão no CRM. Só há UTM para quem entrou pelo site, desde 09/09/2026 | o jsonb inteiro leva texto livre junto |
 | `clientes_compras_marca` | o retrato do ERP por marca: a última compra e o total de cerca de 24 meses. É cópia do que o Control exportou para o app pela última vez; o CRM só copia. `primeira_compra` vem sempre nula. O retrato da marca é trocado inteiro quando muda: a última compra anterior some. Pode incluir compra feita pelo app e já faturada, com atraso | saber quem já comprava antes de agosto de 2026 (decisão 0030). Como a última compra anda para a frente, a réplica guarda a compra do ERP mais antiga que já viu (`erp_earliest_purchase_on`), e é essa data que a regra do histórico usa (decisão 0042) |
 | `negocios_responsavel` | o responsável do negócio como id de `usuarios`, não como nome. A view só traz o negócio quando o nome (sem espaço nas pontas, sem diferença de maiúscula) é de exatamente uma pessoa, de qualquer papel, ativa ou não. Nome repetido, desconhecido ou vazio: o negócio não vem. O lead do SDR não tem responsável | representante por código (decisão 0025). Negócio que não vem na view fica com `assigned_rep_id` nulo ("Sem representante"), mesmo que antes tivesse |
 | `clientes_situacao` (não existe) | nada: a régua da situação só roda na tela do CRM | o CSP-MKT não recalcula a régua (decisão 0012). A situação fica nula e a Base mostra "Sem situação" até o CRM entregar a régua em SQL (nota do quadro 3.2 e seção 19) |
@@ -302,18 +302,29 @@ do negócio; a UTM e o `referrer` por lead; a primeira compra por marca; a régu
   funil e o que já existe em `crm_leads`, e ignora o resto. `ingest.delete_missing` em `crm_leads` (`kind = 'deal'`)
   apaga só o id que não existe mais em `negocios`, em qualquer funil: o negócio que sai do funil de leads continua
   lead aqui.
-- **Lead é o card** (decisão 0041, item 2): quem já tem negócio aberto no funil de leads e manda o formulário de novo
+- **Lead é o card** (decisão 0041, item 2): quem já tem negócio em aberto no funil padrão e manda o formulário de novo
   não ganha negócio. O CRM anota o envio no que existe, e aqui o reenvio não vira lead. Por isso "Leads" pode ficar
-  abaixo de "Leads informados pela plataforma". Quem já é cliente ativo e manda o formulário abre negócio no funil de
-  leads: conta como lead e não ganha UTM. A chave do lead é o id do negócio: o código mostrado pode ser reaproveitado
-  no CRM depois de uma limpeza.
+  abaixo de "Leads informados pela plataforma". A função de leads dos sites procura só o negócio em aberto gravado com
+  o id do funil padrão: o negócio sem funil (como o da conversão do SDR) e o encerrado não seguram o envio, que abre
+  negócio novo. Quem já é cliente ativo, sem negócio em aberto no funil padrão, e manda o formulário abre negócio no
+  funil de leads: conta como lead e não ganha UTM. A chave do lead é o id do negócio: o código mostrado pode ser
+  reaproveitado no CRM depois de uma limpeza.
 - **O lead do SDR convertido conta uma vez** (decisão 0041, item 3): a conversão abre também um negócio com a origem
   "SDR WhatsApp", sem funil e sem marca. A ligação entre os dois é o cliente, e o de-para leva `sdr whatsapp` para
-  `sdr` ([`metricas.md`](metricas.md), seção 3.3).
+  `sdr` ([`metricas.md`](metricas.md), seção 3.3). Só o negócio com essa origem se liga, comparando o dia: o negócio
+  aberto à mão com a origem "WhatsApp" conta à parte, e o da conversão também, se alguém trocar a origem dele no CRM.
 - **Negócio aberto à mão não conta como lead** (decisão 0041, item 9): o funil padrão é o funil de vendas do time
   comercial, e nele também há negócio aberto à mão, com a origem "Carteira" ou "Prospecção ativa". Ele entra na
   réplica e fica fora de Leads, da conversão e do custo por lead. Essas duas origens não aparecem na pendência de
-  origem sem de-para.
+  origem sem de-para: estão no de-para marcadas como não lead (`crm_origin_map.is_lead = false`), e a ingestão as
+  guarda como as outras. Quem deixa o negócio de fora é a `mkt.v_leads` ([`metricas.md`](metricas.md), seção 3.4).
+  A regra segue a origem atual do negócio, pelo texto. No CRM, o Editar troca a origem de qualquer negócio: o negócio
+  que ganha "Carteira" ou "Prospecção ativa" sai de Leads, também nos dias passados, e volta se perder essa origem. O
+  lead do site cuja `utm_source` for um desses textos também fica fora. **Limite:** quem tem negócio em aberto, aberto
+  à mão e gravado com o id do funil padrão, e manda o formulário do site, não ganha negócio: a função de leads dos
+  sites só anota o envio no negócio em aberto que acha, sem olhar a origem. Esse envio não conta como lead em lugar
+  nenhum (pedido ao time do CRM, seção 19). O negócio aberto à mão sem funil (o da tela do funil padrão até
+  24/09/2026) ou encerrado não segura o envio: aí o envio abre negócio novo e conta como lead.
 - **Ordem na rodada:** marcas → funis → representantes → clientes e views → leads → pedidos com itens → rodadas apps →
   CRM.
 
@@ -330,7 +341,7 @@ do negócio; a UTM e o `referrer` por lead; a primeira compra por marca; a régu
 | `clientes.status` `prospecto`, `ativo`, `inativo` | `prospect`, `active`, `inactive` |
 | `situacao` `lead`, `ativo`, `inativo-recente`, `inativo-antigo`, `perdido`, "sem base" (só quando o CRM entregar a régua em SQL; hoje nada chega) | `lead`, `active`, `inactive_recent`, `inactive_old`, `lost`, nulo (hoje, sempre nulo) |
 | `sincronizacoes.disparo` | `mkt.upstream_trigger` |
-| `negocios.origem` | `crm_origin_raw` só quando está no de-para, é uma fonte de UTM conhecida ou é a `utm_source` de primeiro contato do cliente; outro texto não é gravado e o lead fica `is_origin_unmapped` ([`tabelas.md`](tabelas.md), seção 2; a classificação é SQL, `metricas.md` 3.1). A origem já vem limpa da view (nota do quadro 3.2): a que a view zerou chega nula e não vira origem sem de-para. O lead do site traz a `utm_source` como veio, sem normalizar maiúsculas, ou `site` quando não veio UTM |
+| `negocios.origem` | `crm_origin_raw` só quando está no de-para, é uma fonte de UTM conhecida ou é a `utm_source` de primeiro contato do cliente; outro texto não é gravado e o lead fica `is_origin_unmapped` ([`tabelas.md`](tabelas.md), seção 2; a classificação é SQL, `metricas.md` 3.1). A origem já vem limpa da view (nota do quadro 3.2): a que a view zerou chega nula e não vira origem sem de-para. O lead do site traz a `utm_source` como veio, sem normalizar maiúsculas, ou `site` quando não veio UTM. As origens do negócio aberto à mão ("Carteira", "Prospecção ativa") estão no de-para marcadas como não lead: são gravadas, e o negócio fica fora de `mkt.v_leads` (decisão 0041, item 9) |
 | UTM do CRM | cortada em 150 letras; vira nulo o valor com `@` ou que pareça dado pessoal (`PERSONAL_DATA_DROPPED`). A UTM já vem limpa da view `clientes_utm`: o teste daqui continua, como segunda barreira, e o que a view já tirou não entra nessa contagem |
 | `funis_venda.nome` | `crm_funnels.name`, cortado em 150 letras. Já vem da view com o rótulo no lugar do nome com dado pessoal; o teste daqui continua, como segunda barreira: com `@` ou com cara de dado pessoal, entra o rótulo `Funil` e os 8 primeiros caracteres do id, nunca o texto, e conta `PERSONAL_DATA_DROPPED` (a linha não é recusada, para o funil de leads não sumir) |
 | lead do SDR | código `LEAD-` gerado aqui; marca nula (decisão 0014) |
@@ -732,7 +743,9 @@ aviso vai para o WhatsApp de cada perfil, decisão 0019). O `.env.example` muda 
 - Meta, TikTok e Google: quanto cada uma gasta acima do orçamento diário (decisão 0021).
 - CSP 360: se a API de dados do CRM aceita o token do papel; a página de 1.000 linhas; o tempo de cada página
   (decisão 0040). E quatro números da conferência que o dono roda no CRM depois de criar o acesso: os negócios sem
-  funil, os pedidos sem carimbo, os funis padrão e o fuso do banco. Eles ajustam a decisão 0041, se preciso.
+  funil, os pedidos sem carimbo, os funis padrão e o fuso do banco. Eles ajustam a decisão 0041, se preciso. Também:
+  se `marcas.nome_fantasia` é o nome que a tela mostra ("Corpo Sensual", "Plumene"), porque a passada diária grava
+  esse texto em `brands.name`. Se não for, decidir antes da carga se o worker mantém o nome da migração.
 
 **A confirmar na primeira escrita** (numa conta de teste ou antes de ligar a escrita numa conta de verdade):
 
@@ -751,8 +764,11 @@ aviso vai para o WhatsApp de cada perfil, decisão 0019). O `.env.example` muda 
   por id (hoje é o nome, e só vira id quando é de uma pessoa só); as datas de envio e de faturado e a de cada mudança
   de fase; a chave única em `pedido_itens` (sem ela, duas rodadas sobrepostas da sincronização dos apps podem duplicar
   item, e o total do pedido dobra); a função de leads dos sites na `main` do CRM (hoje é publicada a partir de uma
-  branch; dela dependem a origem, a UTM de primeiro contato e o funil dos leads); ampliar a sincronização dos apps
-  (o total e a origem do pedido); a campanha de origem do lead de formulário de plataforma, se o grupo usar.
+  branch; dela dependem a origem, a UTM de primeiro contato e o funil dos leads); a mesma função abrir negócio novo
+  quando o negócio em aberto do cliente no funil padrão foi aberto à mão (origem "Carteira" ou "Prospecção
+  ativa"): hoje ela só anota o envio nele, e o envio fica fora de Leads (decisão 0041, item 9; seção 3.4); ampliar a
+  sincronização dos apps (o total e a origem do pedido); a campanha de origem do lead de formulário de plataforma, se o
+  grupo usar.
 - **Respondido em 10/11/2026**, pela leitura do código do CRM: o papel e as views; qual funil vale como funil de leads
   (seção 3.4); como a conversão do SDR preenche a origem do negócio e o formato do login dos apps (seção 3.5).
 - **Meta:** Business Verification e App Review para a escrita (o item mais longo).
