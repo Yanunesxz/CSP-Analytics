@@ -8,9 +8,10 @@
 --   authz.is_active_user e entra na 03.
 -- Risco: baixo. Só cria; não toca em dado. Domain nunca é apagado: mudar uma lista é "alter domain" numa migração
 --   nova, com o labels.ts no mesmo PR (listas.md).
--- Como reverter (só no projeto de teste, antes de produção):
+-- Como reverter (só no projeto de teste, antes de produção, e depois de reverter as migrações seguintes: authz.can,
+--   da 03, lê role_permissions sem que o banco registre a dependência, e as tabelas das seguintes usam os domains):
 --   drop table mkt.holidays, mkt.role_permissions;
---   drop domain mkt.<cada domain desta migração>;   -- depois das tabelas das migrações seguintes, que os usam
+--   drop domain mkt.<cada domain desta migração>;
 -- Conferir (o que cada papel pode; e cada lista com os códigos):
 --   select role, string_agg(action, ', ' order by action) from mkt.role_permissions group by role order by role;
 --   select t.typname, pg_get_constraintdef(c.oid) from pg_type t join pg_constraint c on c.contypid = t.oid
@@ -51,7 +52,9 @@ begin
         ('lead_kind',              array['deal', 'sdr']),
         ('crm_customer_status',    array['prospect', 'active', 'inactive']),
         ('upstream_trigger',       array['cron', 'manual', 'script']),
-        ('rep_crm_role',           array['manager', 'supervisor', 'internal_seller', 'field_rep', 'relationship']),
+        -- Os papéis de usuarios.papel no CRM; o de atendimento entrou no lugar do de relacionamento (decisão 0041)
+        ('rep_crm_role',           array['manager', 'supervisor', 'internal_seller', 'field_rep',
+                                         'customer_service']),
         ('web_property_kind',      array['ga4_property', 'gsc_site']),
         -- Canais, SEO e GEO
         ('ga4_channel',            array['organic_search', 'ai_assistant', 'direct', 'paid_search', 'paid_social',

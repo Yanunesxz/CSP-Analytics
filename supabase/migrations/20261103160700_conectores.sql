@@ -30,7 +30,7 @@
 -- lead; a marca e o código da ação na proposta; as datas no relatório da semana; o conector e a finalidade na
 -- credencial; a parada no "Parar tudo sem confirmação"; e o conector e a rodada na exclusão em massa segurada.
 create or replace function mkt.valid_notice_payload(p_notice mkt.notice_kind, p_payload jsonb) returns boolean
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 declare
   c_keys constant jsonb := $keys${
     "connector_down": {"connector": "connector", "status": "connector_status", "since_at": "timestamp",
@@ -239,8 +239,9 @@ select c.id, j.job, j.every_minutes, j.tolerance_minutes
   join mkt.connectors c on c.code = j.connector
 on conflict (connector_id, job) do nothing;
 
--- Cada rodada de cada conector: o diário da sincronização e a marca d'água da réplica (decisão 0006). "Tentar de
--- novo" cria uma rodada requested, uma por vez por conector; cada CSV tem a sua. Guarda 90 dias.
+-- Cada rodada de cada conector: o diário da sincronização e a marca d'água da réplica (decisão 0006); no CSP 360 não há
+-- marca d'água, e watermark_* guardam a janela de 3 dias lida (decisão 0041, item 4). "Tentar de novo" cria uma rodada
+-- requested, uma por vez por conector; cada CSV tem a sua. Guarda 90 dias.
 create table if not exists mkt.sync_runs (
   id uuid primary key default gen_random_uuid(),
   connector_id uuid not null references mkt.connectors(id),

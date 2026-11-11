@@ -1,34 +1,43 @@
--- Migração 05 · réplica mínima do CSP 360 (docs/dados/plano.md, "Ordem"; decisões 0006, 0012, 0014 e 0015)
+-- Migração 05 · réplica mínima do CSP 360 (docs/dados/plano.md, "Ordem"; decisões 0006, 0012, 0014, 0015, 0041 e
+--   0042)
 --
 -- O que faz: cria crm_funnels, crm_origin_map (com o de-para inicial, só valores genéricos de canal), crm_customers,
 --   crm_customer_brands, crm_customer_reps, crm_leads, crm_orders e crm_upstream_runs (docs/dados/tabelas.md, seção 2):
 --   só ids, marca, datas, situação, origem e UTM, representante por id e a chave clientes.id; nunca nome, telefone,
---   e-mail, documento ou texto livre de pessoa. A UTM e a origem que vêm do CRM passam por mkt.valid_crm_text no check
---   (sem @ e, fora o nome de campanha, sem dado pessoal), a última barreira depois da limpeza das funções ingest.*. O
---   lead aceita marca nula ("Sem marca", decisão 0014); pedido, situação e carteira, não. Cada tabela nasce com a RLS
---   ligada, a leitura de quem tem a permissão (view_leads nos leads, funis e de-para; view_connectors nas rodadas apps →
---   CRM; view_numbers no resto) e a do worker. E o código LEAD- do lead do SDR, por gatilho: vem da sequência, não
---   gasta número na releitura e nunca muda.
+--   e-mail, documento ou texto livre de pessoa. O CRM como ele é, conferido no código de lá em 10/11/2026 (decisão
+--   0041): o funil de leads é por regra, e mais de um pode ser (o funil padrão do CRM e o funil antigo dos leads do
+--   site); o que o CRM não entrega fica nulo, sem valor inventado (a situação do cliente e o perdido marcado à mão); e
+--   a compra do ERP mais antiga já vista fica guardada por cliente e marca (decisão 0042). A UTM, a origem e o nome do
+--   funil que vêm do CRM passam por mkt.valid_crm_text no check (sem @ e, fora o nome de campanha, sem dado pessoal), a
+--   última barreira depois da limpeza das funções ingest.*. O lead aceita marca nula ("Sem marca", decisão 0014);
+--   pedido, situação e carteira, não. Cada tabela nasce com a RLS ligada, a leitura de quem tem a permissão (view_leads
+--   nos leads, funis e de-para; view_connectors nas rodadas apps → CRM; view_numbers no resto) e a do worker. E o código
+--   LEAD- do lead do SDR, por gatilho: vem da sequência, não gasta número na releitura, nunca muda e é único; o NEG- do
+--   negócio é o do CRM e pode repetir até a passada completa apagar o negócio antigo (a chave é o id, decisão 0041).
 -- Risco: baixo. Só cria; as tabelas nascem vazias, menos o de-para (valores genéricos, nenhum nome de pessoa). Nada lê
---   o CRM: a réplica é gravada pelo worker, pelas funções ingest.* (migração 10).
+--   o CRM: a réplica é gravada pelo worker, pelas funções ingest.* (migração 10); o funil antigo dos leads do site é
+--   marcado por setup.mark_lead_funnel (migração 10), pelo script de configuração.
 -- Como reverter (só no projeto de teste, antes de produção, e depois de reverter as migrações seguintes):
 --   drop table mkt.crm_upstream_runs, mkt.crm_orders, mkt.crm_leads, mkt.crm_customer_reps, mkt.crm_customer_brands,
 --     mkt.crm_customers, mkt.crm_origin_map, mkt.crm_funnels;
 --   drop function private.crm_leads_code();
--- Conferir (o de-para inicial; e cada tabela com a política da sua permissão):
+-- Conferir (o de-para inicial; os funis de leads; e cada tabela com a política da sua permissão):
 --   select raw_value, origin from mkt.crm_origin_map order by origin, raw_value;
+--   select external_id, is_default, is_lead_funnel from mkt.crm_funnels where is_lead_funnel order by 1;
 --   select tablename, policyname, qual from pg_policies
 --    where schemaname = 'mkt' and tablename like 'crm\_%' and 'authenticated' = any(roles) order by 1;
 
 -- ---------- Tabelas ----------
 
--- Funis de venda do CRM. Qual é o funil de leads é configuração do CSP-MKT (só por migração, quando o time do CRM
--- decidir): um só pode ser.
+-- Funis de venda do CRM. Funil de leads por regra, não por migração (decisão 0041, item 1): o funil padrão do CRM, em
+-- que a ingestão faz is_lead_funnel seguir is_default, e o funil antigo dos leads do site, que guarda o histórico
+-- encerrado e é marcado uma vez, pelo id, por setup.mark_lead_funnel (migração 10). Mais de um funil é de leads: não
+-- há índice único em is_lead_funnel. O nome com dado pessoal vira um rótulo na ingestão; o check é a última barreira.
 create table if not exists mkt.crm_funnels (
   id uuid primary key default gen_random_uuid(),
   source mkt.data_source not null default 'csp360',
   external_id text not null,
-  name text not null,
+  name text not null check (mkt.valid_crm_text(name)),
   is_default boolean not null default false,
   is_lead_funnel boolean not null default false,
   last_seen_at timestamptz,
@@ -37,7 +46,6 @@ create table if not exists mkt.crm_funnels (
   unique (source, external_id)
 );
 alter table mkt.crm_funnels enable row level security;
-create unique index if not exists crm_funnels_one_lead_funnel on mkt.crm_funnels (is_lead_funnel) where is_lead_funnel;
 
 -- De-para da origem do negócio (negocios.origem, texto sem lista no CRM) para a origem do lead. Só a migração grava:
 -- valor novo é conferido no CSP 360 e entra aqui por migração.
@@ -52,10 +60,13 @@ alter table mkt.crm_origin_map enable row level security;
 
 -- O de-para inicial: só nomes genéricos de canal e de fonte, normalizados (minúsculas, sem espaço nas pontas), com a
 -- mesma origem que a classificação da UTM dá (metricas.md, 3.1). O "google" sozinho fica de fora: pago ou orgânico
--- depende do meio, e a classificação decide. Nenhum texto com nome de pessoa entra no repositório.
+-- depende do meio, e a classificação decide. "sdr whatsapp" é a origem que a conversão do lead do SDR grava no
+-- negócio que ela abre, sem funil e sem marca: vai para sdr, e a mkt.v_leads (fase 4) liga os dois pelo cliente, para
+-- o lead contar uma vez (decisão 0041, item 3). Nenhum texto com nome de pessoa entra no repositório.
 insert into mkt.crm_origin_map (raw_value, origin) values
   ('site', 'site'),
   ('whatsapp', 'sdr'),
+  ('sdr whatsapp', 'sdr'),
   ('indicação', 'referral'),
   ('indicacao', 'referral'),
   ('meta ads', 'meta'),
@@ -92,17 +103,24 @@ create table if not exists mkt.crm_customers (
 alter table mkt.crm_customers enable row level security;
 create index if not exists crm_customers_code on mkt.crm_customers (code);
 
--- Situação e última compra por cliente e marca: a régua do CRM, lida da view clientes_situacao (decisão 0012), e o
--- retrato do ERP sem os pedidos do CRM (clientes_compras_marca, decisão 0030).
+-- Situação e retrato do ERP por cliente e marca. A situação é a da régua do CRM (decisão 0012), que hoje só roda na
+-- tela de lá, sem SQL; o perdido marcado à mão é coluna do cliente, não da marca, e não está nas views lidas. Enquanto
+-- for assim, situation, is_lost_manual, last_purchase_on e situation_computed_at ficam nulos: "Sem dados" (decisão
+-- 0041, item 6), e a linha nasce da view clientes_compras_marca. Ela é cópia do que o Control exportou para o app pela
+-- última vez: a última compra e o total de cerca de 24 meses, sem a primeira compra; o retrato da marca é trocado
+-- inteiro quando muda e pode trazer compra feita pelo app. Por isso erp_earliest_purchase_on guarda a compra do ERP
+-- mais antiga já vista, que só troca por uma data anterior (decisão 0042; quem calcula é a ingestão, na migração 10).
+-- O par que some da view perde só o retrato na passada completa, e a data fica; ele sai com o cliente, pela cascata.
 create table if not exists mkt.crm_customer_brands (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references mkt.crm_customers(id) on delete cascade,
   brand_id uuid not null references mkt.brands(id),
   situation mkt.customer_situation,
-  is_lost_manual boolean not null default false,
+  is_lost_manual boolean,                 -- nulo enquanto o CRM não entregar (decisão 0041)
   last_purchase_on date,
   erp_first_purchase_on date,
   erp_last_purchase_on date,
+  erp_earliest_purchase_on date,          -- a mais antiga já vista; só troca por data anterior (decisão 0042)
   erp_total_purchased_cents bigint check (erp_total_purchased_cents >= 0),
   situation_computed_at timestamptz,
   last_seen_at timestamptz not null,
@@ -128,13 +146,15 @@ alter table mkt.crm_customer_reps enable row level security;
 create index if not exists crm_customer_reps_rep on mkt.crm_customer_reps (sales_rep_id, brand_id);
 
 -- Leads: negócios do funil de leads e leads do SDR. A marca pode faltar ("Sem marca", decisão 0014). A etapa, o 1º
--- pedido e a origem classificada não são colunas: saem de mkt.v_leads.
+-- pedido e a origem classificada não são colunas: saem de mkt.v_leads. A chave é o id (decisão 0041, item 2): o
+-- código só é único no lead do SDR (o LEAD- daqui); o NEG- do negócio pode repetir, porque o CRM reaproveita o código
+-- do negócio apagado, e o antigo só sai daqui na passada completa.
 create table if not exists mkt.crm_leads (
   id uuid primary key default gen_random_uuid(),
   source mkt.data_source not null default 'csp360',
   kind mkt.lead_kind not null,
   external_id text not null,
-  code text not null unique,
+  code text not null,
   brand_id uuid references mkt.brands(id),
   customer_id uuid references mkt.crm_customers(id) on delete set null,
   crm_funnel_id uuid references mkt.crm_funnels(id) on delete set null,
@@ -161,6 +181,7 @@ create index if not exists crm_leads_brand_created on mkt.crm_leads (brand_id, s
 create index if not exists crm_leads_customer on mkt.crm_leads (customer_id);
 create index if not exists crm_leads_rep on mkt.crm_leads (assigned_rep_id);
 create index if not exists crm_leads_utm on mkt.crm_leads (mkt.utm_key(utm_campaign));
+create unique index if not exists crm_leads_sdr_code on mkt.crm_leads (code) where kind = 'sdr';
 
 -- Pedidos, em todos os status: o enviado e depois cancelado sai da conta. Faturado é carimbo do enviado
 -- (is_invoiced), nunca status (seção 9 do padrão).
@@ -235,7 +256,7 @@ create or replace trigger crm_upstream_runs_updated_at before update on mkt.crm_
 -- existe fica com o mesmo código e a sequência não anda; o código que vier no insert é ignorado; e o código do SDR
 -- nunca muda (o do negócio é o do CRM, que a releitura atualiza).
 create or replace function private.crm_leads_code() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_code text;
 begin

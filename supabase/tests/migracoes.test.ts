@@ -1,18 +1,77 @@
 // Regras de toda migração (docs/dados/plano.md, "Ordem das migrações"): nome com versão única, cabeçalho do padrão,
-// RLS ligada na mesma migração que cria a tabela, nenhuma função aberta a PUBLIC ou anon, e rodar de novo sem erro.
+// RLS ligada na mesma migração que cria a tabela, toda função com search_path = pg_catalog, pg_temp, nenhuma função
+// aberta a PUBLIC ou anon, rodar de novo sem erro, e o "Como reverter" de cada uma, da última até a 01.
 import { describe, expect, it } from 'vitest';
 import {
+  type Migracao,
   abrirBanco,
   aplicarMigracoes,
   caso,
   completarApoio,
+  erroDoBanco,
   lerMigracoes,
   novoBanco,
   postgres,
 } from './apoio/banco';
-import { consultaDe, retrato, violacoes } from './apoio/catalogo';
+import { type Consulta, consultaDe, retrato, violacoes } from './apoio/catalogo';
 
 const migracoes = lerMigracoes();
+
+/**
+ * Os comandos do "Como reverter" do cabeçalho de uma migração. Um comando começa na linha que abre com drop, alter,
+ * select, revoke ou grant e vai até o ";" fora de aspas; a linha de texto fora de um comando (a explicação da 09) fica
+ * de fora, e o "-- …" no fim da linha é comentário.
+ */
+function comandosDeReverter(m: Migracao): string[] {
+  const cabecalho = m.sql.split('\n');
+  const fim = cabecalho.findIndex((l) => !l.startsWith('--'));
+  const linhas = cabecalho.slice(0, fim < 0 ? cabecalho.length : fim);
+  const inicio = linhas.findIndex((l) => l.includes('Como reverter'));
+  const conferir = linhas.findIndex((l, i) => i > inicio && /^--\s*Conferir/.test(l));
+  const comandos: string[] = [];
+  let atual = '';
+  for (const bruta of linhas.slice(inicio + 1, conferir < 0 ? linhas.length : conferir)) {
+    const linha = bruta.replace(/^--\s?/, '');
+    if (!atual && !/^\s*(drop|alter|select|revoke|grant)\b/i.test(linha)) continue;
+    let aspas = false;
+    for (let i = 0; i < linha.length; i += 1) {
+      const c = linha.charAt(i);
+      if (!aspas && c === '-' && linha.charAt(i + 1) === '-') break;
+      if (c === "'") aspas = !aspas;
+      if (!aspas && c === ';') {
+        if (atual.trim()) comandos.push(atual.trim());
+        atual = '';
+        continue;
+      }
+      if (atual || c.trim()) atual += c;
+    }
+    if (atual) atual += '\n';
+  }
+  if (atual.trim()) comandos.push(atual.trim());
+  return comandos;
+}
+
+/**
+ * O que um comando do "Como reverter" roda: o "select format(…)" devolve os comandos ("e rodar o que sair"), e o
+ * "<cada domain desta migração>" vira um drop domain por domain que a migração criou.
+ */
+async function expandir(consulta: Consulta, comando: string, domains: string[]): Promise<string[]> {
+  if (comando.includes('<cada domain desta migração>')) return domains.map((d) => `drop domain ${d}`);
+  if (/^select\s+format\(/i.test(comando)) {
+    return (await consulta<{ format: string }>(comando)).map((l) => l.format);
+  }
+  return [comando];
+}
+
+/** Os domains que aparecem no retrato depois da migração e não estavam no de antes dela. */
+function domainsNovos(antes: Record<string, unknown>, depois: Record<string, unknown>): string[] {
+  const nomes = (foto: Record<string, unknown>) =>
+    (foto.tipos as Array<{ tipo: string; typtype: string }>)
+      .filter((t) => t.typtype === 'd')
+      .map((t) => t.tipo);
+  const velhos = new Set(nomes(antes));
+  return nomes(depois).filter((d) => !velhos.has(d));
+}
 
 describe('arquivos de migração', () => {
   it('nome AAAAMMDDHHMMSS_o_que_faz.sql, com versão única, a partir da 01', () => {
@@ -32,6 +91,15 @@ describe('arquivos de migração', () => {
       for (const parte of ['O que faz:', 'Risco:', 'Como reverter', 'Conferir']) {
         expect(cabecalho, `${m.nome}: ${parte}`).toContain(parte);
       }
+    }
+  });
+
+  it('o "Como reverter" de cada uma, depois da 01, vale só depois de reverter as seguintes', () => {
+    for (const m of migracoes.slice(1)) {
+      const linha = m.sql.split('\n').find((l) => l.includes('Como reverter')) ?? '';
+      expect(linha, m.nome).toMatch(
+        /Como reverter \(só no projeto de teste, antes de produção, e depois de reverter (as migrações seguintes|a migração \d{2})\b/,
+      );
     }
   });
 
@@ -65,6 +133,73 @@ describe('aplicar as migrações', () => {
     }
   }, 180_000);
 
+  it('o "Como reverter" de cada uma, da última até a 01, roda sem erro e volta o catálogo ao de antes dela', async () => {
+    // Sem a segunda parte do arquivo de apoio: o relógio dos testes dá privilégio aos papéis da 01 e barraria o drop
+    // role, e não é das migrações.
+    const db = await novoBanco();
+    try {
+      const consulta = consultaDe(db);
+      const fotos = [await retrato(consulta)];
+      for (const m of migracoes) {
+        await aplicarMigracoes(db, [m]);
+        fotos.push(await retrato(consulta));
+      }
+      for (let n = migracoes.length; n >= 1; n -= 1) {
+        const m = migracoes[n - 1];
+        const antes = fotos[n - 1];
+        const depois = fotos[n];
+        if (!m || !antes || !depois) throw new Error(`migração ${n} sem retrato`);
+        const comandos = comandosDeReverter(m);
+        expect(comandos.length, m.nome).toBeGreaterThan(0);
+        for (const comando of comandos) {
+          for (const sql of await expandir(consulta, comando, domainsNovos(antes, depois))) {
+            try {
+              await db.exec(sql);
+            } catch (e) {
+              const erro = erroDoBanco(e);
+              throw new Error(`${m.nome}, "Como reverter": ${erro.code} ${erro.message} em: ${sql}`, {
+                cause: e,
+              });
+            }
+          }
+        }
+        expect(await retrato(consulta), m.nome).toEqual(antes);
+      }
+    } finally {
+      await db.close();
+    }
+  }, 180_000);
+
+  it('com as seguintes ainda aplicadas, o "Como reverter" da 03 para no primeiro comando, sem apagar nada delas', async () => {
+    const m03 = migracoes.find((m) => m.nome.endsWith('_usuarios.sql'));
+    if (!m03) throw new Error('migração 03 não achada');
+    const db = await abrirBanco();
+    try {
+      await caso(db, postgres, async (s) => {
+        const antes = await retrato(s.linhas);
+        // Como o psql com ON_ERROR_STOP e sem transação: cada comando vale sozinho, e o primeiro erro para.
+        let parou: { comando: number; code: string } | null = null;
+        const comandos = comandosDeReverter(m03);
+        for (const [i, comando] of comandos.entries()) {
+          await s.exec('savepoint reverter');
+          try {
+            await s.exec(comando);
+            await s.exec('release savepoint reverter');
+          } catch (e) {
+            await s.exec('rollback to savepoint reverter; release savepoint reverter');
+            parou = { comando: i, code: erroDoBanco(e).code };
+            break;
+          }
+        }
+        expect(parou).toEqual({ comando: 0, code: '2BP01' });
+        expect(comandos[0]).toMatch(/^drop table [^;]*mkt\.profiles$/);
+        expect(await retrato(s.linhas)).toEqual(antes);
+      });
+    } finally {
+      await db.close();
+    }
+  });
+
   it('as regras acusam cada coisa que uma migração não pode deixar', async () => {
     const db = await abrirBanco();
     try {
@@ -77,9 +212,17 @@ describe('aplicar as migrações', () => {
           create sequence mkt.seq_aberta;
           grant usage on sequence mkt.seq_aberta to authenticated;
           create function private.sem_caminho() returns int language sql security definer as 'select 1';
-          create function api.aberta() returns int language sql as 'select 1';
+          -- O caminho vazio de antes (definer e invoker), o pg_temp na frente e o pg_catalog sozinho: sem o pg_temp
+          -- explícito no fim, o esquema temporário vem primeiro.
+          create function private.caminho_vazio() returns int language sql security definer
+            set search_path = '' as 'select 1';
+          create function mkt.formula_de_caminho_vazio() returns int language sql set search_path = '' as 'select 1';
+          create function private.caminho_invertido() returns int language sql
+            set search_path = pg_temp, pg_catalog as 'select 1';
+          create function mkt.so_catalogo() returns int language sql set search_path = pg_catalog as 'select 1';
+          create function api.aberta() returns int language sql set search_path = pg_catalog, pg_temp as 'select 1';
           grant execute on function api.aberta() to public;
-          create function api.do_anon() returns int language sql as 'select 1';
+          create function api.do_anon() returns int language sql set search_path = pg_catalog, pg_temp as 'select 1';
           grant execute on function api.do_anon() to anon;
           alter role n8n_notifier bypassrls;
         `);
@@ -88,9 +231,13 @@ describe('aplicar as migrações', () => {
           'executável por PUBLIC: api.aberta()',
           'executável por anon: api.aberta()',
           'executável por anon: api.do_anon()',
+          'função sem search_path=pg_catalog, pg_temp: mkt.formula_de_caminho_vazio()',
+          'função sem search_path=pg_catalog, pg_temp: mkt.so_catalogo()',
+          'função sem search_path=pg_catalog, pg_temp: private.caminho_invertido()',
+          'função sem search_path=pg_catalog, pg_temp: private.caminho_vazio()',
+          'função sem search_path=pg_catalog, pg_temp: private.sem_caminho()',
           'grava pela API (authenticated): mkt.sem_rls',
           'papel de serviço com atributo proibido: n8n_notifier',
-          'security definer sem search_path vazio: private.sem_caminho()',
           'sequência aberta (authenticated): mkt.seq_aberta',
           'tabela sem RLS: mkt.sem_rls',
         ]);

@@ -1,12 +1,14 @@
 // Migração 05: a réplica mínima do CSP 360 — o texto que vem do CRM sem dado pessoal (mkt.valid_crm_text no check), a
-// marca (nula só no lead e na rodada apps → CRM, decisão 0014), o pedido com faturado como carimbo, o funil de leads,
-// o de-para de origem e o código LEAD- do SDR (docs/dados/tabelas.md, seção 2). Dados de fixtures/marketing.sql.
+// marca (nula só no lead e na rodada apps → CRM, decisão 0014), o pedido com faturado como carimbo, o funil de leads
+// (mais de um, decisão 0041), o que o CRM não entrega (nulo, decisão 0041), a compra do ERP mais antiga (decisão
+// 0042), o de-para de origem e o código LEAD- do SDR (docs/dados/tabelas.md, seção 2). Dados de fixtures/marketing.sql.
 import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Sessao, abrirBanco, aplicarFixture, caso, postgres } from './apoio/banco';
 import {
   CLIENTE_A,
   CLIENTE_B,
+  FUNIL_ANTIGO_DE_LEADS,
   FUNIL_DE_LEADS,
   LEAD_NEGOCIO,
   LEAD_SDR,
@@ -142,6 +144,25 @@ describe('texto que vem do CRM: sem dado pessoal (mkt.valid_crm_text, a última 
       expect(
         await s.linhas(...lead({ externo: 'neg-teste-0101', codigo: 'NEG-9101', semDePara: true })),
       ).toHaveLength(1);
+    });
+  });
+
+  it('nome do funil: e-mail, telefone, documento ou @ recusado; o nome de processo passa', async () => {
+    await caso(db, postgres, async (s) => {
+      const funil = (nome: string): [string, unknown[]] => [
+        `insert into mkt.crm_funnels (external_id, name) values ('funil-teste-0100', $1) returning name`,
+        [nome],
+      ];
+      for (const nome of [
+        'Funil contato@exemplo.com',
+        'Funil (11) 98765-4321',
+        'Funil CPF 123.456.789-01',
+        'Leads @equipe',
+        'x'.repeat(151),
+      ]) {
+        await s.erro('23514', ...funil(nome));
+      }
+      expect(await s.valor(...funil('Reativação 2025'))).toBe('Reativação 2025');
     });
   });
 
@@ -281,6 +302,54 @@ describe('clientes, situação por marca, carteira e rodadas', () => {
     });
   });
 
+  it('o que o CRM não entrega fica nulo, sem padrão: situação, perdido à mão, última compra da régua e hora do cálculo (decisão 0041)', async () => {
+    await caso(db, postgres, async (s) => {
+      expect(
+        await s.linhas(
+          `select attname::text as coluna, attnotnull as obrigatoria, atthasdef as tem_padrao
+             from pg_attribute
+            where attrelid = 'mkt.crm_customer_brands'::regclass
+              and attname in ('situation', 'is_lost_manual', 'last_purchase_on', 'situation_computed_at')
+            order by attnum`,
+        ),
+      ).toEqual([
+        { coluna: 'situation', obrigatoria: false, tem_padrao: false },
+        { coluna: 'is_lost_manual', obrigatoria: false, tem_padrao: false },
+        { coluna: 'last_purchase_on', obrigatoria: false, tem_padrao: false },
+        { coluna: 'situation_computed_at', obrigatoria: false, tem_padrao: false },
+      ]);
+      // A linha que nasce só do retrato do ERP: nada da régua, e o perdido à mão fica nulo ("Sem dados"), não falso.
+      await s.exec(
+        `insert into mkt.crm_customer_brands (customer_id, brand_id, erp_last_purchase_on, last_seen_at)
+         values ('${CLIENTE_B}', (select id from mkt.brands where code = 'plumene'), '2026-09-15', now())`,
+      );
+      expect(
+        await s.linhas(
+          `select situation, is_lost_manual, last_purchase_on, situation_computed_at
+             from mkt.crm_customer_brands where customer_id = $1`,
+          [CLIENTE_B],
+        ),
+      ).toEqual([
+        { situation: null, is_lost_manual: null, last_purchase_on: null, situation_computed_at: null },
+      ]);
+      // O que a ingestão grava quando o CRM não entrega está em ingestao.test.ts, "retrato do ERP…".
+    });
+  });
+
+  it('a compra do ERP mais antiga já vista é uma data por cliente e marca, que pode faltar (decisão 0042)', async () => {
+    await caso(db, postgres, async (s) => {
+      expect(
+        await s.linhas(
+          `select format_type(atttypid, atttypmod) as tipo, attnotnull as obrigatoria, atthasdef as tem_padrao
+             from pg_attribute
+            where attrelid = 'mkt.crm_customer_brands'::regclass and attname = 'erp_earliest_purchase_on'`,
+        ),
+      ).toEqual([{ tipo: 'date', obrigatoria: false, tem_padrao: false }]);
+      // Quem calcula a data (só troca por uma anterior) é a ingestão: ingestao.test.ts, "retrato do ERP…"; e a
+      // passada completa não a apaga com o par que some: ingestao.test.ts, "o par cliente × marca…".
+    });
+  });
+
   it('uma situação por cliente e marca; o mesmo representante uma vez na carteira de cada marca', async () => {
     await caso(db, postgres, async (s) => {
       await s.erro(
@@ -304,17 +373,27 @@ describe('clientes, situação por marca, carteira e rodadas', () => {
 });
 
 describe('funil de leads', () => {
-  it('um só funil é o de leads; o lead do SDR não tem funil', async () => {
+  it('mais de um funil de leads: o padrão e o antigo dos leads do site (decisão 0041); o lead do SDR não tem funil', async () => {
     await caso(db, postgres, async (s) => {
-      await s.erro(
-        '23505',
-        `insert into mkt.crm_funnels (external_id, name, is_lead_funnel) values ('funil-teste-0002', 'Outro funil', true)`,
-      );
+      expect(
+        await s.linhas(
+          `select external_id, is_default, is_lead_funnel from mkt.crm_funnels where is_lead_funnel order by 1`,
+        ),
+      ).toEqual([
+        { external_id: 'funil-teste-0001', is_default: true, is_lead_funnel: true },
+        { external_id: 'funil-teste-0002', is_default: false, is_lead_funnel: true },
+      ]);
+      // Sem trava de um só: quem decide é a regra da ingestão, não um índice.
       await s.exec(
-        `insert into mkt.crm_funnels (external_id, name, is_default) values ('funil-teste-0003', 'Funil de vendas', true)`,
+        `insert into mkt.crm_funnels (external_id, name, is_lead_funnel) values ('funil-teste-0003', 'Mais um funil', true)`,
       );
       await s.erro('23514', ...lead({ tipo: 'sdr', funil: FUNIL_DE_LEADS }));
       expect(await s.linhas(...lead({ funil: FUNIL_DE_LEADS }))).toHaveLength(1);
+      expect(
+        await s.linhas(
+          ...lead({ externo: 'neg-teste-0101', codigo: 'NEG-9101', funil: FUNIL_ANTIGO_DE_LEADS }),
+        ),
+      ).toHaveLength(1);
     });
   });
 });
@@ -338,7 +417,18 @@ describe('o código LEAD- do lead do SDR (gatilho crm_leads_code)', () => {
       await s.erro('23502', ...lead({ externo: 'neg-teste-0201', codigo: null }));
       // O mesmo id do CRM em negócio e no SDR são leads diferentes.
       expect(await s.valor(...lead({ tipo: 'sdr', externo: 'neg-teste-0200' }))).toBe(codigo(n + 2));
-      await s.erro('23505', ...lead({ externo: 'neg-teste-0202', codigo: 'LEAD-0001' }));
+    });
+  });
+
+  it('a chave é o id (decisão 0041, item 2): o NEG- do negócio pode repetir; o LEAD- do SDR, nunca', async () => {
+    await caso(db, postgres, async (s) => {
+      // O CRM reaproveita o código do negócio apagado: o novo entra antes de a passada completa tirar o antigo.
+      expect(await s.valor(...lead({ externo: 'neg-teste-0202', codigo: 'NEG-9001' }))).toBe('NEG-9001');
+      expect(await s.valor(`select count(*)::int from mkt.crm_leads where code = 'NEG-9001'`)).toBe(2);
+      // A sequência que volta não repete o código do SDR (LEAD-0001 é o da fixture).
+      await s.exec(`select setval('mkt.lead_code_seq', 1, false)`);
+      const repetido = await s.erro('23505', ...lead({ tipo: 'sdr', externo: 'sdr-teste-0102' }));
+      expect(repetido.constraint).toBe('crm_leads_sdr_code');
     });
   });
 
@@ -398,12 +488,17 @@ describe('de-para de origem (crm_origin_map)', () => {
       expect(Object.fromEntries(mapa.map((m) => [m.raw_value, m.origin]))).toMatchObject({
         site: 'site',
         whatsapp: 'sdr',
+        // A origem que a conversão do lead do SDR grava no negócio (decisão 0041, item 3).
+        'sdr whatsapp': 'sdr',
         indicação: 'referral',
         'google ads': 'google',
         direto: 'direct',
       });
-      // O "google" sozinho fica para a classificação: pago ou orgânico depende do meio.
-      expect(mapa.map((m) => m.raw_value)).not.toContain('google');
+      // O "google" sozinho fica para a classificação: pago ou orgânico depende do meio. O negócio aberto à mão
+      // ("carteira", "prospecção ativa") espera o dono (decisão 0041, "Fica em aberto"): sem de-para por enquanto.
+      for (const fora of ['google', 'carteira', 'prospecção ativa', 'prospeccao ativa']) {
+        expect(mapa.map((m) => m.raw_value)).not.toContain(fora);
+      }
       let i = 0;
       for (const m of mapa) {
         i += 1;
@@ -448,13 +543,13 @@ describe('funções, gatilhos e índices da migração 05', () => {
     'n8n_notifier',
   ];
 
-  it('o gatilho de código: security definer, search_path vazio, ninguém executa, ligado na tabela', async () => {
+  it('o gatilho de código: security definer, search_path pg_catalog, pg_temp, ninguém executa, ligado na tabela', async () => {
     await caso(db, postgres, async (s) => {
       expect(
         await s.linhas(
           `select prosecdef, proconfig as config from pg_proc where oid = 'private.crm_leads_code()'::regprocedure`,
         ),
-      ).toEqual([{ prosecdef: true, config: ['search_path=""'] }]);
+      ).toEqual([{ prosecdef: true, config: ['search_path=pg_catalog, pg_temp'] }]);
       expect(
         await s.linhas(
           `select r.papel from unnest($1::text[]) as r(papel)
@@ -504,10 +599,10 @@ describe('funções, gatilhos e índices da migração 05', () => {
         'crm_customer_brands_brand',
         'crm_customer_reps_rep',
         'crm_customers_code',
-        'crm_funnels_one_lead_funnel',
         'crm_leads_brand_created',
         'crm_leads_customer',
         'crm_leads_rep',
+        'crm_leads_sdr_code',
         'crm_leads_utm',
         'crm_orders_brand_order_on',
         'crm_orders_customer',
@@ -517,6 +612,10 @@ describe('funções, gatilhos e índices da migração 05', () => {
       for (const nome of ['crm_orders_brand_order_on', 'crm_orders_customer']) {
         expect(indices.find((i) => i.indexname === nome)?.indexdef, nome).toContain(`'sent'`);
       }
+      // O código é único só no lead do SDR: o NEG- do negócio pode repetir (decisão 0041, item 2).
+      const sdr = indices.find((i) => i.indexname === 'crm_leads_sdr_code')?.indexdef ?? '';
+      expect(sdr).toContain('UNIQUE');
+      expect(sdr).toContain(`'sdr'`);
       expect(indices.find((i) => i.indexname === 'crm_orders_brand_order_on')?.indexdef).toContain(
         'mkt.sp_day',
       );

@@ -250,7 +250,7 @@ describe('o catálogo das migrações 07 e 08', () => {
     });
   });
 
-  it('as conferências de jsonb: regras puras (immutable, sem security definer, search_path vazio) para a tela, o worker e o executor', async () => {
+  it('as conferências de jsonb: regras puras (immutable, sem security definer, search_path pg_catalog, pg_temp) para a tela, o worker e o executor', async () => {
     const FUNCOES = [
       'mkt.valid_action_params(mkt.action_kind,mkt.platform,jsonb)',
       'mkt.valid_claude_context(jsonb)',
@@ -264,9 +264,12 @@ describe('o catálogo das migrações 07 e 08', () => {
           [FUNCOES],
         ),
       ).toEqual(
-        [...FUNCOES]
-          .sort()
-          .map((funcao) => ({ funcao, provolatile: 'i', prosecdef: false, config: ['search_path=""'] })),
+        [...FUNCOES].sort().map((funcao) => ({
+          funcao,
+          provolatile: 'i',
+          prosecdef: false,
+          config: ['search_path=pg_catalog, pg_temp'],
+        })),
       );
       const executam = await s.linhas<{ funcao: string; papel: string }>(
         `select f.funcao, r.papel from unnest($1::text[]) as f(funcao) cross join unnest($2::text[]) as r(papel)
@@ -283,7 +286,7 @@ describe('o catálogo das migrações 07 e 08', () => {
     });
   });
 
-  it('os gatilhos: security definer, search_path vazio, ninguém executa; cada um ligado na tabela dele', async () => {
+  it('os gatilhos: security definer, search_path pg_catalog, pg_temp, ninguém executa; cada um ligado na tabela dele', async () => {
     const FUNCOES = [
       'private.traffic_actions_code()',
       'private.traffic_actions_transition()',
@@ -299,7 +302,9 @@ describe('o catálogo das migrações 07 e 08', () => {
           [FUNCOES],
         ),
       ).toEqual(
-        [...FUNCOES].sort().map((funcao) => ({ funcao, prosecdef: true, config: ['search_path=""'] })),
+        [...FUNCOES]
+          .sort()
+          .map((funcao) => ({ funcao, prosecdef: true, config: ['search_path=pg_catalog, pg_temp'] })),
       );
       expect(
         await s.linhas(

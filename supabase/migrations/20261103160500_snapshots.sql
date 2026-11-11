@@ -29,7 +29,7 @@
 -- número, sim ou não, ou nulo). Nunca object_name, actor_* nem o nome de quem mudou. Evento de usuário, papel ou cobrança
 -- (pelo tipo, change_kind) fica fora: o objeto pode ser uma pessoa. Chave a mais, tipo errado ou valor de fora: falso.
 create or replace function mkt.valid_activity_details(p_change_kind text, p_details jsonb) returns boolean
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 declare
   v_key text;
   v_value jsonb;

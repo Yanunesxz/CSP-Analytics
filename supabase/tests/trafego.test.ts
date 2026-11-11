@@ -350,6 +350,7 @@ describe('mkt.valid_claude_context: só agregados, nenhum texto com dado pessoal
     cost_per_new_customer_cents: 19600,
     roas: null,
   };
+  // Das ações vão só as chaves da seção 15 de integracoes.md, mais proposed_by (que decide o título).
   const DO_CLAUDE = {
     code: 'ACT-0001',
     kind: 'create',
@@ -360,8 +361,6 @@ describe('mkt.valid_claude_context: só agregados, nenhum texto com dado pessoal
     done_via: 'platform_api',
     proposed_by: 'claude',
     title: 'Criar campanha de remarketing',
-    created_on: '2026-10-30',
-    executed_on: '2026-10-31',
   };
   const DA_PESSOA = {
     code: 'ACT-0002',
@@ -372,9 +371,6 @@ describe('mkt.valid_claude_context: só agregados, nenhum texto com dado pessoal
     params: { status: 'paused' },
     discard_reason: 'against_strategy',
     proposed_by: 'human',
-    impact: 'medium',
-    effort: 'low',
-    cost_cents: 0,
   };
   const ESTRATEGIA = {
     month_on: '2026-11-01',
@@ -472,6 +468,127 @@ describe('mkt.valid_claude_context: só agregados, nenhum texto com dado pessoal
       contexto({ pendencias: [{ code: 'ACT-0003', area: 'ga4', title: 'Ligar o GA4' }] }),
       false,
     ],
+    // O que a seção 15 não manda nas ações: impacto, esforço, custo e datas (a pendência leva a data dela).
+    ['o impacto de uma ação', contexto({ acoes: [{ ...DA_PESSOA, impact: 'medium' }] }), false],
+    ['o esforço de uma ação', contexto({ acoes: [{ ...DA_PESSOA, effort: 'low' }] }), false],
+    ['o custo de uma ação', contexto({ acoes: [{ ...DA_PESSOA, cost_cents: 0 }] }), false],
+    ['o dia da proposta numa ação', contexto({ acoes: [{ ...DO_CLAUDE, created_on: '2026-10-30' }] }), false],
+    [
+      'o dia da execução numa ação',
+      contexto({ acoes: [{ ...DO_CLAUDE, executed_on: '2026-10-31' }] }),
+      false,
+    ],
+    [
+      'a ação com impacto, esforço, custo e datas, da pessoa',
+      contexto({
+        acoes: [
+          {
+            code: 'ACT-0001',
+            kind: 'pause',
+            status: 'done',
+            impact: 'high',
+            effort: 'low',
+            cost_cents: 100,
+            created_on: '2026-11-01',
+            executed_on: '2026-11-02',
+            proposed_by: 'human',
+          },
+        ],
+      }),
+      false,
+    ],
+    // Cada lugar com as chaves dele: a chave certa no lugar errado também recusa. Os textos livres (name, body e
+    // title) ficam cada um no seu lugar: o nome de campanha, o texto da estratégia e o título do Claude.
+    [
+      'o nome numa pendência',
+      contexto({ pendencias: [{ code: 'ACT-0003', area: 'ga4', name: 'Ligar o GA4' }] }),
+      false,
+    ],
+    [
+      'o texto numa ação',
+      contexto({ acoes: [{ ...DA_PESSOA, body: 'Texto de trabalho inventado.' }] }),
+      false,
+    ],
+    ['o nome numa ação da pessoa', contexto({ acoes: [{ ...DA_PESSOA, name: 'Pausar a campanha' }] }), false],
+    [
+      'o texto nos parâmetros',
+      contexto({
+        acoes: [{ ...DO_CLAUDE, params: { ...PARAMS_CRIAR, body: 'Texto de trabalho inventado.' } }],
+      }),
+      false,
+    ],
+    [
+      'o título e quem propôs nos parâmetros',
+      contexto({
+        acoes: [
+          { ...DO_CLAUDE, params: { ...PARAMS_CRIAR, title: 'Criar campanha', proposed_by: 'claude' } },
+        ],
+      }),
+      false,
+    ],
+    ['o nome na estratégia', contexto({ estrategia: { ...ESTRATEGIA, name: 'Plano de novembro' } }), false],
+    [
+      'o texto numa campanha',
+      contexto({ campanha: { ...CAMPANHA, body: 'Texto de trabalho inventado.' } }),
+      false,
+    ],
+    [
+      'o texto num conector',
+      contexto({
+        topo: { connectors: [{ connector: 'meta', status: 'ok', body: 'Texto de trabalho inventado.' }] },
+      }),
+      false,
+    ],
+    [
+      'o texto no mês corrente',
+      contexto({ topo: { current_month: { from_on: '2026-11-01', body: 'Texto de trabalho inventado.' } } }),
+      false,
+    ],
+    [
+      'o texto nos últimos 30 dias',
+      contexto({ topo: { last_30_days: { from_on: '2026-10-05', body: 'Texto de trabalho inventado.' } } }),
+      false,
+    ],
+    [
+      'o nome nos totais',
+      contexto({ topo: { current_month: { totals: { spend_cents: 1, name: 'cs-prospeccao' } } } }),
+      false,
+    ],
+    [
+      'o nome num canal',
+      contexto({ topo: { current_month: { channels: [{ platform: 'meta', name: 'cs-prospeccao' }] } } }),
+      false,
+    ],
+    [
+      'o texto numa conta',
+      contexto({
+        topo: { accounts: [{ ad_account_id: CONTA_META_CS, body: 'Texto de trabalho inventado.' }] },
+      }),
+      false,
+    ],
+    ['o nome no topo', contexto({ topo: { name: 'cs-prospeccao' } }), false],
+    // A mesma base, sem a chave fora do lugar, passa: quem recusa acima é o lugar.
+    [
+      'as bases dos casos acima, sem a chave fora do lugar',
+      contexto({
+        pendencias: [{ code: 'ACT-0003', area: 'ga4' }],
+        topo: {
+          connectors: [{ connector: 'meta', status: 'ok' }],
+          current_month: {
+            from_on: '2026-11-01',
+            totals: { spend_cents: 1 },
+            channels: [{ platform: 'meta' }],
+          },
+          last_30_days: { from_on: '2026-10-05' },
+          accounts: [{ ad_account_id: CONTA_META_CS }],
+        },
+      }),
+      true,
+    ],
+    ['quem propôs solto no topo', contexto({ topo: { proposed_by: 'claude' } }), false],
+    ['o dia numa campanha', contexto({ campanha: { ...CAMPANHA, created_on: '2026-11-01' } }), false],
+    ['o período dentro de uma ação', contexto({ acoes: [{ ...DA_PESSOA, from_on: '2026-11-01' }] }), false],
+    ['o nome de campanha numa conta', contexto({ topo: { accounts: [{ name: 'cs-prospeccao' }] } }), false],
     ['chave de cliente na campanha', contexto({ campanha: { ...CAMPANHA, customer_id: CLIENTE_A } }), false],
     ['e-mail solto no topo', contexto({ topo: { email: 'pessoa@example.com' } }), false],
     [
@@ -524,7 +641,7 @@ describe('mkt.valid_claude_context: só agregados, nenhum texto com dado pessoal
     ['data fora do formato', contexto({ topo: { today_on: '03/11/2026' } }), false],
   ];
 
-  it('aceita só as chaves previstas, cada uma no tipo dela; recusa motivo, resultado, título da pessoa e dado pessoal', async () => {
+  it('aceita só as chaves previstas em cada lugar, cada uma no tipo dela; recusa motivo, resultado, impacto, esforço, custo e datas da ação, título da pessoa e dado pessoal', async () => {
     await caso(db, servico('mkt_worker'), async (s) => {
       for (const [nome, ctx, valido] of CASOS) {
         expect(await s.valor('select mkt.valid_claude_context($1::jsonb)', [JSON.stringify(ctx)]), nome).toBe(

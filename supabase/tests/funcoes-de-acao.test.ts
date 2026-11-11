@@ -1,8 +1,8 @@
 // Migração 09, o conjunto: as funções de api do quadro de papeis-e-rls.md ("Funções de ação"), cada uma security
-// definer com search_path vazio e executável só pela tela; RLS-20 e RLS-21 nas funções (perfil inativo e login sem
-// perfil, mesmo com o segundo fator: PT403, menos my_profile e my_permissions); anon e os serviços sem acesso; e as
-// regras de apoio (trava otimista, a lista de um domain, o pedido de cada plataforma e o cabeçalho do CSV). Dados
-// inventados de fixtures/usuarios.sql, marketing.sql, trafego.sql e conectores.sql.
+// definer com search_path pg_catalog, pg_temp e executável só pela tela; RLS-20 e RLS-21 nas funções (perfil inativo
+// e login sem perfil, mesmo com o segundo fator: PT403, menos my_profile e my_permissions); anon e os serviços sem
+// acesso; e as regras de apoio (trava otimista, a lista de um domain, o pedido de cada plataforma e o cabeçalho do
+// CSV). Dados inventados de fixtures/usuarios.sql, marketing.sql, trafego.sql e conectores.sql.
 import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Quem, abrirBanco, anon, aplicarFixture, caso, postgres, servico, usuario } from './apoio/banco';
@@ -43,7 +43,7 @@ const CONTAGEM = `
          (select max(updated_at)::text from mkt.profiles) || '/' || (select max(updated_at)::text from mkt.connectors)`;
 
 describe('as funções de api da migração 09', () => {
-  it('são as do quadro de papeis-e-rls.md, uma de cada, todas security definer com search_path vazio', async () => {
+  it('são as do quadro de papeis-e-rls.md, uma de cada, todas security definer com search_path pg_catalog, pg_temp', async () => {
     await caso(db, postgres, async (s) => {
       const linhas = await s.linhas<{ funcao: string; prosecdef: boolean; config: string[] | null }>(
         `select p.oid::regprocedure::text as funcao, p.prosecdef, p.proconfig as config
@@ -56,7 +56,7 @@ describe('as funções de api da migração 09', () => {
       );
       for (const l of linhas) {
         expect(l.prosecdef, l.funcao).toBe(true);
-        expect(l.config, l.funcao).toEqual(['search_path=""']);
+        expect(l.config, l.funcao).toEqual(['search_path=pg_catalog, pg_temp']);
       }
     });
   });
@@ -91,7 +91,7 @@ describe('as funções de api da migração 09', () => {
       expect(linhas).toHaveLength(FUNCOES_PRIVADAS.length + REGRAS_DE_MKT.length);
       for (const l of linhas) {
         expect(l.prosecdef, l.funcao).toBe(false);
-        expect(l.config, l.funcao).toEqual(['search_path=""']);
+        expect(l.config, l.funcao).toEqual(['search_path=pg_catalog, pg_temp']);
       }
     });
   });

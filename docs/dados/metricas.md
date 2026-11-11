@@ -49,7 +49,9 @@ Regras:
   `variation` vêm nulos. A comparação usa só os dias completos de cada fonte (seção 2.1).
 - Dinheiro em centavos inteiros (custo arredondado no fim; meio centavo arredonda para cima). Taxa e parte como fração
   de 0 a 1, com 4 casas. ROAS com 2 casas. A variação é calculada antes de arredondar.
-- Toda função de tela é `stable`, `security invoker` e `set search_path = ''`. A primeira linha confere **todas** as
+- Toda função de tela é `stable`, `security invoker` e `set search_path = pg_catalog, pg_temp`, como toda função dos
+  sete esquemas: sem o `pg_temp` por último no caminho, o esquema temporário da sessão é procurado primeiro para tipos
+  e tabelas ([`papeis-e-rls.md`](papeis-e-rls.md), "Funções de ação"). A primeira linha confere **todas** as
   permissões das tabelas que a função lê (`authz.can`; seção 5): um papel sem uma delas recebe `KPI-403`, nunca um 0
   que a RLS produziu ao esconder as linhas. Os filtros só são lidos depois disso. A RLS das tabelas vale porque toda
   view, em `api` **e em `mkt`**, nasce com `security_invoker = true`. Filtro inválido: `PT400` / `KPI-400`. Sem
@@ -97,7 +99,7 @@ create type mkt.kpi_filters as (
 );
 
 create or replace function mkt.parse_filters(p jsonb) returns mkt.kpi_filters
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   f mkt.kpi_filters;
   v_none constant uuid := '00000000-0000-0000-0000-000000000000';   -- não casa com nenhuma linha
@@ -174,7 +176,7 @@ end $$;
 ```sql
 -- mkt.now e mkt.today ficam na migração 01 (plano.md): a trava do limite, na 10, já usa.
 create or replace function mkt.now() returns timestamptz
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   v timestamptz;
 begin
@@ -186,7 +188,7 @@ begin
 end $$;
 
 create or replace function mkt.today() returns date
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select (mkt.now() at time zone 'America/Sao_Paulo')::date
 $$;
 
@@ -203,7 +205,7 @@ create type mkt.period_window as (
 create or replace function mkt.period_window(p_period mkt.period_code, p_complete_through date default null,
                                              p_today date default null)
 returns mkt.period_window
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   v_today      date := coalesce(p_today, mkt.today());
   v_month      date := date_trunc('month', v_today)::date;
@@ -247,7 +249,7 @@ end $$;
 
 -- Para a tela montar o rótulo ("vs. 1º a 3 de outubro") sem fazer conta de data.
 create or replace function mkt.period_json(w mkt.period_window) returns jsonb
-language sql immutable set search_path = '' as $$
+language sql immutable set search_path = pg_catalog, pg_temp as $$
   select jsonb_build_object(
     'start_on', lower(w.current_window), 'end_on', upper(w.current_window) - 1,
     'compared_through_on', upper(w.comparable_current) - 1,
@@ -303,13 +305,13 @@ Cada `api.kpi_*` devolve também `coverage` (`{"csp360": true, "meta": true, "ti
 
 ```sql
 create or replace function mkt.source_covered(p_code mkt.connector_code) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select coalesce((select c.first_success_at is not null from mkt.connectors c where c.code = p_code), false)
 $$;
 
 -- Gasto: o canal tem base e a conta da marca nele já foi lida. Sem canal: algum canal com base.
 create or replace function mkt.ads_covered(p_brand_id uuid, p_platform mkt.platform) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select exists (
     select 1
       from mkt.ad_accounts a
@@ -322,7 +324,7 @@ $$;
 
 -- Instagram: o conector tem base e o perfil ativo da marca já foi lido.
 create or replace function mkt.ig_covered(p_brand_id uuid) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select mkt.source_covered('instagram')
      and exists (select 1 from mkt.ig_accounts a
                   where a.is_active and a.first_read_at is not null
@@ -331,7 +333,7 @@ $$;
 
 -- Search Console e GA4: o conector tem base e a propriedade ativa da marca daquele tipo já foi lida.
 create or replace function mkt.web_covered(p_brand_id uuid, p_kind mkt.web_property_kind) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select mkt.source_covered((case p_kind when 'ga4_property' then 'ga4' else 'search_console' end)::mkt.connector_code)
      and exists (select 1 from mkt.web_properties w
                   where w.is_active and w.kind = p_kind and w.first_read_at is not null
@@ -380,12 +382,12 @@ Todas leem `connectors`, que a RLS libera com `view_connectors`. Os dois papéis
 
 ```sql
 create or replace function mkt.ratio(p_num numeric, p_den numeric) returns numeric
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case when p_num is null or p_den is null or p_den = 0 then null else p_num / p_den end
 $$;
 
 create or replace function mkt.round_as(p numeric, p_kind text) returns numeric
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case p_kind
            when 'money'    then round(p)       -- centavos inteiros; meio centavo arredonda para cima
            when 'fraction' then round(p, 4)    -- taxa e parte, de 0 a 1
@@ -396,7 +398,7 @@ $$;
 -- O valor mostrado é o de até agora; a variação compara os dias completos dos dois lados (seção 2.1).
 create or replace function mkt.metric(p_current numeric, p_comparable_current numeric, p_comparable_previous numeric,
                                       p_compare boolean, p_kind text default 'count') returns jsonb
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select jsonb_build_object(
     'current',   mkt.round_as(p_current, p_kind),
     'previous',  case when p_compare then mkt.round_as(p_comparable_previous, p_kind) end,
@@ -419,7 +421,7 @@ create domain mkt.not_applicable_reason as text check (value in ('sales_rep', 'o
 create type mkt.cost_scope as (filters mkt.kpi_filters, not_applicable mkt.not_applicable_reason);
 
 create or replace function mkt.cost_scope(f mkt.kpi_filters) returns mkt.cost_scope
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 begin
   if f.sales_rep_id is not null then
     return row(f, 'sales_rep')::mkt.cost_scope;
@@ -480,7 +482,7 @@ antes das `ingest.*` que as usam ([`plano.md`](plano.md)).
 -- Host de um endereço: tira protocolo, usuário, porta e caminho; depois www., m., l. e lm. (nessa ordem),
 -- como o host() de rules.ts.
 create or replace function mkt.url_host(p text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select nullif(
     regexp_replace(regexp_replace(regexp_replace(regexp_replace(
       regexp_replace(lower(btrim(coalesce(p, ''))), '^[a-z][a-z0-9+.-]*://(?:[^@/]*@)?([^/:?#]+).*$', '\1'),
@@ -490,7 +492,7 @@ $$;
 
 -- Sufixo terminado em ponto ("google.") vale em qualquer lugar do host; o resto, host igual ou subdomínio.
 create or replace function mkt.host_matches(p_host text, p_patterns text[]) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select coalesce(bool_or(case when right(s, 1) = '.' then strpos(p_host, s) > 0
                                else p_host = s or right(p_host, length(s) + 1) = '.' || s end), false)
     from unnest(p_patterns) s
@@ -499,7 +501,7 @@ $$;
 -- Assistente de IA de uma fonte (utm_source, sessionSource do GA4 ou referrer). A lista mora só aqui.
 -- Criada antes de classify_lead_origin na migração.
 create or replace function mkt.ai_source_of(p_session_source text, p_channel_group text) returns mkt.ai_source
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (case
     when mkt.host_matches(h, '{chatgpt.com,chat.openai.com}') or h in ('chatgpt', 'openai') then 'chatgpt'
     when mkt.host_matches(h, '{perplexity.ai}') or h = 'perplexity' then 'perplexity'
@@ -513,7 +515,7 @@ $$;
 
 -- Família da fonte de UTM. A lista de fontes mora só aqui: a classificação e a gravação da origem usam.
 create or replace function mkt.utm_source_family(p_source text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case
     when s = '' then null
     when mkt.ai_source_of(s, null) is not null then 'ai_assistant'   -- antes da Meta: "chatgpt.com" é IA
@@ -529,13 +531,13 @@ $$;
 
 -- O texto de negocios.origem pode ser gravado? Só se é uma fonte conhecida (o de-para é conferido à parte).
 create or replace function mkt.is_known_origin_text(p text) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select mkt.utm_source_family(p) is not null
 $$;
 
 create or replace function mkt.classify_lead_origin(p_referrer text, p_utm_source text, p_utm_medium text,
                                                     p_own_hosts text[]) returns mkt.lead_origin
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   with v as (
     select lower(btrim(coalesce(p_utm_source, ''))) as src,
            lower(btrim(coalesce(p_utm_medium, ''))) as med,
@@ -871,7 +873,7 @@ select n.*, c.lead_id, c.origin, c.attributed_campaign_id, c.assigned_rep_id, c.
 
 ```sql
 create or replace function mkt.campaigns_in_scope(f mkt.kpi_filters) returns setof mkt.campaigns
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select c.* from mkt.campaigns c
    where (f.brand_id is null or c.brand_id = f.brand_id)
      and (f.platform is null or c.platform = f.platform)
@@ -880,7 +882,7 @@ language sql stable set search_path = '' as $$
 $$;
 
 create or replace function mkt.leads_in_scope(f mkt.kpi_filters) returns setof mkt.v_leads
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select l.* from mkt.v_leads l
     left join mkt.campaigns c on c.id = l.attributed_campaign_id
    where (f.brand_id is null or l.brand_id = f.brand_id or l.brand_id is null)   -- sem marca entra (0014)
@@ -893,7 +895,7 @@ $$;
 
 create or replace function mkt.new_customers(f mkt.kpi_filters, p_window daterange)
 returns setof mkt.v_new_customers
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select n.* from mkt.v_new_customers n
     left join mkt.campaigns c on c.id = n.attributed_campaign_id
    where n.scope = case when f.brand_id is null then 'group' else 'brand' end   -- decisão 0030
@@ -950,7 +952,7 @@ create or replace function mkt.acquisition_ratios(
   p_investment_cents bigint, p_attributed_leads bigint, p_attributed_new bigint, p_attributed_revenue_cents bigint,
   p_is_utm_ambiguous boolean default false,     -- só a linha de campanha (CA14) passa mkt.v_campaigns.is_utm_ambiguous
   out cost_per_lead_cents numeric, out cost_per_new_customer_cents numeric, out roas numeric)
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select mkt.ratio(p_investment_cents, p_attributed_leads),                        -- decisão 0027
          case when not p_is_utm_ambiguous                                           -- UTM repetida: nulo (0009, 0028)
               then mkt.ratio(p_investment_cents, p_attributed_new) end,           -- decisões 0012 e 0029
@@ -960,7 +962,7 @@ $$;
 
 create or replace function mkt.acquisition(f mkt.kpi_filters, w mkt.period_window)
 returns setof mkt.acquisition_row
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   with span as (select range_merge(w.previous_window, w.current_window) as r),
   camp as materialized (select c.id from mkt.campaigns_in_scope(f) c),
   l as materialized (
@@ -1047,7 +1049,7 @@ create domain mkt.limit_alert as text check (value in ('near_limit', 'over_limit
 
 create or replace function mkt.pace(p_spent bigint, p_target bigint, p_days_elapsed integer, p_days_in_month integer,
   out projection_cents bigint, out expected_today_cents bigint, out usage numeric, out situation mkt.spend_situation)
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select round(p_spent::numeric / p_days_elapsed * p_days_in_month)::bigint,
          round(p_target::numeric * p_days_elapsed / p_days_in_month)::bigint,
          mkt.ratio(p_spent, p_target),
@@ -1059,7 +1061,7 @@ $$;
 
 -- Recebe o gasto e o limite, não o uso: com limite 0, o uso é nulo, e o alerta precisa dizer "acima", como a situação.
 create or replace function mkt.limit_alert(p_spent bigint, p_limit bigint) returns mkt.limit_alert
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (case when p_spent >= p_limit then 'over_limit'
                when p_spent >= 0.9 * p_limit then 'near_limit' end)::mkt.limit_alert
 $$;
@@ -1249,7 +1251,7 @@ anterior. Reativado = essa compra existe e a distância é de 90 dias ou mais.
 
 ```sql
 create or replace function mkt.ga4_channel_of(p_channel_group text, p_session_source text) returns mkt.ga4_channel
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (case
     when mkt.ai_source_of(p_session_source, p_channel_group) is not null then 'ai_assistant'
     when p_channel_group = 'Organic Search' then 'organic_search'
@@ -1375,9 +1377,10 @@ select h.code, h.setup_state, h.expected_every_minutes, h.late_tolerance_minutes
 
 ## 5. Funções de tela
 
-Todas: `stable`, `security invoker`, `set search_path = ''`, `revoke all … from public, anon`, `grant execute … to
-authenticated`. As views `api.v_traffic_actions` e `api.v_traffic_log` continuam como base das listas do Tráfego e do
-teste de RLS; o nome de quem fez sai de `authz.display_name` (só o nome, para quem tem `view_traffic`).
+Todas: `stable`, `security invoker`, `set search_path = pg_catalog, pg_temp` (o `pg_temp` por último, seção 1),
+`revoke all … from public, anon`, `grant execute … to authenticated`. As views `api.v_traffic_actions` e
+`api.v_traffic_log` continuam como base das listas do Tráfego e do teste de RLS; o nome de quem fez sai de
+`authz.display_name` (só o nome, para quem tem `view_traffic`).
 
 | Função | Tela | Permissão (todas conferidas na primeira linha) | Devolve |
 |---|---|---|---|
@@ -1405,7 +1408,7 @@ Esboço da Visão geral (as outras seguem o mesmo molde):
 
 ```sql
 create or replace function api.kpi_overview(p_filters jsonb) returns jsonb
-language plpgsql stable security invoker set search_path = '' as $$
+language plpgsql stable security invoker set search_path = pg_catalog, pg_temp as $$
 declare
   f  mkt.kpi_filters;
   w  mkt.period_window;
@@ -1740,7 +1743,7 @@ usa `mkt.list_rank`. O teste de paridade confere cada array com `opcoes()` do `l
 
 ```sql
 create or replace function mkt.list_rank(p_list text, p_code text) returns integer
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select array_position(case p_list
     when 'lead_stage'         then array['lead','prospect','registered','first_order','invoiced']
     when 'lead_origin'        then array['meta','tiktok','google','site','organic','ai_assistant','sdr','referral','direct']
@@ -1763,7 +1766,7 @@ português. No SQL a ordem não depende da collation do banco (a do PGlite e a d
 
 ```sql
 create or replace function mkt.sort_text(p text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select lower(translate(p, 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇáàâãäéèêëíìîïóòôõöúùûüç',
                             'AAAAAEEEEIIIIOOOOOUUUUCaaaaaeeeeiiiiooooouuuuc'))
 $$;

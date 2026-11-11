@@ -6,10 +6,10 @@
 --   (docs/dados/tabelas.md, seção 4). Cada tabela nasce com a RLS ligada, a leitura de quem tem a permissão
 --   (view_traffic; o limite de gasto, view_numbers) e a do worker e a do executor só nas tabelas da lista de cada um
 --   (papeis-e-rls.md). As conferências de jsonb: mkt.valid_action_params (os parâmetros de cada tipo e plataforma) e
---   mkt.valid_claude_context (só as chaves previstas, nenhum texto com dado pessoal). Os gatilhos: o código ACT- da
---   ação; as passagens de status da ação (o quadro de tabelas.md), conferindo o session_user e a permissão de quem
---   pede, com os parâmetros congelados fora da ideia; a execução protegida (quem cria, o que nunca muda e as passagens
---   de status); o diário da ação e o da execução; e o diário só por acréscimo.
+--   mkt.valid_claude_context (só as chaves previstas em cada lugar, nenhum texto com dado pessoal). Os gatilhos: o
+--   código ACT- da ação; as passagens de status da ação (o quadro de tabelas.md), conferindo o session_user e a
+--   permissão de quem pede, com os parâmetros congelados fora da ideia; a execução protegida (quem cria, o que nunca
+--   muda e as passagens de status); o diário da ação e o da execução; e o diário só por acréscimo.
 -- Risco: médio. Os gatilhos barram toda escrita de ação e de execução fora das funções de ação (pela API), do worker e
 --   do executor (migrações 09 e 10), também a do dono do banco. A chave nova em campaigns valida as linhas que já
 --   existem: nenhuma, porque nada grava campanha antes do worker (migração 10).
@@ -37,7 +37,7 @@
 -- do ajuste de orçamento pode ser 0 ou nulo.
 create or replace function mkt.valid_action_params(p_kind mkt.action_kind, p_platform mkt.platform, p_params jsonb)
 returns boolean
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 declare
   v_required text[];
   v_optional text[] := array['origin'];
@@ -150,11 +150,13 @@ begin
 end $$;
 
 -- O contexto da rodada do Claude (integracoes.md, seção 15): só agregados por marca, canal, conta e campanha, a
--- estratégia do mês, as pendências, os conectores e as ações dos últimos 30 dias. Cada chave tem um tipo fixo, em
--- qualquer nível; chave fora da lista (rationale, result, discard_note, email, customer_id, lead…) recusa o contexto
--- inteiro. Texto livre só no nome de campanha, no título (e só nas propostas do próprio Claude) e no texto da
--- estratégia; todo texto passa por mkt.has_personal_data. Recusado, a rodada falha antes de chamar a API
--- (CONTEXT_REFUSED). Formato esperado de mkt.claude_context (migração 12):
+-- estratégia do mês, as pendências, os conectores e as ações dos últimos 30 dias. Cada lugar aceita só as chaves dele
+-- (o formato abaixo: a raiz, cada objeto e cada item de lista, pelo nome da chave que o traz), e cada chave tem um tipo
+-- fixo; chave fora do lugar (rationale, result, discard_note, impact, email, customer_id, lead…) recusa o contexto
+-- inteiro. Das ações vão só as chaves da seção 15, mais proposed_by, que decide o título: ele vai só nas propostas do
+-- próprio Claude. Texto livre só no nome de campanha, no título e no texto da estratégia; todo texto passa por
+-- mkt.has_personal_data. Recusado, a rodada falha antes de chamar a API (CONTEXT_REFUSED). Formato esperado de
+-- mkt.claude_context (migração 12):
 --   {brand, generated_at, today_on,
 --    current_month e last_30_days: {from_on, to_on, totals: {…números}, channels: [{platform, …números}],
 --                                    campaigns: [{campaign_id, platform, name, status, operator, has_own_budget,
@@ -166,25 +168,24 @@ end $$;
 --    pending_fixes: [{code, area, env, status, platform, created_on}],
 --    connectors: [{connector, status, setup_state, last_success_at}],
 --    actions: [{code, kind, status, platform, campaign_id, params: {…de mkt.valid_action_params}, done_via,
---               discard_reason, proposed_by, impact, effort, cost_cents, created_on, executed_on,
---               title (só com proposed_by = claude)}]}
+--               discard_reason, proposed_by, title (só com proposed_by = claude)}]}
 -- Os números: spend_cents, impressions, clicks, platform_leads, conversions, conversion_value_cents, leads,
 -- new_customers, revenue_cents, cost_per_lead_cents, cost_per_new_customer_cents, roas, daily_budget_cents,
 -- active_campaigns (nulo = "Sem dados").
 create or replace function mkt.valid_claude_context(p_context jsonb) returns boolean
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 declare
+  -- O tipo de cada chave, o mesmo em qualquer lugar.
   c_keys constant jsonb := $keys${
     "accounts": "list", "actions": "list", "active_campaigns": "number", "ad_account_id": "uuid",
     "advertising_channel_type": "code", "alert": "code", "area": "code", "bid_strategy": "code",
     "bidding_strategy": "code", "body": "body", "brand": "code", "budget_cents": "number", "budget_mode": "code",
     "campaign_id": "uuid", "campaigns": "list", "channels": "list", "clicks": "number", "code": "code",
     "connector": "code", "connectors": "list", "contains_eu_political_advertising": "boolean",
-    "conversion_value_cents": "number", "conversions": "number", "cost_cents": "number",
-    "cost_per_lead_cents": "number", "cost_per_new_customer_cents": "number", "created_on": "date",
-    "creative_ref": "ref", "current_month": "object", "daily_budget_cents": "number", "days_left": "number",
-    "discard_reason": "code", "done_via": "code", "effort": "code", "env": "code", "executed_on": "date",
-    "from_on": "date", "generated_at": "timestamp", "has_own_budget": "boolean", "impact": "code",
+    "conversion_value_cents": "number", "conversions": "number", "cost_per_lead_cents": "number",
+    "cost_per_new_customer_cents": "number", "created_on": "date", "creative_ref": "ref", "current_month": "object",
+    "daily_budget_cents": "number", "days_left": "number", "discard_reason": "code", "done_via": "code",
+    "env": "code", "from_on": "date", "generated_at": "timestamp", "has_own_budget": "boolean",
     "impressions": "number", "is_smart_plus": "boolean", "kind": "code", "last_30_days": "object",
     "last_success_at": "timestamp", "leads": "number", "month_on": "date", "monthly_limit_cents": "number",
     "name": "name", "new_customers": "number", "objective": "code", "operator": "code", "origin": "code",
@@ -196,8 +197,15 @@ declare
     "target_cost_per_new_customer_cents": "number", "target_cpa_cents": "number", "target_new_customers": "number",
     "title": "title", "to_on": "date", "today_on": "date", "totals": "object", "usage_ratio": "number"
   }$keys$;
+  -- Os números de um período, de um canal e de uma campanha.
+  c_numbers constant text[] := array['spend_cents', 'impressions', 'clicks', 'platform_leads', 'conversions',
+    'conversion_value_cents', 'leads', 'new_customers', 'revenue_cents', 'cost_per_lead_cents',
+    'cost_per_new_customer_cents', 'roas', 'daily_budget_cents', 'active_campaigns'];
   v_queue jsonb[] := array[p_context];
+  v_places text[] := array['$'];
   v_node jsonb;
+  v_place text;
+  v_allowed text[];
   v_key text;
   v_value jsonb;
   v_kind text;
@@ -211,7 +219,9 @@ begin
 
   while cardinality(v_queue) > 0 loop
     v_node := v_queue[1];
+    v_place := v_places[1];
     v_queue := v_queue[2:];
+    v_places := v_places[2:];
     v_nodes := v_nodes + 1;
     if v_nodes > 20000 then
       return false;
@@ -220,10 +230,35 @@ begin
     if v_node ? 'title' and (v_node ->> 'proposed_by') is distinct from 'claude' then
       return false;
     end if;
+    -- As chaves de cada lugar ($ é a raiz; o resto, a chave que traz o objeto ou a lista), como no formato acima.
+    v_allowed := case v_place
+      when '$' then array['brand', 'generated_at', 'today_on', 'current_month', 'last_30_days', 'accounts',
+                          'strategy', 'pending_fixes', 'connectors', 'actions']
+      when 'current_month' then array['from_on', 'to_on', 'totals', 'channels', 'campaigns']
+      when 'last_30_days' then array['from_on', 'to_on', 'totals', 'channels', 'campaigns']
+      when 'totals' then c_numbers
+      when 'channels' then array['platform'] || c_numbers
+      when 'campaigns' then array['campaign_id', 'platform', 'name', 'status', 'operator', 'has_own_budget',
+                                  'is_smart_plus'] || c_numbers
+      when 'accounts' then array['ad_account_id', 'platform', 'monthly_limit_cents', 'spend_month_cents',
+                                 'projected_month_cents', 'remaining_cents', 'usage_ratio', 'situation', 'alert',
+                                 'spend_cap_cents', 'days_left']
+      when 'strategy' then array['month_on', 'body', 'budget_cents', 'target_cost_per_new_customer_cents',
+                                 'target_cost_per_lead_cents', 'target_new_customers']
+      when 'pending_fixes' then array['code', 'area', 'env', 'status', 'platform', 'created_on']
+      when 'connectors' then array['connector', 'status', 'setup_state', 'last_success_at']
+      -- Das ações, só o que a seção 15 lista; nunca o motivo, o resultado, o impacto, o esforço, o custo nem datas.
+      when 'actions' then array['code', 'kind', 'status', 'platform', 'campaign_id', 'params', 'done_via',
+                                'discard_reason', 'proposed_by', 'title']
+      when 'params' then array['origin', 'daily_budget_cents', 'previous_daily_budget_cents', 'status',
+                               'creative_ref', 'objective', 'name', 'special_ad_categories',
+                               'advertising_channel_type', 'bidding_strategy', 'contains_eu_political_advertising',
+                               'budget_mode', 'bid_strategy', 'target_cpa_cents', 'area', 'env']
+    end;
 
     for v_key, v_value in select e.key, e.value from jsonb_each(v_node) e loop
       v_kind := c_keys ->> v_key;
-      if v_kind is null then
+      if v_kind is null or not coalesce(v_key = any(v_allowed), false) then
         return false;
       end if;
       continue when jsonb_typeof(v_value) = 'null';
@@ -233,6 +268,7 @@ begin
           return false;
         end if;
         v_queue := v_queue || v_value;
+        v_places := v_places || v_key;
       elsif v_kind = 'list' then
         if jsonb_typeof(v_value) <> 'array' then
           return false;
@@ -242,6 +278,7 @@ begin
             return false;
           end if;
           v_queue := v_queue || v_item;
+          v_places := v_places || v_key;
         end loop;
       elsif v_kind in ('number', 'boolean') then
         if jsonb_typeof(v_value) <> v_kind then
@@ -534,7 +571,7 @@ create or replace trigger traffic_log_updated_at before update on mkt.traffic_lo
 -- proposta do Claude gravada de novo (insert … on conflict pela rodada e pela posição) fica com o código dela e a
 -- sequência não anda. O código que vier no insert é ignorado, e o código nunca muda.
 create or replace function private.traffic_actions_code() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_code text;
 begin
@@ -578,7 +615,7 @@ create or replace trigger traffic_actions_code before insert or update of code o
 -- carimbo (aprovação, descarte, "feita") muda só na passagem dele. Sem permissão ou fora da sessão certa: PT403
 -- (TRF-403); passagem fora do quadro ou estado errado: PT422 (TRF-422).
 create or replace function private.traffic_actions_transition() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_session text := session_user::text;
   v_uid uuid := auth.uid();
@@ -689,7 +726,7 @@ create or replace trigger traffic_actions_transition before insert or update on 
 -- fez (a pessoa pelo carimbo da passagem; o executor é o sistema) e {status: {before, after}}, mais o motivo do
 -- descarte e o jeito de "feita". A aprovação junto com a proposta (approve_now) grava as duas linhas.
 create or replace function private.traffic_actions_log() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if tg_op = 'INSERT' then
     insert into mkt.traffic_log (event, brand_id, platform, actor_kind, actor_id, traffic_action_id, campaign_id)
@@ -753,7 +790,7 @@ create or replace trigger traffic_actions_log after insert or update of status o
 --   funções de ação, pela API, bloqueiam no Parar tudo (stop_all), devolvem para a fila ("Tentar de novo",
 --   approve_action) e cancelam (ação descartada ou feita à mão).
 create or replace function private.platform_executions_guard() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_session text := session_user::text;
   v_ok boolean;
@@ -849,7 +886,7 @@ create or replace trigger platform_executions_guard before insert or update on m
 -- de status, execution_status_changed com a execução, a origem, a campanha e {status: {before, after},
 -- blocked_reason}. Pela API, quem fez é a pessoa; o executor e o pg_cron são o sistema.
 create or replace function private.platform_executions_log() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_uid uuid := case when session_user::text = 'authenticator' then auth.uid() end;
 begin

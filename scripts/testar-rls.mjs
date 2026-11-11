@@ -324,7 +324,15 @@ const CASOS = [
       p('fase4', 'gestor lê csv_imports (controle positivo, por api.kpi_connectors)'),
     ],
   ],
-  ['RLS-27', [p('camada1', 'catálogo: RLS, search_path, has_function_privilege, sequências e bypassrls')]],
+  [
+    'RLS-27',
+    [
+      p(
+        'camada1',
+        'catálogo: RLS, search_path pg_catalog, pg_temp, has_function_privilege, sequências e bypassrls; o pg_temp de cada serviço',
+      ),
+    ],
+  ],
   [
     'RLS-28',
     [
@@ -1088,6 +1096,11 @@ const RODAR = {
       // Inventados: domínio .invalid e um número de exemplo.
       ['Teste de RLS: com e-mail', 'Falar com fulano.de.tal@exemplo.invalid sobre a campanha.'],
       ['Teste de RLS: com telefone', 'Ligar para (11) 98765-4321 antes de pausar a campanha.'],
+      // Espaço depois do 9 e o 0 antes do DDD (revisão de 10/11/2026, achado 5).
+      [
+        'Teste de RLS: com telefone separado',
+        'Ligar para (11) 9 8765-4321 ou 011 98765.4321 antes de pausar.',
+      ],
     ];
     for (const [titulo, porque] of casos) {
       const r = await rpc(ctx.gestor, 'propose_action', proposta(ctx.dados, titulo, { p_rationale: porque }));

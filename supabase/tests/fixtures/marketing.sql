@@ -6,9 +6,12 @@
 --                  (do Claude, pela ação ...2f1, ACT-0001); perfil do Instagram ...231 com o post ...291; GA4 ...241 e
 --                  Search Console ...242
 --   Plumene        conta Google ...202: campanha do humano ...213
---   CRM            funil de leads ...251; cliente ...261 (com UTM de primeiro contato, situação e carteira na cs) e
---                  prospecto ...262; negócio ...271 da cs e lead do SDR ...272, sem marca; pedido enviado ...281;
---                  representante do CRM ...221 e um só de app ...222, com um login da cs
+--   CRM            funis de leads (decisão 0041): o padrão ...251 e o antigo dos leads do site ...252, já marcado;
+--                  cliente ...261 (com UTM de primeiro contato,
+--                  carteira na cs e o retrato do ERP de um cliente antigo que recomprou: a compra mais antiga fica) e
+--                  prospecto ...262; negócio ...271 da cs; lead do SDR ...272, sem marca, e o negócio ...273 da
+--                  conversão dele, que veio do CRM sem funil e sem marca; pedido enviado ...281; representante do CRM
+--                  ...221 e um só de app ...222, com um login da cs
 --
 -- Só no PGlite: o "supabase test db" roda todo .sql desta pasta.
 begin;
@@ -86,8 +89,12 @@ select '00000000-0000-4000-8000-000000000242', b.id, 'gsc_site', 'search_console
 
 -- ---------- Réplica do CRM (migração 05) ----------
 
-insert into mkt.crm_funnels (id, external_id, name, is_lead_funnel, last_seen_at)
-values ('00000000-0000-4000-8000-000000000251', 'funil-teste-0001', 'Funil de leads de teste', true, now());
+-- Os funis de leads (decisão 0041, item 1): o funil padrão do CRM, em que a ingestão faz is_lead_funnel seguir
+-- is_default, e o funil antigo dos leads do site, que o script de configuração marca (setup.mark_lead_funnel).
+insert into mkt.crm_funnels (id, external_id, name, is_default, is_lead_funnel, last_seen_at)
+values ('00000000-0000-4000-8000-000000000251', 'funil-teste-0001', 'Funil de vendas de teste', true, true, now()),
+       ('00000000-0000-4000-8000-000000000252', 'funil-teste-0002', 'Funil antigo de leads de teste', false, true,
+        now());
 
 insert into mkt.crm_customers (id, external_id, code, crm_status, is_known_by_erp, has_app_owner, first_utm_source,
                                first_utm_medium, first_utm_campaign, source_created_at, last_seen_at)
@@ -96,9 +103,14 @@ values ('00000000-0000-4000-8000-000000000261', 'cli-teste-0001', 'CLI-9001', 'a
        ('00000000-0000-4000-8000-000000000262', 'cli-teste-0002', 'CLI-9002', 'prospect', false, false, null, null,
         null, now() - interval '5 days', now());
 
-insert into mkt.crm_customer_brands (customer_id, brand_id, situation, last_purchase_on, situation_computed_at,
-                                     last_seen_at)
-select '00000000-0000-4000-8000-000000000261', b.id, 'active', current_date - 10, now(), now()
+-- A situação e o perdido marcado à mão não vêm do CRM: ficam nulos (decisão 0041, item 6). O retrato do ERP já traz a
+-- compra feita pelo app (a última compra anda para a frente); a mais antiga já vista, de antes do 1º pedido do CRM,
+-- fica (decisão 0042).
+insert into mkt.crm_customer_brands (customer_id, brand_id, situation, is_lost_manual, last_purchase_on,
+                                     erp_first_purchase_on, erp_last_purchase_on, erp_earliest_purchase_on,
+                                     erp_total_purchased_cents, situation_computed_at, last_seen_at)
+select '00000000-0000-4000-8000-000000000261', b.id, null, null, null, null, current_date - 10, current_date - 400,
+       480000, null, now()
   from mkt.brands b where b.code = 'cs';
 insert into mkt.crm_customer_reps (customer_id, brand_id, sales_rep_id, last_seen_at)
 select '00000000-0000-4000-8000-000000000261', b.id, '00000000-0000-4000-8000-000000000221', now()
@@ -114,6 +126,13 @@ select '00000000-0000-4000-8000-000000000271', 'deal', 'neg-teste-0001', 'NEG-90
 insert into mkt.crm_leads (id, kind, external_id, customer_id, source_created_at, last_seen_at)
 values ('00000000-0000-4000-8000-000000000272', 'sdr', 'sdr-teste-0001', '00000000-0000-4000-8000-000000000262',
         now() - interval '3 days', now());
+-- A conversão do lead do SDR abre um negócio sem funil e sem marca, com a origem "SDR WhatsApp": sem funil é do funil
+-- padrão, e a ingestão grava o id dele (decisão 0041, itens 1 e 3).
+insert into mkt.crm_leads (id, kind, external_id, code, brand_id, customer_id, crm_funnel_id, crm_origin_raw,
+                           source_created_at, last_seen_at)
+values ('00000000-0000-4000-8000-000000000273', 'deal', 'neg-teste-0002', 'NEG-9002', null,
+        '00000000-0000-4000-8000-000000000262', '00000000-0000-4000-8000-000000000251', 'sdr whatsapp',
+        now() - interval '2 days', now());
 
 insert into mkt.crm_orders (id, external_id, brand_id, customer_id, status, total_cents, sales_rep_id,
                             source_created_at, last_seen_at)

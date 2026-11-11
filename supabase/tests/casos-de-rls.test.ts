@@ -410,7 +410,7 @@ describe('o catálogo (RLS-24, 27 e 29)', () => {
 
   it.todo('RLS-24 (fase 4): as views de mkt e de api da migração 12 entram na lista acima');
 
-  it('RLS-27: tabelas com RLS, definer com search_path vazio, sequências fechadas e nenhum serviço com bypassrls', async () => {
+  it('RLS-27: tabelas com RLS, toda função com search_path pg_catalog, pg_temp, sequências fechadas e nenhum serviço com bypassrls', async () => {
     await caso(db, postgres, async (s) => {
       expect(await violacoes(s.linhas)).toEqual([]);
     });

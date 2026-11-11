@@ -2,7 +2,8 @@
 // "Seed"): o segredo de leitura sai do Vault só para a conexão do worker (private.read_credential), que também o troca
 // (private.rotate_credential) e diz o estado (ingest.set_credential_status); a credencial de escrita é só a linha de
 // estado, sem segredo. As funções setup.* cadastram conta, perfil, propriedade e credencial com a marca, e o convite do
-// primeiro dono. Segredos e e-mails inventados; nenhum aparece em mensagem de erro.
+// primeiro dono (a que marca o funil antigo dos leads do site, setup.mark_lead_funnel, está em ingestao.test.ts, com a
+// leitura dos funis). Segredos e e-mails inventados; nenhum aparece em mensagem de erro.
 import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -360,11 +361,30 @@ describe('os scripts de configuração: setup.*', () => {
       anon,
     ]) {
       await caso(db, quem, async (s) => {
-        await s.erro('42501', `select setup.register_ad_account('cs', 'meta', 'act_2', 'x')`);
-        await s.erro('42501', `select setup.register_ig_account('cs', '1', 'x')`);
-        await s.erro('42501', `select setup.register_web_property('cs', 'ga4_property', '1', 'exemplo.com')`);
-        await s.erro('42501', `select setup.register_credential('meta', 'write', null, null, null)`);
-        await s.erro('42501', `select setup.create_first_owner_invitation('a@exemplo.com', 'Pessoa')`);
+        // Com o esquema setup aberto só neste caso (o rollback desfaz), quem barra é o grant de cada função, não a
+        // falta de USAGE no esquema: a linha falha se uma função abrir para outro papel.
+        await s.como(postgres);
+        await s.exec(
+          'grant usage on schema setup to anon, authenticated, mkt_worker, mkt_executor, n8n_notifier',
+        );
+        await s.como(quem);
+        const chamadas: Array<[string, string]> = [
+          ['register_ad_account', `select setup.register_ad_account('cs', 'meta', 'act_2', 'x')`],
+          ['register_ig_account', `select setup.register_ig_account('cs', '1', 'x')`],
+          [
+            'register_web_property',
+            `select setup.register_web_property('cs', 'ga4_property', '1', 'exemplo.com')`,
+          ],
+          ['register_credential', `select setup.register_credential('meta', 'write', null, null, null)`],
+          [
+            'create_first_owner_invitation',
+            `select setup.create_first_owner_invitation('a@exemplo.com', 'Pessoa')`,
+          ],
+          ['mark_lead_funnel', `select setup.mark_lead_funnel('funil-teste-0001')`],
+        ];
+        for (const [funcao, sql] of chamadas) {
+          expect((await s.erro('42501', sql)).message, sql).toBe(`permission denied for function ${funcao}`);
+        }
       });
     }
   });

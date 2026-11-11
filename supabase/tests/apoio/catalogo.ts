@@ -3,8 +3,9 @@
  *
  *   violacoes(consulta)  o que fere as regras de toda migração, nos sete esquemas (lista vazia = tudo certo):
  *                        tabela sem RLS; anon lendo; PUBLIC, anon ou authenticated gravando direto (RLS-04,
- *                        RLS-29); sequência aberta a eles; função security definer sem search_path vazio;
- *                        função executável por PUBLIC ou anon; papel de serviço com bypassrls (RLS-27)
+ *                        RLS-29); sequência aberta a eles; função (definer ou invoker) sem search_path =
+ *                        pg_catalog, pg_temp; função executável por PUBLIC ou anon; papel de serviço com bypassrls
+ *                        (RLS-27)
  *   retrato(consulta)    o catálogo em forma comparável (esquemas, papéis, privilégios, funções, tabelas,
  *                        colunas, políticas, gatilhos, restrições e quantas linhas cada tabela tem)
  *   domainsDoMkt(consulta)  cada lista fechada (domain de mkt) com os códigos do check; codigosDoDomain(…) só
@@ -55,7 +56,7 @@ const REGRAS = `
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
      where n.nspname = any($1)
   ), fun as (
-    select p.oid, p.prosecdef, p.proconfig, p.proacl
+    select p.oid, p.proconfig, p.proacl
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = any($1)
   ), api(papel) as (values ('public'), ('anon'), ('authenticated'))
@@ -75,8 +76,10 @@ const REGRAS = `
     from rel r cross join api a
    where case when r.relkind = 'S' then has_sequence_privilege(a.papel, r.oid, 'usage, select, update') end
   union all
-  select 'security definer sem search_path vazio: ' || oid::regprocedure::text
-    from fun where prosecdef and not coalesce('search_path=""' = any(proconfig), false)
+  -- Toda função, definer ou invoker: com o caminho vazio (ou sem pg_temp no fim), o esquema temporário da sessão
+  -- é procurado primeiro para tipos e tabelas, e o pg_temp de quem chama mudaria o que a função usa.
+  select 'função sem search_path=pg_catalog, pg_temp: ' || oid::regprocedure::text
+    from fun where not coalesce('search_path=pg_catalog, pg_temp' = any(proconfig), false)
   union all
   select 'executável por PUBLIC: ' || oid::regprocedure::text
     from fun

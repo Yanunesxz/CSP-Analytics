@@ -28,9 +28,14 @@ export const POST_IG_CS = '00000000-0000-4000-8000-000000000291';
 export const GA4_CS = '00000000-0000-4000-8000-000000000241';
 /** Propriedade do Search Console da cs. */
 export const GSC_CS = '00000000-0000-4000-8000-000000000242';
-/** O funil de leads do CRM. */
+/** O funil padrão do CRM, que é o de leads (decisão 0041, item 1). */
 export const FUNIL_DE_LEADS = '00000000-0000-4000-8000-000000000251';
-/** Cliente com UTM de primeiro contato, situação e carteira na cs. */
+/** O funil antigo dos leads do site: não é o padrão, e o script de configuração já o marcou como de leads. */
+export const FUNIL_ANTIGO_DE_LEADS = '00000000-0000-4000-8000-000000000252';
+/**
+ * Cliente com UTM de primeiro contato e carteira na cs; na cs, um cliente antigo que recomprou: situação nula (decisão
+ * 0041) e a compra do ERP mais antiga já vista guardada (decisão 0042).
+ */
 export const CLIENTE_A = '00000000-0000-4000-8000-000000000261';
 /** Prospecto, sem situação. */
 export const CLIENTE_B = '00000000-0000-4000-8000-000000000262';
@@ -38,6 +43,11 @@ export const CLIENTE_B = '00000000-0000-4000-8000-000000000262';
 export const LEAD_NEGOCIO = '00000000-0000-4000-8000-000000000271';
 /** Lead do SDR, sem marca (decisão 0014). */
 export const LEAD_SDR = '00000000-0000-4000-8000-000000000272';
+/**
+ * O negócio da conversão do lead do SDR: veio do CRM sem funil (conta como do funil padrão) e sem marca, com a origem
+ * "SDR WhatsApp" (decisão 0041, itens 1 e 3).
+ */
+export const LEAD_NEGOCIO_DO_SDR = '00000000-0000-4000-8000-000000000273';
 /** Pedido enviado do cliente A na cs. */
 export const PEDIDO = '00000000-0000-4000-8000-000000000281';
 

@@ -9,12 +9,17 @@
 --   mkt.action_exceeds_limit e mkt.execution_extra_spend_cents). Cria a conferência da execução
 --   (mkt.execution_allowed); as credenciais (private.read_credential e private.rotate_credential, só do worker e só as
 --   de leitura); as funções ingest.* do worker: as rodadas (start_run, take_requested_run, finish_run), uma upsert por
---   tabela de fora (com a regra CSV × API, a limpeza do texto do CRM e o funil de leads), a releitura que troca o dia
---   (replace_day), a passada completa que apaga o que sumiu do CRM com a trava de 20% (delete_missing), o estado da
---   credencial e a rodada e as propostas do Claude; as do executor (next_execution, update_execution,
---   set_action_progress); e as setup.* dos scripts de configuração. Toda função de ingest e de setup é security
---   definer, com search_path vazio, e só o papel dela executa; as de ingest conferem também o session_user (o worker
---   ou o executor), que uma sessão não troca.
+--   tabela de fora (com a regra CSV × API, a limpeza do texto do CRM, também do nome do funil, e o CRM como ele é,
+--   decisões 0041 e 0042: o funil de leads por regra, o negócio sem funil como do funil padrão, o nulo no que o CRM não
+--   entrega e a compra do ERP mais antiga já vista), a releitura que troca o dia (replace_day), a passada completa que
+--   apaga o que sumiu do CRM com a trava de 20% (delete_missing; o par cliente × marca com a compra do ERP mais antiga
+--   já vista perde só o retrato, e a data fica), o estado da credencial e a rodada e as propostas do Claude; as do
+--   executor (next_execution, update_execution, set_action_progress; a criação só confirma com a campanha relida, da
+--   conta da execução, e a que a leitura importou do humano depois de a ação mandar criar passa para o Claude); e as
+--   setup.* dos scripts de configuração, também a que marca o funil antigo dos leads do site (mark_lead_funnel). Toda
+--   função de ingest e de setup é security definer, com search_path pg_catalog, pg_temp, e só o papel dela executa; as
+--   de ingest e a mark_lead_funnel conferem também o session_user (o worker, o executor ou o script), que uma sessão
+--   não troca.
 -- Risco: médio. É por aqui que os serviços gravam: uma conferência errada deixaria o worker gravar o que não devia ou o
 --   executor mandar o que não foi aprovado. Os gatilhos das migrações 04 e 07 conferem de novo o operador, a ação e a
 --   execução. Não toca em dado: só cria funções, dois domain e uma view.
@@ -66,7 +71,7 @@ end $$;
 -- Host de um endereço: tira protocolo, usuário, porta e caminho; depois www., m., l. e lm. (nessa ordem), como o
 -- host() de rules.ts.
 create or replace function mkt.url_host(p text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select nullif(
     regexp_replace(regexp_replace(regexp_replace(regexp_replace(
       regexp_replace(lower(btrim(coalesce(p, ''))), '^[a-z][a-z0-9+.-]*://(?:[^@/]*@)?([^/:?#]+).*$', '\1'),
@@ -76,7 +81,7 @@ $$;
 
 -- Sufixo terminado em ponto ("google.") vale em qualquer lugar do host; o resto, host igual ou subdomínio.
 create or replace function mkt.host_matches(p_host text, p_patterns text[]) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select coalesce(bool_or(case when right(s, 1) = '.' then strpos(p_host, s) > 0
                                else p_host = s or right(p_host, length(s) + 1) = '.' || s end), false)
     from unnest(p_patterns) s
@@ -84,7 +89,7 @@ $$;
 
 -- Assistente de IA de uma fonte (utm_source, sessionSource do GA4 ou referrer). A lista mora só aqui.
 create or replace function mkt.ai_source_of(p_session_source text, p_channel_group text) returns mkt.ai_source
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (case
     when mkt.host_matches(h, '{chatgpt.com,chat.openai.com}') or h in ('chatgpt', 'openai') then 'chatgpt'
     when mkt.host_matches(h, '{perplexity.ai}') or h = 'perplexity' then 'perplexity'
@@ -98,7 +103,7 @@ $$;
 
 -- Família da fonte de UTM. A lista de fontes mora só aqui: a classificação e a gravação da origem usam.
 create or replace function mkt.utm_source_family(p_source text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case
     when s = '' then null
     when mkt.ai_source_of(s, null) is not null then 'ai_assistant'   -- antes da Meta: "chatgpt.com" é IA
@@ -114,20 +119,20 @@ $$;
 
 -- O texto de negocios.origem pode ser gravado? Só se é uma fonte conhecida (o de-para é conferido à parte).
 create or replace function mkt.is_known_origin_text(p text) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select mkt.utm_source_family(p) is not null
 $$;
 
 -- ---------- Ritmo, conta do mês e limite (metricas.md, seções 2.3 e 4.5; decisão 0021) ----------
 
 create or replace function mkt.ratio(p_num numeric, p_den numeric) returns numeric
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case when p_num is null or p_den is null or p_den = 0 then null else p_num / p_den end
 $$;
 
 create or replace function mkt.pace(p_spent bigint, p_target bigint, p_days_elapsed integer, p_days_in_month integer,
   out projection_cents bigint, out expected_today_cents bigint, out usage numeric, out situation mkt.spend_situation)
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select round(p_spent::numeric / p_days_elapsed * p_days_in_month)::bigint,
          round(p_target::numeric * p_days_elapsed / p_days_in_month)::bigint,
          mkt.ratio(p_spent, p_target),
@@ -139,20 +144,20 @@ $$;
 
 -- Recebe o gasto e o limite, não o uso: com limite 0, o uso é nulo, e o alerta precisa dizer "acima", como a situação.
 create or replace function mkt.limit_alert(p_spent bigint, p_limit bigint) returns mkt.limit_alert
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (case when p_spent >= p_limit then 'over_limit'
                when p_spent >= 0.9 * p_limit then 'near_limit' end)::mkt.limit_alert
 $$;
 
 -- A fonte tem base quando o conector já trouxe dado alguma vez (decisão 0034).
 create or replace function mkt.source_covered(p_code mkt.connector_code) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select coalesce((select c.first_success_at is not null from mkt.connectors c where c.code = p_code), false)
 $$;
 
 -- Gasto: o canal tem base e a conta da marca nele já foi lida. Sem canal: algum canal com base.
 create or replace function mkt.ads_covered(p_brand_id uuid, p_platform mkt.platform) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select exists (
     select 1
       from mkt.ad_accounts a
@@ -222,7 +227,7 @@ select b.*, p.projection_cents, p.expected_today_cents, p.usage, p.situation,
 -- execução. Orçamento: só o que passa do atual (o atual relido; sem ele, o anterior dos parâmetros) × dias que faltam.
 -- Criar: o orçamento novo × dias que faltam. Lance e criativo: o custo estimado (nulo sem estimativa). O resto, 0.
 create or replace function mkt.action_extra_spend_cents(p_action_id uuid) returns bigint
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select case a.kind
            when 'budget' then
              greatest(0, (a.params ->> 'daily_budget_cents')::bigint
@@ -243,7 +248,7 @@ $$;
 -- criativo sem custo estimado: quando o uso do mês passa de 90%. Nulo (sem gasto lido, sem orçamento conhecido, sem
 -- limite) fica nulo: a trava da execução e o alerta da fila contam como passando.
 create or replace function mkt.action_exceeds_limit(p_action_id uuid) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select case
            when a.kind in ('pause', 'pending_fix') then false
            when a.kind in ('bid', 'creative') and a.cost_cents is null then m.usage > 0.9
@@ -258,7 +263,7 @@ $$;
 -- O gasto a mais de uma execução: o da ação que a gerou; reativar (desfazer a parada) conta o orçamento diário da
 -- campanha × dias que faltam (nulo sem orçamento conhecido); pausar e o teto da conta, 0.
 create or replace function mkt.execution_extra_spend_cents(p_execution_id uuid) returns bigint
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select case
            when e.traffic_action_id is not null then mkt.action_extra_spend_cents(e.traffic_action_id)
            when e.operation = 'activate' then
@@ -281,7 +286,7 @@ $$;
 -- (ingest.next_execution) chamam.
 create or replace function mkt.execution_allowed(p_execution_id uuid,
                                                  out is_allowed boolean, out blocked_reason mkt.execution_block_reason)
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   e mkt.platform_executions;
   m mkt.v_account_month;
@@ -363,7 +368,7 @@ end $$;
 -- O segredo de uma credencial de leitura, do Vault: só para a conexão do worker (o session_user, que a sessão não
 -- troca) e nunca a de escrita, que fica só nas variáveis do executor. Não repete o segredo em mensagem de erro.
 create or replace function private.read_credential(p_id uuid) returns text
-language plpgsql stable security definer set search_path = '' as $$
+language plpgsql stable security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v private.connector_credentials;
   v_secret text;
@@ -391,7 +396,7 @@ end $$;
 -- Troca o segredo de uma credencial de leitura que renovou (o token do Instagram de 60 dias, o refresh token): só o
 -- worker, com o segredo como parâmetro ligado. A credencial volta a valer; a mudança de estado vai para a auditoria.
 create or replace function private.rotate_credential(p_id uuid, p_secret text, p_expires_at timestamptz) returns void
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v private.connector_credentials;
 begin
@@ -434,7 +439,7 @@ end $$;
 create or replace function private.ingest_row_problem(p_row jsonb, p_kind text, p_key text[], p_values text[],
                                                       p_required text[] default '{}')
 returns text
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 declare
   v_name text;
 begin
@@ -475,7 +480,7 @@ end $$;
 
 -- O código de uma linha recusada pelo banco (moeda, lista, check): curto, sem a mensagem técnica.
 create or replace function private.refusal_code(p_sqlstate text, p_constraint text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case
     when p_constraint = 'ad_accounts_currency_check' then 'CURRENCY'
     when p_sqlstate = '23514' then 'CHECK'
@@ -488,17 +493,17 @@ language sql immutable parallel safe set search_path = '' as $$
 $$;
 
 -- Linha que não foi gravada e não conta como recusada: conta, perfil ou propriedade que não está cadastrada (é
--- ignorada, integracoes.md, seção 4), negócio fora do funil de leads, linha do CSV que a da API já cobre e texto com
--- dado pessoal descartado.
+-- ignorada, integracoes.md, seção 4), negócio de funil que não é de leads, linha do CSV que a da API já cobre e texto
+-- com dado pessoal descartado.
 create or replace function private.is_ignored_code(p_code text) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select p_code in ('NOT_REGISTERED', 'NOT_LEAD_FUNNEL', 'API_KEPT', 'PERSONAL_DATA_DROPPED')
 $$;
 
--- Texto que vem do CRM (UTM; tabelas.md, seção 2): vira nulo com @ ou, fora o nome de campanha, com dado pessoal
--- (PERSONAL_DATA_DROPPED); entra cortado em 150 letras.
+-- Texto que vem do CRM (UTM e nome do funil; tabelas.md, seção 2): vira nulo com @ ou, fora o nome de campanha, com
+-- dado pessoal (PERSONAL_DATA_DROPPED); entra cortado em 150 letras.
 create or replace function private.clean_crm_text(p text, p_is_campaign boolean, out value text, out dropped boolean)
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case when b.bad then null else left(b.v, 150) end, b.bad
     from (select a.v,
                  coalesce(strpos(a.v, '@') > 0 or (not p_is_campaign and mkt.has_personal_data(a.v)), false) as bad
@@ -510,7 +515,7 @@ $$;
 -- como vistos na passada completa. O login fora do formato é recusado antes de gastar um número da sequência (que
 -- não volta atrás com a linha recusada).
 create or replace function private.rep_for_login(p_brand_id uuid, p_login_key text) returns uuid
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v_rep uuid;
 begin
@@ -539,7 +544,7 @@ end $$;
 -- rodada.
 create or replace function private.ingest_batch(p_run_id uuid, p_rows jsonb, p_connectors text[], p_row_function text)
 returns table (item integer, code text, is_refused boolean)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v_connector text;
   v_job text;
@@ -616,7 +621,7 @@ end $$;
 -- Marca (marcas): o worker grava o id do CRM e o nome, pela sigla convertida (CS → cs).
 create or replace function private.ingest_brand(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                 out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 begin
   dropped := 0;
   code := private.ingest_row_problem(p_row, 'brand', array['external_id'], array['name'],
@@ -632,10 +637,20 @@ begin
   end if;
 end $$;
 
--- Funil (funis_venda): nome e padrão. Qual é o funil de leads é só por migração.
+-- Funil (funis_venda): nome e padrão. O nome passa pela limpeza do texto do CRM (a segunda barreira, depois da view):
+-- com @ ou com cara de dado pessoal, entra o rótulo "Funil " e os 8 primeiros caracteres do id, nunca o texto, e conta
+-- PERSONAL_DATA_DROPPED; a linha não é recusada, para o funil de leads não sumir. Funil de leads por regra (decisão
+-- 0041, item 1): no funil padrão do CRM, is_lead_funnel segue is_default; o funil que deixa de ser o padrão deixa de
+-- ser de leads. O funil antigo dos leads do site, marcado por setup.mark_lead_funnel, continua marcado: a leitura só
+-- desmarca o funil que era o padrão. Sem coluna para lembrar a marca, o funil marcado que um dia vira o padrão e
+-- depois deixa de ser perde a marca, e o script marca de novo.
 create or replace function private.ingest_crm_funnel(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                      out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
+declare
+  v_default boolean;
+  v_name text;
+  v_name_dropped boolean;
 begin
   dropped := 0;
   code := private.ingest_row_problem(p_row, 'crm_funnel', array['external_id'], array['name', 'is_default'],
@@ -643,18 +658,29 @@ begin
   if code is not null then
     return;
   end if;
-  insert into mkt.crm_funnels as f (external_id, name, is_default, last_seen_at)
-  values (p_row #>> '{key,external_id}', p_row #>> '{values,name}',
-          coalesce((p_row #>> '{values,is_default}')::boolean, false), now())
+  v_default := coalesce((p_row #>> '{values,is_default}')::boolean, false);
+  select c.value, c.dropped into v_name, v_name_dropped
+    from private.clean_crm_text(p_row #>> '{values,name}', false) c;
+  dropped := v_name_dropped::integer;
+  v_name := coalesce(v_name, 'Funil ' || left(p_row #>> '{key,external_id}', 8));
+  insert into mkt.crm_funnels as f (external_id, name, is_default, is_lead_funnel, last_seen_at)
+  values (p_row #>> '{key,external_id}', v_name, v_default, v_default, now())
   on conflict (source, external_id) do update
-     set name = excluded.name, is_default = excluded.is_default, last_seen_at = excluded.last_seen_at;
+     set name = excluded.name, is_default = excluded.is_default,
+         is_lead_funnel = case when excluded.is_default then true
+                               when f.is_default then false
+                               else f.is_lead_funnel end,
+         last_seen_at = excluded.last_seen_at;
 end $$;
 
--- Representante do CRM (usuarios): só o papel e se está ativo, nunca o nome. O código REP- vem do gatilho e não anda
--- na releitura.
+-- Representante do CRM (usuarios): só o papel e se está ativo, nunca o nome. O papel fora da lista mkt.rep_crm_role
+-- entra nulo, sem recusar a linha do usuário (decisão 0041, item 8). O código REP- vem do gatilho e não anda na
+-- releitura.
 create or replace function private.ingest_sales_rep(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                     out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
+declare
+  v_role text := p_row #>> '{values,crm_role}';
 begin
   dropped := 0;
   code := private.ingest_row_problem(p_row, 'sales_rep', array['external_id'], array['crm_role', 'is_active'],
@@ -662,9 +688,11 @@ begin
   if code is not null then
     return;
   end if;
+  if not coalesce(v_role = any (private.domain_codes('mkt.rep_crm_role')), false) then
+    v_role := null;
+  end if;
   insert into mkt.sales_reps as s (external_id, crm_role, is_active, last_seen_at)
-  values (p_row #>> '{key,external_id}', p_row #>> '{values,crm_role}',
-          coalesce((p_row #>> '{values,is_active}')::boolean, true), now())
+  values (p_row #>> '{key,external_id}', v_role, coalesce((p_row #>> '{values,is_active}')::boolean, true), now())
   on conflict (source, external_id) do update
      set crm_role = excluded.crm_role, is_active = excluded.is_active, last_seen_at = excluded.last_seen_at;
 end $$;
@@ -673,7 +701,7 @@ end $$;
 -- fica com um representante só de app.
 create or replace function private.ingest_sales_rep_app_login(p_row jsonb, p_connector text, p_job text,
                                                               p_brand_id uuid, out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v_brand_id uuid;
   v_rep uuid;
@@ -708,7 +736,7 @@ end $$;
 -- primeiro contato, limpas (tabelas.md, seção 2). Nunca nome, documento ou contato.
 create or replace function private.ingest_crm_customer(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                        out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_source text;
@@ -745,14 +773,21 @@ begin
          source_created_at = excluded.source_created_at, last_seen_at = excluded.last_seen_at;
 end $$;
 
--- Situação e retrato do ERP por cliente e marca (views clientes_situacao e clientes_compras_marca).
+-- Retrato do ERP por cliente e marca (view clientes_compras_marca) e a situação, quando o CRM a entregar em SQL. O que
+-- não vem fica nulo, sem valor inventado (decisão 0041, item 6): a situação, o perdido marcado à mão, a última compra
+-- da régua e a hora do cálculo. O total negativo vira nulo, sem recusar a linha (integracoes.md, seção 3.5). A compra
+-- do ERP mais antiga já vista é a menor entre a guardada, a primeira e a última compra lidas: só anda para trás
+-- (decisão 0042), e o worker não a manda.
 create or replace function private.ingest_crm_customer_brand(p_row jsonb, p_connector text, p_job text,
                                                              p_brand_id uuid, out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_customer uuid;
   v_brand_id uuid;
+  v_first date;
+  v_last date;
+  v_total bigint;
 begin
   dropped := 0;
   code := private.ingest_row_problem(p_row, 'crm_customer_brand', array['customer_external_id'],
@@ -773,16 +808,24 @@ begin
     code := 'UNKNOWN_CUSTOMER';
     return;
   end if;
+  v_first := (x ->> 'erp_first_purchase_on')::date;
+  v_last := (x ->> 'erp_last_purchase_on')::date;
+  v_total := (x ->> 'erp_total_purchased_cents')::bigint;
+  if v_total < 0 then
+    v_total := null;
+  end if;
+  -- least() deixa o nulo de fora: sem nenhuma das datas, fica a que já estava.
   insert into mkt.crm_customer_brands as cb (customer_id, brand_id, situation, is_lost_manual, last_purchase_on,
-                                             erp_first_purchase_on, erp_last_purchase_on, erp_total_purchased_cents,
-                                             situation_computed_at, last_seen_at)
-  values (v_customer, v_brand_id, x ->> 'situation', coalesce((x ->> 'is_lost_manual')::boolean, false),
-          (x ->> 'last_purchase_on')::date, (x ->> 'erp_first_purchase_on')::date, (x ->> 'erp_last_purchase_on')::date,
-          (x ->> 'erp_total_purchased_cents')::bigint, (x ->> 'situation_computed_at')::timestamptz, now())
+                                             erp_first_purchase_on, erp_last_purchase_on, erp_earliest_purchase_on,
+                                             erp_total_purchased_cents, situation_computed_at, last_seen_at)
+  values (v_customer, v_brand_id, x ->> 'situation', (x ->> 'is_lost_manual')::boolean,
+          (x ->> 'last_purchase_on')::date, v_first, v_last, least(v_first, v_last), v_total,
+          (x ->> 'situation_computed_at')::timestamptz, now())
   on conflict (customer_id, brand_id) do update
      set situation = excluded.situation, is_lost_manual = excluded.is_lost_manual,
          last_purchase_on = excluded.last_purchase_on, erp_first_purchase_on = excluded.erp_first_purchase_on,
          erp_last_purchase_on = excluded.erp_last_purchase_on,
+         erp_earliest_purchase_on = least(cb.erp_earliest_purchase_on, excluded.erp_earliest_purchase_on),
          erp_total_purchased_cents = excluded.erp_total_purchased_cents,
          situation_computed_at = excluded.situation_computed_at, last_seen_at = excluded.last_seen_at;
 end $$;
@@ -790,7 +833,7 @@ end $$;
 -- Carteira (clientes.donos_app): o cliente na carteira do login de app da marca, já como resumo HMAC.
 create or replace function private.ingest_crm_customer_rep(p_row jsonb, p_connector text, p_job text,
                                                            p_brand_id uuid, out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v_customer uuid;
   v_brand_id uuid;
@@ -819,14 +862,17 @@ begin
   on conflict (customer_id, brand_id, sales_rep_id) do update set last_seen_at = excluded.last_seen_at;
 end $$;
 
--- Lead (negocios e leads_sdr; integracoes.md, seção 3.4): o negócio entra se está no funil de leads ou já existe aqui
--- (o resto é ignorado: NOT_LEAD_FUNNEL); o do SDR, sempre. A origem do CRM só é guardada se está no de-para, se é uma
--- fonte conhecida ou se é a utm_source de primeiro contato do cliente; outro texto não é gravado e o lead fica
--- is_origin_unmapped. UTM limpa, referrer só o domínio, responsável pelo código do representante. O código do SDR vem
--- do gatilho (LEAD-, não anda na releitura); o do negócio é o NEG- do CRM.
+-- Lead (negocios e leads_sdr; integracoes.md, seção 3.4): o negócio entra se está num funil de leads, se não tem funil
+-- ou se já existe aqui, em qualquer funil (o resto é ignorado: NOT_LEAD_FUNNEL); o do SDR, sempre. No CRM, negócio sem
+-- funil é do funil padrão, que é de leads (decisão 0041, item 1; é como nasce o negócio da conversão do SDR): ele
+-- entra com o funil padrão quando há um só, e sem funil quando não há como saber qual é. A origem do CRM só é guardada
+-- se está no de-para, se é uma fonte conhecida ou se é a utm_source de primeiro contato do cliente; outro texto não é
+-- gravado e o lead fica is_origin_unmapped. UTM limpa, referrer só o domínio, responsável pelo código do
+-- representante: o negócio que vem sem ele (fora da view negocios_responsavel) fica sem, mesmo que antes tivesse. O
+-- código do SDR vem do gatilho (LEAD-, não anda na releitura); o do negócio é o NEG- do CRM.
 create or replace function private.ingest_crm_lead(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                    out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   k jsonb := p_row -> 'key';
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
@@ -877,10 +923,15 @@ begin
     if x ->> 'funnel_external_id' is not null then
       select f.* into v_funnel from mkt.crm_funnels f
        where f.source = 'csp360' and f.external_id = x ->> 'funnel_external_id';
-    end if;
-    if v_existing is null and not coalesce(v_funnel.is_lead_funnel, false) then
-      code := 'NOT_LEAD_FUNNEL';
-      return;
+      if v_existing is null and not coalesce(v_funnel.is_lead_funnel, false) then
+        code := 'NOT_LEAD_FUNNEL';
+        return;
+      end if;
+    else
+      select f.* into v_funnel from mkt.crm_funnels f
+       where f.source = 'csp360' and f.is_default
+         and not exists (select 1 from mkt.crm_funnels g
+                          where g.source = 'csp360' and g.is_default and g.id <> f.id);
     end if;
   end if;
 
@@ -931,7 +982,7 @@ end $$;
 -- login de app (vendedor_app), já como resumo HMAC.
 create or replace function private.ingest_crm_order(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                     out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_brand_id uuid;
@@ -981,7 +1032,7 @@ end $$;
 -- Rodada apps → CSP 360 (sincronizacoes).
 create or replace function private.ingest_crm_upstream_run(p_row jsonb, p_connector text, p_job text,
                                                            p_brand_id uuid, out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_brand_id uuid;
@@ -1014,7 +1065,7 @@ end $$;
 -- teto, entra nulo) e o gasto contado nele. A leitura dá base à conta (first_read_at).
 create or replace function private.ingest_ad_account(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                      out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
 begin
@@ -1045,11 +1096,13 @@ end $$;
 -- Campanha: da conta cadastrada (a de fora é ignorada). No CSV de reserva, sem a conta no arquivo, vale a única conta
 -- ativa da marca no canal, e a campanha que nasce dele leva a fonte e o id da plataforma (decisão 0035). Campanha
 -- nova nasce do humano; do Claude só a criada pela central, reconhecida pelo código da ação create no fim do nome,
--- com a execução enviada ou confirmada na mesma conta (decisão 0008). O operador nunca muda aqui. Só os campos que
--- vieram mudam (o CSV não traz orçamento).
+-- com a execução enviada ou confirmada na mesma conta e a ação ainda sem campanha (decisão 0008: uma ação create, uma
+-- campanha; a que o gestor criar depois com o mesmo código nasce do humano). O operador nunca muda aqui: a que entrou
+-- do humano antes de a criação ser confirmada passa para o Claude na confirmação (private.read_back_campaign). Só os
+-- campos que vieram mudam (o CSV não traz orçamento).
 create or replace function private.ingest_campaign(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                    out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_source text := case p_connector when 'meta' then 'meta_ads' when 'tiktok' then 'tiktok_ads' else 'google_ads' end;
@@ -1118,7 +1171,8 @@ begin
      and a.kind = 'create' and a.ad_account_id = v_account.id
      and exists (select 1 from mkt.platform_executions e
                   where e.traffic_action_id = a.id and e.status in ('sent', 'confirmed')
-                    and e.ad_account_id = v_account.id);
+                    and e.ad_account_id = v_account.id)
+     and not exists (select 1 from mkt.campaigns o where o.created_by_action_id = a.id);
   insert into mkt.campaigns (ad_account_id, brand_id, platform, source, external_id, name, status, daily_budget_cents,
                              spend_cap_cents, is_smart_plus, source_created_at, last_seen_at, managed_by,
                              created_by_action_id)
@@ -1133,7 +1187,7 @@ end $$;
 -- campanha da marca do arquivo. Gravar dá base à conta (first_read_at).
 create or replace function private.ingest_ad_campaign_daily(p_row jsonb, p_connector text, p_job text,
                                                             p_brand_id uuid, out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_source text := case p_connector when 'meta' then 'meta_ads' when 'tiktok' then 'tiktok_ads' else 'google_ads' end;
@@ -1185,7 +1239,7 @@ end $$;
 -- (mkt.valid_activity_details recusa o resto e os eventos de usuário, papel e cobrança).
 create or replace function private.ingest_ad_activity(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                       out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_source text := case p_connector when 'meta' then 'meta_ads' else 'google_ads' end;
@@ -1222,7 +1276,7 @@ end $$;
 -- Perfil do Instagram: só o cadastrado (setup.register_ig_account); o @ e se está ativo. A leitura dá base ao perfil.
 create or replace function private.ingest_ig_account(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                      out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
 begin
@@ -1250,7 +1304,7 @@ end $$;
 -- diferentes; só as métricas que vieram mudam (nulo = a API não devolveu, diferente de 0).
 create or replace function private.ingest_ig_account_daily(p_row jsonb, p_connector text, p_job text,
                                                            p_brand_id uuid, out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_account mkt.ig_accounts;
@@ -1286,7 +1340,7 @@ end $$;
 -- Post: o começo da legenda sem as menções @, até 120 letras, e nulo se parecer dado pessoal; o link só do Instagram.
 create or replace function private.ingest_ig_media(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                    out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_account mkt.ig_accounts;
@@ -1324,7 +1378,7 @@ end $$;
 -- O retrato do dia de um post (valores acumulados até o retrato).
 create or replace function private.ingest_ig_media_daily(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                          out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_media mkt.ig_media;
@@ -1357,7 +1411,7 @@ end $$;
 -- Search Console, totais do dia, da propriedade cadastrada. Gravar dá base à propriedade (first_read_at).
 create or replace function private.ingest_seo_daily(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                     out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_property mkt.web_properties;
@@ -1387,7 +1441,7 @@ end $$;
 -- Search Console, consultas do dia. A consulta com cara de dado pessoal (e-mail, telefone, documento) não é gravada.
 create or replace function private.ingest_seo_query_daily(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                           out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
   v_property mkt.web_properties;
@@ -1424,7 +1478,7 @@ end $$;
 -- GA4: sessões por origem, meio e canal, como vêm. Origem ou meio com cara de dado pessoal: a linha não é gravada.
 create or replace function private.ingest_ga4_traffic_daily(p_row jsonb, p_connector text, p_job text,
                                                             p_brand_id uuid, out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   k jsonb := p_row -> 'key';
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
@@ -1464,7 +1518,7 @@ end $$;
 -- Checagem dos sites (robots.txt, llms.txt, JSON-LD), sem rodada: o achado de cada item, no host da propriedade.
 create or replace function private.ingest_site_check(p_row jsonb, p_connector text, p_job text, p_brand_id uuid,
                                                      out code text, out dropped integer)
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   k jsonb := p_row -> 'key';
   x jsonb := coalesce(p_row -> 'values', '{}'::jsonb);
@@ -1507,136 +1561,136 @@ end $$;
 
 create or replace function ingest.upsert_brands(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_brand')
 $$;
 
 create or replace function ingest.upsert_crm_funnels(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_crm_funnel')
 $$;
 
 create or replace function ingest.upsert_sales_reps(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_sales_rep')
 $$;
 
 create or replace function ingest.upsert_sales_rep_app_logins(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_sales_rep_app_login')
 $$;
 
 create or replace function ingest.upsert_crm_customers(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_crm_customer')
 $$;
 
 create or replace function ingest.upsert_crm_customer_brands(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_crm_customer_brand')
 $$;
 
 create or replace function ingest.upsert_crm_customer_reps(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_crm_customer_rep')
 $$;
 
 create or replace function ingest.upsert_crm_leads(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_crm_lead')
 $$;
 
 create or replace function ingest.upsert_crm_orders(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_crm_order')
 $$;
 
 create or replace function ingest.upsert_crm_upstream_runs(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['csp360'], 'private.ingest_crm_upstream_run')
 $$;
 
 create or replace function ingest.upsert_ad_accounts(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['meta', 'tiktok', 'google_ads'],
                                      'private.ingest_ad_account')
 $$;
 
 create or replace function ingest.upsert_campaigns(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['meta', 'tiktok', 'google_ads'], 'private.ingest_campaign')
 $$;
 
 create or replace function ingest.upsert_ad_campaign_daily(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['meta', 'tiktok', 'google_ads'],
                                      'private.ingest_ad_campaign_daily')
 $$;
 
 create or replace function ingest.upsert_ad_activity_log(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['meta', 'google_ads'], 'private.ingest_ad_activity')
 $$;
 
 create or replace function ingest.upsert_ig_accounts(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['instagram'], 'private.ingest_ig_account')
 $$;
 
 create or replace function ingest.upsert_ig_account_daily(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['instagram'], 'private.ingest_ig_account_daily')
 $$;
 
 create or replace function ingest.upsert_ig_media(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['instagram'], 'private.ingest_ig_media')
 $$;
 
 create or replace function ingest.upsert_ig_media_daily(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['instagram'], 'private.ingest_ig_media_daily')
 $$;
 
 create or replace function ingest.upsert_seo_daily(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['search_console'], 'private.ingest_seo_daily')
 $$;
 
 create or replace function ingest.upsert_seo_query_daily(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['search_console'], 'private.ingest_seo_query_daily')
 $$;
 
 create or replace function ingest.upsert_ga4_traffic_daily(p_run_id uuid, p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(p_run_id, p_rows, array['ga4'], 'private.ingest_ga4_traffic_daily')
 $$;
 
 -- A checagem dos sites não tem rodada (integracoes.md, seção 2.1).
 create or replace function ingest.upsert_site_checks(p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language sql security definer set search_path = '' as $$
+language sql security definer set search_path = pg_catalog, pg_temp as $$
   select * from private.ingest_batch(null, p_rows, null, 'private.ingest_site_check')
 $$;
 
@@ -1650,7 +1704,7 @@ $$;
 create or replace function ingest.replace_day(p_run_id uuid, p_table text, p_scope_external_id text, p_metric_on date,
                                               p_rows jsonb)
 returns table (item integer, code text, is_refused boolean)
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_connector text;
   v_job text;
@@ -1737,10 +1791,13 @@ end $$;
 -- dela; o login de app, pelo updated_at). Conta antes: acima de 20% da tabela, não apaga nada e devolve
 -- MASS_DELETE_BLOCKED (a rodada termina partial com esse código), a menos que o dono tenha confirmado a passada
 -- anterior (api.confirm_mass_delete). crm_upstream_runs fica fora: a leitura traz só as últimas rodadas, e o pg_cron
--- apaga as de mais de 90 dias.
+-- apaga as de mais de 90 dias. O par cliente × marca que a passada não viu e tem a compra do ERP mais antiga já vista
+-- não sai: perde só o retrato (fica nulo o que espelha o CRM), e a linha e a data ficam, porque o CRM não a tem mais
+-- (decisão 0042); o par sai com o cliente, pela cascata de crm_customers. Ali a trava conta só o que a chamada muda (o
+-- par sem a data, que sai, e o que ainda tem retrato), e deleted conta só o que saiu.
 create or replace function ingest.delete_missing(p_table text, p_run_id uuid)
 returns table (deleted integer, code text)
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_run mkt.sync_runs;
   v_column text;
@@ -1767,9 +1824,20 @@ begin
 
   v_column := case when p_table = 'sales_rep_app_logins' then 'updated_at' else 'last_seen_at' end;
   v_cutoff := date_trunc('milliseconds', v_run.started_at);
-  execute format('select count(*), count(*) filter (where coalesce(t.%I, ''-infinity'') < $1) from mkt.%I t',
-                 v_column, p_table)
-     into v_total, v_missing using v_cutoff;
+  if p_table = 'crm_customer_brands' then
+    select count(*),
+           count(*) filter (where cb.last_seen_at < v_cutoff
+                              and (cb.erp_earliest_purchase_on is null
+                                   or num_nonnulls(cb.situation, cb.is_lost_manual, cb.last_purchase_on,
+                                                   cb.erp_first_purchase_on, cb.erp_last_purchase_on,
+                                                   cb.erp_total_purchased_cents, cb.situation_computed_at) > 0))
+      into v_total, v_missing
+      from mkt.crm_customer_brands cb;
+  else
+    execute format('select count(*), count(*) filter (where coalesce(t.%I, ''-infinity'') < $1) from mkt.%I t',
+                   v_column, p_table)
+       into v_total, v_missing using v_cutoff;
+  end if;
   if v_missing = 0 then
     deleted := 0;
     return next;
@@ -1791,8 +1859,21 @@ begin
     return;
   end if;
 
-  execute format('delete from mkt.%I t where coalesce(t.%I, ''-infinity'') < $1', p_table, v_column) using v_cutoff;
-  get diagnostics v_deleted = row_count;
+  if p_table = 'crm_customer_brands' then
+    delete from mkt.crm_customer_brands cb
+     where cb.last_seen_at < v_cutoff and cb.erp_earliest_purchase_on is null;
+    get diagnostics v_deleted = row_count;
+    update mkt.crm_customer_brands cb
+       set situation = null, is_lost_manual = null, last_purchase_on = null, erp_first_purchase_on = null,
+           erp_last_purchase_on = null, erp_total_purchased_cents = null, situation_computed_at = null
+     where cb.last_seen_at < v_cutoff
+       and num_nonnulls(cb.situation, cb.is_lost_manual, cb.last_purchase_on, cb.erp_first_purchase_on,
+                        cb.erp_last_purchase_on, cb.erp_total_purchased_cents, cb.situation_computed_at) > 0;
+  else
+    execute format('delete from mkt.%I t where coalesce(t.%I, ''-infinity'') < $1', p_table, v_column)
+      using v_cutoff;
+    get diagnostics v_deleted = row_count;
+  end if;
   update mkt.sync_runs r set rows_deleted = r.rows_deleted + v_deleted where r.id = v_run.id;
   deleted := v_deleted;
   return next;
@@ -1808,7 +1889,7 @@ create or replace function ingest.start_run(p_connector mkt.connector_code, p_jo
                                             p_watermark_from_at timestamptz default null,
                                             p_watermark_to_at timestamptz default null)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_connector mkt.connectors;
   v_brand_id uuid;
@@ -1847,7 +1928,7 @@ end $$;
 -- andamento. Pedido de conector desligado fica na fila. Sem pedido, nada.
 create or replace function ingest.take_requested_run(p_connector mkt.connector_code default null)
 returns setof mkt.sync_runs
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_id uuid;
   v_run mkt.sync_runs;
@@ -1878,7 +1959,7 @@ create or replace function ingest.finish_run(p_run_id uuid, p_status mkt.sync_st
                                              p_error_message text default null,
                                              p_watermark_to_at timestamptz default null)
 returns mkt.sync_runs
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.sync_runs;
   v_status mkt.sync_status := p_status;
@@ -1943,7 +2024,7 @@ end $$;
 -- a hora da conferência e, quando muda, a auditoria (credential_status_changed). A de escrita não é do worker.
 create or replace function ingest.set_credential_status(p_credential_id uuid, p_status mkt.credential_status)
 returns void
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v private.connector_credentials;
 begin
@@ -1982,7 +2063,7 @@ create or replace function ingest.record_claude_run(
   p_output_tokens integer default null, p_proposals_refused integer default null, p_error_code text default null,
   p_finished_at timestamptz default null)
 returns mkt.claude_runs
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.claude_runs;
   v_brand_id uuid;
@@ -2044,7 +2125,7 @@ create or replace function ingest.add_claude_proposal(
   p_kind mkt.action_kind, p_title text, p_rationale text, p_params jsonb, p_impact mkt.level, p_effort mkt.level,
   p_cost_cents bigint)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_run mkt.claude_runs;
   v_checked record;
@@ -2098,7 +2179,7 @@ end $$;
 -- falhou. O mesmo status de novo não muda nada. O gatilho traffic_actions_transition confere de novo o executor.
 create or replace function private.action_progress(p_action_id uuid, p_status mkt.action_status)
 returns mkt.traffic_actions
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.traffic_actions;
 begin
@@ -2126,12 +2207,21 @@ begin
 end $$;
 
 -- A campanha relida depois da execução confirmada: o status e o orçamento que a plataforma mostra; na criação, a
--- campanha nasce aqui, do Claude e com a ação que a criou (decisão 0008), na mesma transação que confirma.
+-- campanha nasce aqui, do Claude e com a ação que a criou (decisão 0008), na mesma transação que confirma. O id
+-- relido de uma campanha de outra conta (talvez de outra marca) é recusado (PT422, campaign), e nada muda. Se a
+-- leitura de hora em hora chegou antes e a importou do humano, sem a ação (a execução ainda na fila: o executor mandou
+-- e caiu antes de gravar "enviada"; ou a ação falhou e foi aprovada de novo, decisão 0038), a confirmação a passa
+-- para o Claude, com a ação: só com o código da ação no fim do nome, sem troca de operador anterior por uma pessoa e
+-- importada depois da primeira execução de criar da ação (a campanha que já existia, mesmo renomeada com o código,
+-- continua do humano). O gatilho campaigns_managed_by_guard confere tudo de novo, e o histórico ganha a linha "criada
+-- pelo Claude".
 create or replace function private.read_back_campaign(p_execution mkt.platform_executions, p_campaign jsonb)
 returns void
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v_key text;
+  v_source text := case p_execution.platform when 'meta' then 'meta_ads' when 'tiktok' then 'tiktok_ads'
+                                             else 'google_ads' end;
 begin
   if jsonb_typeof(p_campaign) is distinct from 'object' then
     raise sqlstate 'PT422' using message = 'TRF-422', detail = 'campaign';
@@ -2149,15 +2239,29 @@ begin
     insert into mkt.campaigns as c (ad_account_id, brand_id, platform, source, external_id, name, status,
                                     daily_budget_cents, managed_by, created_by_action_id, source_created_at,
                                     last_seen_at)
-    values (p_execution.ad_account_id, p_execution.brand_id, p_execution.platform,
-            case p_execution.platform when 'meta' then 'meta_ads' when 'tiktok' then 'tiktok_ads' else 'google_ads' end,
+    values (p_execution.ad_account_id, p_execution.brand_id, p_execution.platform, v_source,
             p_campaign ->> 'external_id',
             coalesce(p_campaign ->> 'name', p_execution.request ->> 'name', p_execution.request ->> 'campaign_name'),
             coalesce(p_campaign ->> 'status', 'paused'), (p_campaign ->> 'daily_budget_cents')::bigint, 'claude',
             p_execution.traffic_action_id, (p_campaign ->> 'source_created_at')::timestamptz, now())
     on conflict (source, external_id) do update
        set status = excluded.status, daily_budget_cents = excluded.daily_budget_cents,
-           last_seen_at = excluded.last_seen_at;
+           last_seen_at = excluded.last_seen_at
+     where c.ad_account_id = excluded.ad_account_id;
+    if not found then
+      raise sqlstate 'PT422' using message = 'TRF-422', detail = 'campaign';
+    end if;
+    update mkt.campaigns c
+       set managed_by = 'claude', created_by_action_id = a.id
+      from mkt.traffic_actions a
+     where c.source = v_source and c.external_id = p_campaign ->> 'external_id'
+       and c.ad_account_id = p_execution.ad_account_id and c.managed_by = 'human' and c.created_by_action_id is null
+       and a.id = p_execution.traffic_action_id and a.kind = 'create'
+       and right(lower(c.name), length(a.code) + 1) = '-' || lower(a.code)
+       and c.created_at >= (select min(x.created_at) from mkt.platform_executions x
+                             where x.traffic_action_id = a.id and x.operation = 'create_campaign')
+       and not exists (select 1 from mkt.campaign_managed_by_history h
+                        where h.campaign_id = c.id and h.reason <> 'imported');
   elsif p_execution.campaign_id is not null then
     update mkt.campaigns c
        set status = case when p_campaign ? 'status' then p_campaign ->> 'status' else c.status end,
@@ -2174,7 +2278,7 @@ end $$;
 -- passa por mkt.execution_allowed: a que não pode fica bloqueada com o motivo, e a busca segue. Sem nenhuma, nada.
 create or replace function ingest.next_execution()
 returns setof mkt.platform_executions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.platform_executions;
   v_check record;
@@ -2218,13 +2322,14 @@ end $$;
 -- O andamento de uma execução: da fila → enviada, confirmada (a releitura antes de mandar já mostra o pedido feito) ou
 -- bloqueada; enviada → enviada de novo (nova tentativa, até 5), confirmada ou falhou. A ação acompanha: enviada → em
 -- execução; confirmada → feita pela plataforma; falhou → falhou (volta para a fila com o código). Confirmada, a
--- campanha fica com o que foi relido. A mensagem com cara de dado pessoal não é gravada.
+-- campanha fica com o que foi relido; a criação só confirma com a campanha relida (o id dela na plataforma, numa
+-- campanha da conta da execução). A mensagem com cara de dado pessoal não é gravada.
 create or replace function ingest.update_execution(
   p_execution_id uuid, p_status mkt.execution_status, p_http_status integer default null,
   p_error_code text default null, p_error_message text default null, p_response jsonb default null,
   p_blocked_reason mkt.execution_block_reason default null, p_campaign jsonb default null)
 returns mkt.platform_executions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.platform_executions;
   v_message text;
@@ -2250,7 +2355,8 @@ begin
   if p_status = 'failed' and p_error_code is null then
     raise sqlstate 'PT422' using message = 'TRF-422', detail = 'error_code';
   end if;
-  if p_campaign is not null and p_status <> 'confirmed' then
+  if (p_campaign is not null and p_status <> 'confirmed')
+     or (p_campaign is null and p_status = 'confirmed' and v.operation = 'create_campaign') then
     raise sqlstate 'PT422' using message = 'TRF-422', detail = 'campaign';
   end if;
   if p_error_message is not null and strpos(p_error_message, '@') = 0 and not mkt.has_personal_data(p_error_message) then
@@ -2285,7 +2391,7 @@ end $$;
 -- O andamento da ação, direto (a mesma regra de update_execution): só o executor.
 create or replace function ingest.set_action_progress(p_action_id uuid, p_status mkt.action_status)
 returns mkt.traffic_actions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if session_user::text <> 'mkt_executor' then
     raise sqlstate 'PT403' using message = 'TRF-403';
@@ -2300,7 +2406,7 @@ end $$;
 create or replace function setup.register_ad_account(p_brand mkt.brand_code, p_platform mkt.platform,
                                                      p_external_id text, p_name text)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_brand_id uuid;
   v_id uuid;
@@ -2334,7 +2440,7 @@ end $$;
 -- Perfil do Instagram com a marca e o @.
 create or replace function setup.register_ig_account(p_brand mkt.brand_code, p_external_id text, p_username text)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_brand_id uuid;
   v_id uuid;
@@ -2364,7 +2470,7 @@ end $$;
 create or replace function setup.register_web_property(p_brand mkt.brand_code, p_kind mkt.web_property_kind,
                                                        p_external_id text, p_host text)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_brand_id uuid;
   v_host text := mkt.url_host(p_host);
@@ -2395,6 +2501,38 @@ begin
   return v_id;
 end $$;
 
+-- O funil antigo dos leads do site (decisão 0041, item 1): marcado uma vez como funil de leads, pelo id do funil no
+-- CRM, para o histórico encerrado entrar; a passada completa seguinte grava os negócios dele. Só a conexão do script
+-- (o session_user, que a sessão não troca: o dono do banco recebe SET-403). O funil precisa já ter sido lido pela
+-- réplica: o funil que ainda não veio é recusado (SET-404; rode depois da primeira passada completa), em vez de nascer
+-- aqui uma linha sem o nome. O funil padrão também é recusado (SET-422): ele já é de leads pela regra, e a marca não
+-- passaria da troca de funil padrão no CRM. Rodar de novo não muda nada.
+create or replace function setup.mark_lead_funnel(p_external_id text)
+returns uuid
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare
+  v mkt.crm_funnels;
+begin
+  if session_user::text <> 'mkt_setup' then
+    raise sqlstate 'PT403' using message = 'SET-403';
+  end if;
+  if p_external_id is null or p_external_id !~ '^[A-Za-z0-9_.:-]{1,64}$' then
+    raise sqlstate 'PT422' using message = 'SET-422', detail = 'external_id';
+  end if;
+  select f.* into v
+    from mkt.crm_funnels f
+   where f.source = 'csp360' and f.external_id = p_external_id
+     for update;
+  if not found then
+    raise sqlstate 'PT404' using message = 'SET-404', detail = 'funnel';
+  end if;
+  if v.is_default then
+    raise sqlstate 'PT422' using message = 'SET-422', detail = 'default_funnel';
+  end if;
+  update mkt.crm_funnels f set is_lead_funnel = true where f.id = v.id and not f.is_lead_funnel;
+  return v.id;
+end $$;
+
 -- Credencial (decisão 0017): a de leitura guarda o segredo no Vault (o script manda como parâmetro ligado, nunca no
 -- texto do SQL) e a linha aponta para ele; a de escrita, que fica só nas variáveis do executor, ganha só a linha de
 -- estado, sem segredo (mandar segredo de escrita é recusado). Registrar de novo troca o segredo e a validade e volta a
@@ -2403,7 +2541,7 @@ create or replace function setup.register_credential(p_connector_code mkt.connec
                                                      p_purpose mkt.credential_purpose, p_account_ref text,
                                                      p_secret text, p_expires_at timestamptz)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_connector_id uuid;
   v_old private.connector_credentials;
@@ -2468,7 +2606,7 @@ end $$;
 -- pelo gatilho de novo usuário quando a pessoa aceita o link do Supabase Auth. A auditoria leva só o id e o papel.
 create or replace function setup.create_first_owner_invitation(p_email text, p_display_name text)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_email text := lower(btrim(p_email));
   v_name text := btrim(p_display_name);
@@ -2606,12 +2744,14 @@ grant execute on function ingest.next_execution(),
 revoke all on function setup.register_ad_account(mkt.brand_code, mkt.platform, text, text),
   setup.register_ig_account(mkt.brand_code, text, text),
   setup.register_web_property(mkt.brand_code, mkt.web_property_kind, text, text),
+  setup.mark_lead_funnel(text),
   setup.register_credential(mkt.connector_code, mkt.credential_purpose, text, text, timestamp with time zone),
   setup.create_first_owner_invitation(text, text)
   from public, anon, authenticated;
 grant execute on function setup.register_ad_account(mkt.brand_code, mkt.platform, text, text),
   setup.register_ig_account(mkt.brand_code, text, text),
   setup.register_web_property(mkt.brand_code, mkt.web_property_kind, text, text),
+  setup.mark_lead_funnel(text),
   setup.register_credential(mkt.connector_code, mkt.credential_purpose, text, text, timestamp with time zone),
   setup.create_first_owner_invitation(text, text)
   to mkt_setup;

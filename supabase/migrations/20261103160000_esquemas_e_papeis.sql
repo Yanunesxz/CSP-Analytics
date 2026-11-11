@@ -85,7 +85,7 @@ grant usage on schema setup to mkt_setup;
 -- updated_at por gatilho, em toda tabela, em milissegundos: o valor que a tela lê (texto no Supabase, Date no
 -- PGlite) volta igual na trava otimista.
 create or replace function private.set_updated_at() returns trigger
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 begin
   new.updated_at := date_trunc('milliseconds', now());
   return new;
@@ -93,32 +93,35 @@ end $$;
 
 -- Dia de São Paulo de um instante. É immutable (o fuso é fixo no nome), então serve em índice.
 create or replace function mkt.sp_day(p timestamptz) returns date
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (p at time zone 'America/Sao_Paulo')::date
 $$;
 
 -- Chave de casamento da UTM com a campanha (decisão 0009): minúsculas, espaços simples, sem espaço nas pontas.
 -- A mesma função normaliza o nome da campanha e a utm_campaign do lead.
 create or replace function mkt.utm_key(p text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select nullif(lower(btrim(regexp_replace(coalesce(p, ''), '\s+', ' ', 'g'))), '')
 $$;
 
--- Barra dado pessoal em texto livre que vai para o Claude ou para a trilha: e-mail, telefone com DDD (com ou sem
--- máscara, com ou sem o 55), CPF e CNPJ. "\y" é o limite de palavra do Postgres: um id de campanha de 18 dígitos
--- ou um "act_…" não parecem telefone nem documento. Só para texto livre; jsonb usa as funções valid_* de chaves.
+-- Barra dado pessoal em texto livre que vai para o Claude ou para a trilha: e-mail, telefone com DDD, CPF e CNPJ. O
+-- telefone vem com ou sem máscara: o 55 ou o 0 antes do DDD, e espaço, ponto ou hífen depois do DDD, depois do 9 e
+-- entre os blocos ("+55 (11) 9 8765-4321", "011 98765.4321"). "\y" é o limite de palavra do Postgres: um id de
+-- campanha de 18 dígitos ou um "act_…" não parecem telefone nem documento. Só para texto livre; jsonb usa as funções
+-- valid_* de chaves.
 create or replace function mkt.has_personal_data(p text) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select coalesce(p, '') ~ '[[:alnum:]_.+-]+@[[:alnum:]_-]+\.[[:alnum:]_.]+'                 -- e-mail
-      or coalesce(p, '') ~ '\(?\y(55)?[0-9]{2}\)?\s?9?[0-9]{4}[-\s]?[0-9]{4}\y'             -- telefone com DDD
+      or coalesce(p, '')                                                                       -- telefone com DDD
+         ~ '(\y55[\s.-]?\(?|\(?\y)0?[0-9]{2}\)?[\s.-]?(9[\s.-]?)?[0-9]{4}[\s.-]?[0-9]{4}\y'
       or coalesce(p, '') ~ '\y[0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2}\y'                    -- CPF
       or coalesce(p, '') ~ '\y[0-9]{2}\.?[0-9]{3}\.?[0-9]{3}/?[0-9]{4}-?[0-9]{2}\y'          -- CNPJ
 $$;
 
--- Última barreira para a UTM que vem do CRM (a função ingest.* já limpou antes): até 150 letras, sem @ e, fora o
--- nome de campanha, sem dado pessoal.
+-- Última barreira para o texto que vem do CRM, a UTM, a origem do negócio e o nome do funil (a função ingest.* já
+-- limpou antes): até 150 letras, sem @ e, fora o nome de campanha, sem dado pessoal.
 create or replace function mkt.valid_crm_text(p text, p_is_campaign boolean default false) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select p is null or (length(p) <= 150 and strpos(p, '@') = 0
                        and (p_is_campaign or not mkt.has_personal_data(p)))
 $$;
@@ -126,7 +129,7 @@ $$;
 -- O relógio do banco (metricas.md, seção 2.1). Só nos testes existe test.clock (o arquivo de apoio do PGlite
 -- cria); em produção a tabela não existe e vale now(). Nenhuma sessão muda o "hoje" das contas.
 create or replace function mkt.now() returns timestamptz
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   v timestamptz;
 begin
@@ -137,7 +140,7 @@ begin
 end $$;
 
 create or replace function mkt.today() returns date
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select (mkt.now() at time zone 'America/Sao_Paulo')::date
 $$;
 
@@ -150,7 +153,7 @@ revoke all on sequence mkt.lead_code_seq, mkt.sales_rep_code_seq, mkt.traffic_ac
   from public, anon, authenticated;
 
 create or replace function private.next_code(p_prefix text, p_seq regclass) returns text
-language sql volatile set search_path = '' as $$
+language sql volatile set search_path = pg_catalog, pg_temp as $$
   select p_prefix || '-' || lpad(s.n::text, greatest(4, length(s.n::text)), '0')
     from (select nextval(p_seq) as n) s
 $$;

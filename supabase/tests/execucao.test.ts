@@ -6,7 +6,7 @@
 import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Sessao, abrirBanco, aplicarFixture, caso, postgres, servico, usuario } from './apoio/banco';
-import { mesDeTeste } from './apoio/ingestao';
+import { ACT_META_CS, abrirRodada, gravar, mesDeTeste } from './apoio/ingestao';
 import {
   ACAO_QUE_CRIOU,
   CAMPANHA_CLAUDE_CS,
@@ -22,10 +22,12 @@ import {
   EXECUCAO_DA_ACAO,
   EXECUCAO_DA_PARADA,
   EXECUCAO_DO_TETO,
+  FUNCAO_DE_TESTE,
   IDEIA_DO_CLAUDE,
   LIMITE_META_CS,
   PARADA,
   RODADA_DO_CLAUDE,
+  pelaFuncao,
 } from './apoio/trafego';
 import { DONO, EX_GESTOR, GESTOR } from './apoio/usuarios';
 
@@ -751,6 +753,417 @@ describe('o executor: next_execution, update_execution e set_action_progress', (
         await s.erro('42501', `select ingest.set_action_progress($1, 'running')`, [ACAO_APROVADA]);
       });
     }
+  });
+});
+
+describe('a campanha criada pela central que a leitura do worker importou antes da confirmação', () => {
+  interface Troca {
+    from_operator: string | null;
+    to_operator: string;
+    reason: string;
+    actor_kind: string;
+    changed_by: string | null;
+  }
+  const IMPORTADA: Troca = {
+    from_operator: null,
+    to_operator: 'human',
+    reason: 'imported',
+    actor_kind: 'system',
+    changed_by: null,
+  };
+  const CRIADA_PELO_CLAUDE: Troca = {
+    from_operator: 'human',
+    to_operator: 'claude',
+    reason: 'created_by_claude',
+    actor_kind: 'claude',
+    changed_by: null,
+  };
+
+  /** O dono propõe e aprova a criação de uma campanha na conta Meta da cs: a ação, o código e a execução na fila. */
+  async function criacaoAprovada(s: Sessao): Promise<{ acao: string; codigo: string; execucao: string }> {
+    await s.como(usuario(DONO, 'aal2'));
+    const [criada] = await s.linhas<{ id: string; code: string }>(
+      `select id::text, code from api.propose_action('cs', 'meta', null, 'create', 'Criar campanha de lançamento',
+                'Lançamento da coleção nova para lojistas.',
+                '{"objective": "OUTCOME_SALES", "daily_budget_cents": 3000, "name": "cs-lancamento", "special_ad_categories": []}',
+                'medium', 'low', 90000, true)`,
+    );
+    if (!criada) throw new Error('a ação de criar não nasceu');
+    const execucao = await s.valor<string>(
+      `select id::text from mkt.platform_executions where traffic_action_id = $1 and status = 'queued'`,
+      [criada.id],
+    );
+    return { acao: criada.id, codigo: criada.code.toLowerCase(), execucao };
+  }
+
+  /** A leitura de hora em hora da Meta importa campanhas pausadas da conta da cs; nenhuma recusada. */
+  async function importar(s: Sessao, campanhas: Array<[string, string]>): Promise<void> {
+    const rodada = await abrirRodada(s, 'meta', 'ads_hourly');
+    const linhas = campanhas.map(([externo, nome]) => ({
+      key: { external_id: externo },
+      values: { account_external_id: ACT_META_CS, name: nome, status: 'paused' },
+    }));
+    expect(await gravar(s, 'upsert_campaigns', rodada, linhas)).toEqual([]);
+  }
+
+  /** O executor confirma a execução com a campanha relida (o id dela na plataforma). */
+  async function confirmar(s: Sessao, execucao: string, externo: string): Promise<void> {
+    await s.como(servico('mkt_executor'));
+    await s.valor(
+      `select ingest.update_execution($1, 'confirmed', 200, null, null, null, null, $2::jsonb)::text`,
+      [execucao, JSON.stringify({ external_id: externo, status: 'paused' })],
+    );
+  }
+
+  /** O operador, a ação que criou e o histórico de operador da campanha, pelo id na plataforma. */
+  async function operador(
+    s: Sessao,
+    externo: string,
+  ): Promise<{ managed_by: string; acao: string | null; historico: Troca[] }> {
+    await s.como(postgres);
+    const [c] = await s.linhas<{ id: string; managed_by: string; acao: string | null }>(
+      `select id::text, managed_by, created_by_action_id::text as acao from mkt.campaigns where external_id = $1`,
+      [externo],
+    );
+    if (!c) throw new Error(`campanha ${externo} não achada`);
+    const historico = await s.linhas<Troca>(
+      `select from_operator, to_operator, reason, actor_kind, changed_by::text from mkt.campaign_managed_by_history
+        where campaign_id = $1 order by changed_at, from_operator nulls first`,
+      [c.id],
+    );
+    return { managed_by: c.managed_by, acao: c.acao, historico };
+  }
+
+  it('a criação só confirma com a campanha relida: sem ela, PT422 e nada muda', async () => {
+    await caso(db, postgres, async (s) => {
+      const { execucao } = await criacaoAprovada(s);
+      await s.como(servico('mkt_executor'));
+      expect(
+        (await s.erro('PT422', `select ingest.update_execution($1, 'confirmed', 200)`, [execucao])).detail,
+      ).toBe('campaign');
+      expect(
+        await s.linhas(
+          `select e.status, a.status as acao from mkt.platform_executions e
+             join mkt.traffic_actions a on a.id = e.traffic_action_id where e.id = $1`,
+          [execucao],
+        ),
+      ).toEqual([{ status: 'queued', acao: 'approved' }]);
+    });
+  });
+
+  it('a execução ainda na fila (o executor mandou e caiu antes de gravar "enviada"): importada do humano, a confirmação a passa para o Claude, com a ação', async () => {
+    await caso(db, postgres, async (s) => {
+      const { acao, codigo, execucao } = await criacaoAprovada(s);
+      await importar(s, [['120200000000000311', `cs-lancamento-${codigo}`]]);
+      expect(await operador(s, '120200000000000311')).toEqual({
+        managed_by: 'human',
+        acao: null,
+        historico: [IMPORTADA],
+      });
+      // De volta, o executor relê, acha a campanha pelo nome e confirma sem mandar de novo.
+      await confirmar(s, execucao, '120200000000000311');
+      expect(await operador(s, '120200000000000311')).toEqual({
+        managed_by: 'claude',
+        acao,
+        historico: [IMPORTADA, CRIADA_PELO_CLAUDE],
+      });
+      expect(await s.valor(`select status from mkt.traffic_actions where id = $1`, [acao])).toBe('done');
+      // Releituras seguintes não mudam o operador nem o histórico.
+      await importar(s, [['120200000000000311', `cs-lancamento-${codigo}`]]);
+      expect((await operador(s, '120200000000000311')).historico).toHaveLength(2);
+    });
+  });
+
+  it('a ação que falhou e foi aprovada de novo (decisão 0038): importada do humano no meio, a nova confirmação a passa para o Claude', async () => {
+    await caso(db, postgres, async (s) => {
+      const { acao, codigo, execucao } = await criacaoAprovada(s);
+      // A plataforma criou, a resposta não chegou e a nova tentativa foi recusada (4xx): a ação falhou.
+      await s.como(servico('mkt_executor'));
+      await s.valor(`select ingest.update_execution($1, 'sent')::text`, [execucao]);
+      await s.valor(`select ingest.update_execution($1, 'failed', 400, 'DUPLICATE_NAME')::text`, [execucao]);
+      await importar(s, [['120200000000000312', `cs-lancamento-${codigo}`]]);
+      await s.como(usuario(DONO, 'aal2'));
+      await s.linhas(
+        `select id from api.approve_action($1, (select updated_at from mkt.traffic_actions where id = $1))`,
+        [acao],
+      );
+      await s.como(postgres);
+      const nova = await s.valor<string>(
+        `select id::text from mkt.platform_executions where traffic_action_id = $1 and status = 'queued'`,
+        [acao],
+      );
+      await confirmar(s, nova, '120200000000000312');
+      expect(await operador(s, '120200000000000312')).toEqual({
+        managed_by: 'claude',
+        acao,
+        historico: [IMPORTADA, CRIADA_PELO_CLAUDE],
+      });
+    });
+  });
+
+  it('não vira do Claude a campanha do humano com nome parecido, nem a que uma pessoa já passou de um operador para outro', async () => {
+    await caso(db, postgres, async (s) => {
+      const primeira = await criacaoAprovada(s);
+      await importar(s, [
+        ['120200000000000313', `cs-lancamento-${primeira.codigo}0`],
+        ['120200000000000314', `cs-lancamento-${primeira.codigo}-copia`],
+      ]);
+      // A confirmação aponta, por engano, para a do humano: a ação fica feita, e a campanha continua dele.
+      await confirmar(s, primeira.execucao, '120200000000000313');
+      for (const externo of ['120200000000000313', '120200000000000314']) {
+        expect(await operador(s, externo), externo).toEqual({
+          managed_by: 'human',
+          acao: null,
+          historico: [IMPORTADA],
+        });
+      }
+
+      // O nome certo, mas o dono passou a campanha para o Claude e de volta para o humano antes da confirmação: a
+      // escolha dele fica.
+      const segunda = await criacaoAprovada(s);
+      await importar(s, [['120200000000000315', `cs-lancamento-${segunda.codigo}`]]);
+      const id = await s.valor<string>(
+        `select id::text from mkt.campaigns where external_id = '120200000000000315'`,
+      );
+      for (const [para, motivo] of [
+        ['claude', 'handover_to_claude'],
+        ['human', 'back_to_human'],
+      ]) {
+        await s.como(usuario(DONO, 'aal2'));
+        await s.linhas(
+          `select id from api.change_campaign_operator($1, $2, $3, null,
+                                                       (select updated_at from mkt.campaigns where id = $1))`,
+          [id, para, motivo],
+        );
+      }
+      await confirmar(s, segunda.execucao, '120200000000000315');
+      const depois = await operador(s, '120200000000000315');
+      expect(depois.managed_by).toBe('human');
+      expect(depois.acao).toBeNull();
+      // As trocas são da mesma transação (o mesmo changed_at): confere sem depender da ordem.
+      expect(depois.historico.map((h) => h.reason).sort()).toEqual([
+        'back_to_human',
+        'handover_to_claude',
+        'imported',
+      ]);
+    });
+  });
+
+  it('não vira do Claude a campanha antiga do humano renomeada para o nome da criação: importada antes de a ação mandar criar, continua dele', async () => {
+    await caso(db, postgres, async (s) => {
+      await s.exec(FUNCAO_DE_TESTE);
+      // A campanha do humano da fixture (ativa, com gasto) entrou aqui há 90 dias.
+      await s.exec(
+        `update mkt.campaigns set created_at = now() - interval '90 days' where id = '${CAMPANHA_HUMANO_CS}'`,
+      );
+      const { acao, codigo, execucao } = await criacaoAprovada(s);
+      // Quem tem acesso à plataforma dá à campanha antiga o nome pedido; a leitura grava o nome novo.
+      await importar(s, [['120200000000000001', `cs-lancamento-${codigo}`]]);
+      // O executor acha a campanha pelo nome e confirma sem mandar: a ação fica feita, e a campanha continua do humano.
+      await confirmar(s, execucao, '120200000000000001');
+      expect(await operador(s, '120200000000000001')).toEqual({
+        managed_by: 'human',
+        acao: null,
+        historico: [IMPORTADA],
+      });
+      // Nem o update direto do executor, na transação que confirmou, passa: o gatilho confere a mesma data.
+      await s.como(servico('mkt_executor'));
+      const [sql, params] = pelaFuncao(
+        `update mkt.campaigns set managed_by = 'claude', created_by_action_id = '${acao}'
+          where external_id = '120200000000000001'`,
+      );
+      expect((await s.erro('PT403', sql, params)).message).toBe('TRF-403');
+    });
+  });
+
+  it('depois de a ação ter a campanha dela, a campanha nova com o código da ação no fim do nome nasce do humano (decisão 0008)', async () => {
+    await caso(db, postgres, async (s) => {
+      const { acao, codigo, execucao } = await criacaoAprovada(s);
+      await s.como(servico('mkt_executor'));
+      await s.valor(`select ingest.update_execution($1, 'sent')::text`, [execucao]);
+      await confirmar(s, execucao, '120200000000000321');
+      // Depois, a leitura relê a da central e acha duas novas, feitas na plataforma com o código no fim do nome.
+      await importar(s, [
+        ['120200000000000321', `cs-lancamento-${codigo}`],
+        ['120200000000000322', `cs-promo-do-gestor-${codigo}`],
+        ['120200000000000323', `CS-OUTRA-${codigo.toUpperCase()}`],
+      ]);
+      expect(await operador(s, '120200000000000321')).toEqual({
+        managed_by: 'claude',
+        acao,
+        historico: [{ ...CRIADA_PELO_CLAUDE, from_operator: null }],
+      });
+      for (const externo of ['120200000000000322', '120200000000000323']) {
+        expect(await operador(s, externo), externo).toEqual({
+          managed_by: 'human',
+          acao: null,
+          historico: [IMPORTADA],
+        });
+      }
+    });
+  });
+
+  it('a criação confirmada com o id de uma campanha de outra conta (até de outra marca): PT422, e nada muda', async () => {
+    await caso(db, postgres, async (s) => {
+      const { acao, codigo, execucao } = await criacaoAprovada(s);
+      // Uma conta Meta da Plumene com uma campanha ativa do humano, com o código da ação no fim do nome.
+      await s.como(postgres);
+      await s.exec(`
+        insert into mkt.ad_accounts (id, brand_id, platform, source, external_id, name)
+        select '00000000-0000-4000-8000-0000000009a1', b.id, 'meta', 'meta_ads', 'act_900000000000077',
+               'Conta Meta da Plumene'
+          from mkt.brands b where b.code = 'plumene';
+        insert into mkt.campaigns (ad_account_id, brand_id, platform, source, external_id, name, status,
+                                   daily_budget_cents)
+        select a.id, a.brand_id, a.platform, a.source, '120200000000077001', 'pl-lancamento-${codigo}', 'active', 8000
+          from mkt.ad_accounts a where a.id = '00000000-0000-4000-8000-0000000009a1';
+      `);
+      await s.como(servico('mkt_executor'));
+      await s.valor(`select ingest.update_execution($1, 'sent')::text`, [execucao]);
+      const recusa = await s.erro(
+        'PT422',
+        `select ingest.update_execution($1, 'confirmed', 200, null, null, null, null, $2::jsonb)`,
+        [
+          execucao,
+          JSON.stringify({ external_id: '120200000000077001', status: 'paused', daily_budget_cents: 3000 }),
+        ],
+      );
+      expect([recusa.message, recusa.detail]).toEqual(['TRF-422', 'campaign']);
+      await s.como(postgres);
+      expect(
+        await s.linhas(
+          `select status, daily_budget_cents, managed_by, created_by_action_id from mkt.campaigns
+            where external_id = '120200000000077001'`,
+        ),
+      ).toEqual([
+        { status: 'active', daily_budget_cents: 8000, managed_by: 'human', created_by_action_id: null },
+      ]);
+      expect(
+        await s.linhas(
+          `select e.status, a.status as acao from mkt.platform_executions e
+             join mkt.traffic_actions a on a.id = e.traffic_action_id where e.id = $1`,
+          [execucao],
+        ),
+      ).toEqual([{ status: 'sent', acao: 'running' }]);
+      expect(
+        await s.valor(`select count(*)::int from mkt.campaigns where created_by_action_id = $1`, [acao]),
+      ).toBe(0);
+    });
+  });
+
+  it('o gatilho do operador: a exceção do executor é só essa (do humano para o Claude, com a ação create da mesma conta que a transação confirmou, sem mudar a conta nem o nome, o código no fim do nome e sem troca por pessoa)', async () => {
+    await caso(db, postgres, async (s) => {
+      await s.exec(FUNCAO_DE_TESTE);
+      const { acao, codigo, execucao } = await criacaoAprovada(s);
+      await importar(s, [
+        ['120200000000000316', `cs-lancamento-${codigo}`],
+        ['120200000000000317', `cs-lancamento-${codigo}0`],
+        ['120200000000000319', `cs-lancamento-${codigo}`],
+        ['120200000000000320', 'cs-campanha-do-humano'],
+      ]);
+      // Uma campanha do humano noutra conta (a Google da Plumene), com o código da ação no fim do nome.
+      await s.como(postgres);
+      await s.exec(`
+        insert into mkt.campaigns (ad_account_id, brand_id, platform, source, external_id, name, status)
+        select a.id, a.brand_id, a.platform, a.source, '7000000330', 'pl-busca-${codigo}', 'active'
+          from mkt.ad_accounts a where a.id = '${CONTA_GOOGLE_PL}'
+      `);
+      // A 319, com o nome certo, o dono passou para o Claude e de volta para o humano.
+      const trocada = await s.valor<string>(
+        `select id::text from mkt.campaigns where external_id = '120200000000000319'`,
+      );
+      for (const [para, motivo] of [
+        ['claude', 'handover_to_claude'],
+        ['human', 'back_to_human'],
+      ]) {
+        await s.como(usuario(DONO, 'aal2'));
+        await s.linhas(
+          `select id from api.change_campaign_operator($1, $2, $3, null,
+                                                       (select updated_at from mkt.campaigns where id = $1))`,
+          [trocada, para, motivo],
+        );
+      }
+      // Confirmada com outra campanha (a criada, que já nasce do Claude): as importadas continuam do humano.
+      await confirmar(s, execucao, '120200000000000318');
+      const passar = (externo: string, acaoQueCriou: string | null, para = 'claude') =>
+        pelaFuncao(
+          `update mkt.campaigns set managed_by = '${para}', created_by_action_id = ${
+            acaoQueCriou ? `'${acaoQueCriou}'` : 'null'
+          } where external_id = '${externo}'`,
+        );
+      const tentativas: Array<[string, [string, unknown[]]]> = [
+        ['o worker', passar('120200000000000316', acao)],
+        ['sem a ação', passar('120200000000000316', null)],
+        ['com a ação da fixture, sem execução confirmada', passar('120200000000000316', ACAO_QUE_CRIOU)],
+        ['o nome parecido', passar('120200000000000317', acao)],
+        ['a que o dono já trocou de operador', passar('120200000000000319', acao)],
+        ['a do Claude de volta para o humano', passar('120200000000000318', acao, 'human')],
+        [
+          'renomeada para o nome com o código no mesmo update',
+          pelaFuncao(
+            `update mkt.campaigns set name = 'cs-campanha-do-humano-${codigo}', managed_by = 'claude',
+                    created_by_action_id = '${acao}' where external_id = '120200000000000320'`,
+          ),
+        ],
+        ['a de outra conta, com o código no fim do nome', passar('7000000330', acao)],
+        [
+          'trazida de outra conta no mesmo update',
+          pelaFuncao(
+            `update mkt.campaigns
+                set ad_account_id = '${CONTA_META_CS}', brand_id = (select id from mkt.brands where code = 'cs'),
+                    platform = 'meta', source = 'meta_ads', managed_by = 'claude', created_by_action_id = '${acao}'
+              where external_id = '7000000330'`,
+          ),
+        ],
+      ];
+      for (const [nome, [sql, params]] of tentativas) {
+        await s.como(servico(nome === 'o worker' ? 'mkt_worker' : 'mkt_executor'));
+        expect((await s.erro('PT403', sql, params)).message, nome).toBe('TRF-403');
+      }
+      await s.como(postgres);
+      expect(
+        await s.linhas(
+          `select external_id, name, ad_account_id::text as conta, managed_by from mkt.campaigns
+            where external_id in ('120200000000000320', '7000000330') order by 1`,
+        ),
+      ).toEqual([
+        {
+          external_id: '120200000000000320',
+          name: 'cs-campanha-do-humano',
+          conta: CONTA_META_CS,
+          managed_by: 'human',
+        },
+        {
+          external_id: '7000000330',
+          name: `pl-busca-${codigo}`,
+          conta: CONTA_GOOGLE_PL,
+          managed_by: 'human',
+        },
+      ]);
+      // A execução confirmada noutra transação (ontem) também não vale.
+      await s.como(postgres);
+      const quando = (instante: string) =>
+        s.exec(`
+          alter table mkt.platform_executions disable trigger platform_executions_guard;
+          update mkt.platform_executions set confirmed_at = ${instante} where id = '${execucao}';
+          alter table mkt.platform_executions enable trigger platform_executions_guard;
+        `);
+      await quando(`now() - interval '1 day'`);
+      await s.como(servico('mkt_executor'));
+      expect((await s.erro('PT403', ...passar('120200000000000316', acao))).message).toBe('TRF-403');
+      await s.como(postgres);
+      await quando('now()');
+      expect((await operador(s, '120200000000000316')).managed_by).toBe('human');
+
+      // Controle: com tudo certo, o executor passa a campanha, e o histórico diz que o Claude criou.
+      await s.como(servico('mkt_executor'));
+      await s.linhas(...passar('120200000000000316', acao));
+      expect(await operador(s, '120200000000000316')).toEqual({
+        managed_by: 'claude',
+        acao,
+        historico: [IMPORTADA, CRIADA_PELO_CLAUDE],
+      });
+    });
   });
 });
 

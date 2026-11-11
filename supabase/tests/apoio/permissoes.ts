@@ -195,6 +195,7 @@ const GRUPOS: ReadonlyArray<[readonly PapelDoCatalogo[], readonly string[]]> = [
     SCRIPTS,
     [
       'setup.create_first_owner_invitation(text,text)',
+      'setup.mark_lead_funnel(text)',
       'setup.register_ad_account(mkt.brand_code,mkt.platform,text,text)',
       'setup.register_credential(mkt.connector_code,mkt.credential_purpose,text,text,timestamp with time zone)',
       'setup.register_ig_account(mkt.brand_code,text,text)',

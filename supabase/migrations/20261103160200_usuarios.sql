@@ -8,11 +8,13 @@
 --   gatilhos: perfil só com convite válido (em auth.users), papel e acesso protegidos e auditoria só por acréscimo.
 -- Risco: médio. Põe um gatilho em auth.users: um erro nele barra a criação de login no Supabase Auth. Não toca em
 --   dado: as tabelas nascem vazias.
--- Como reverter (só no projeto de teste, antes de produção):
+-- Como reverter (só no projeto de teste, antes de produção, e depois de reverter as migrações seguintes; o drop
+--   table vem primeiro e sem cascade: com uma seguinte ainda aplicada, ele para antes de tudo, em vez de apagar as
+--   chaves dela que apontam para profiles):
+--   drop table mkt.audit_log, mkt.saved_filters, mkt.notification_preferences, mkt.invitations, mkt.profiles;
 --   drop trigger if exists mkt_handle_new_user on auth.users;
 --   drop policy if exists role_permissions_read on mkt.role_permissions;
 --   drop policy if exists holidays_read on mkt.holidays;
---   drop table mkt.audit_log, mkt.saved_filters, mkt.notification_preferences, mkt.invitations, mkt.profiles cascade;
 --   drop function authz.can(mkt.app_action), authz.requires_second_factor(mkt.app_action), authz.is_active_user(),
 --     authz.display_name(uuid), mkt.valid_saved_filters(mkt.saved_filter_scope, jsonb),
 --     mkt.valid_audit_changes(mkt.audit_event, jsonb), mkt.notice_default(mkt.notice_kind),
@@ -26,7 +28,7 @@
 -- Ações que pedem o segundo fator (TOTP; decisão 0023). A lista mora só aqui: authz.can, api.my_permissions e
 -- api.list_role_permissions chamam esta função. Parar tudo nunca pede: é o botão de emergência.
 create or replace function authz.requires_second_factor(p_action mkt.app_action) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select p_action in ('approve_action', 'configure_traffic', 'manage_users', 'retry_connector')
 $$;
 
@@ -39,7 +41,7 @@ create or replace function mkt.notice_default(
   out is_urgent boolean,
   out is_email_enabled boolean,
   out is_whatsapp_enabled boolean)
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select d.required_action::mkt.app_action, d.is_urgent, true, d.is_urgent
     from (values
       ('connector_down',      'view_connectors', true),
@@ -60,7 +62,7 @@ $$;
 -- código fora da lista: falso. O valor confere com o próprio domain, sem repetir a lista aqui.
 create or replace function mkt.valid_saved_filters(p_scope mkt.saved_filter_scope, p_filters jsonb)
 returns boolean
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 declare
   v_key text;
   v_value jsonb;
@@ -118,7 +120,7 @@ end $$;
 -- conector e o estado. Mudança é {"before": código, "after": código}. Cada valor confere com o tipo da chave.
 create or replace function mkt.valid_audit_changes(p_event mkt.audit_event, p_changes jsonb)
 returns boolean
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 declare
   v_key text;
   v_value jsonb;
@@ -281,7 +283,7 @@ create index if not exists audit_log_time on mkt.audit_log (occurred_at desc);
 -- Permissão do usuário logado: perfil ativo + papel com a ação em role_permissions. O papel vem do perfil, nunca do
 -- token: trocar ou tirar o papel vale na próxima chamada. O que gasta dinheiro ou mexe em acesso pede o segundo fator.
 create or replace function authz.can(p_action mkt.app_action) returns boolean
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = pg_catalog, pg_temp as $$
   select exists (
     select 1
       from mkt.profiles p
@@ -293,7 +295,7 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 create or replace function authz.is_active_user() returns boolean
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = pg_catalog, pg_temp as $$
   select exists (select 1 from mkt.profiles p where p.id = auth.uid() and p.is_active)
 $$;
 
@@ -301,7 +303,7 @@ $$;
 -- tráfego não lê o perfil dos outros, mas o diário e a fila mostram o nome. O perfil inativo continua com o nome,
 -- pelo prazo da trilha.
 create or replace function authz.display_name(p_profile_id uuid) returns text
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = pg_catalog, pg_temp as $$
   select p.display_name
     from mkt.profiles p
    where p.id = p_profile_id and authz.can('view_traffic')
@@ -325,7 +327,7 @@ create or replace trigger audit_log_updated_at before update on mkt.audit_log
 -- dono e só enquanto não há dono ativo (o primeiro dono). O nome e o papel vêm só do convite, nunca dos metadados do
 -- login. Sem convite válido nada é criado, e a pessoa não lê nada. Login que já tem perfil não ganha outro.
 create or replace function private.handle_new_user() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_invitation mkt.invitations;
 begin
@@ -368,7 +370,7 @@ create or replace trigger mkt_handle_new_user after insert or update of invited_
 -- não troca) e com manage_users. Ninguém muda o próprio; o último dono ativo não perde o papel nem o acesso; acesso
 -- tirado não volta (para devolver, convide de novo: nasce um login e um perfil novos).
 create or replace function private.profiles_guard() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_other_owners integer;
 begin
@@ -409,7 +411,7 @@ create or replace trigger profiles_guard before update on mkt.profiles
 -- altera nem apaga, nem o dono do banco. A exceção é a limpeza do prazo de guarda (pg_cron, migração 13): apagar
 -- passa só na linha vencida, pela coluna e pelo prazo que o gatilho recebe ('occurred_at', '2 years').
 create or replace function private.append_only() returns trigger
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 begin
   if tg_op = 'DELETE' and tg_nargs = 2
      and (to_jsonb(old) ->> tg_argv[0])::timestamptz < now() - tg_argv[1]::interval then

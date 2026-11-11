@@ -105,7 +105,8 @@ describe('o ajudante entra como a API e como cada serviço', () => {
         create schema sentinela;
         grant usage on schema sentinela to mkt_worker;
         create function sentinela.quem() returns table (sessao text, uid text)
-        language sql security definer set search_path = '' as $$ select session_user::text, auth.uid()::text $$;
+        language sql security definer set search_path = pg_catalog, pg_temp
+        as $$ select session_user::text, auth.uid()::text $$;
         grant execute on function sentinela.quem() to mkt_worker;
       `);
       await s.como(servico('mkt_worker'));

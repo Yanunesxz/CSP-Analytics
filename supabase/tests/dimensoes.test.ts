@@ -143,7 +143,7 @@ const IMPORTADA: Troca = {
 const FUNCOES_DE_TESTE = `
   create function test.trocar_operador(p_campaign uuid, p_to mkt.operator, p_reason text,
                                        p_note text default null, p_chave boolean default true) returns void
-  language plpgsql security definer set search_path = '' as $$
+  language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
   begin
     if p_chave then
       perform set_config('mkt.allow_operator_change', 'on', true);
@@ -155,7 +155,7 @@ const FUNCOES_DE_TESTE = `
   end $$;
   create function test.reler_campanha(p_campaign uuid, p_status mkt.campaign_status,
                                       p_operador mkt.operator default null) returns void
-  language plpgsql security definer set search_path = '' as $$
+  language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
   begin
     update mkt.campaigns
        set status = p_status, last_seen_at = now(), managed_by = coalesce(p_operador, managed_by)
@@ -706,7 +706,7 @@ describe('funções, gatilhos e índices da migração 04', () => {
     'n8n_notifier',
   ];
 
-  it('as funções de gatilho: security definer, search_path vazio e ninguém executa', async () => {
+  it('as funções de gatilho: security definer, search_path pg_catalog, pg_temp e ninguém executa', async () => {
     await caso(db, postgres, async (s) => {
       const linhas = await s.linhas<{ funcao: string; prosecdef: boolean; config: string[] }>(
         `select p.oid::regprocedure::text as funcao, p.prosecdef, p.proconfig as config
@@ -716,7 +716,7 @@ describe('funções, gatilhos e índices da migração 04', () => {
       expect(linhas.map((l) => l.funcao)).toEqual(GATILHOS);
       for (const l of linhas) {
         expect(l.prosecdef, l.funcao).toBe(true);
-        expect(l.config, l.funcao).toEqual(['search_path=""']);
+        expect(l.config, l.funcao).toEqual(['search_path=pg_catalog, pg_temp']);
       }
       expect(
         await s.linhas(

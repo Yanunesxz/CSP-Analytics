@@ -273,12 +273,15 @@ do negócio; a UTM e o `referrer` por lead; a primeira compra por marca; a régu
 - **Passada completa, 03:00:** as tabelas do quadro 3.2 com passada diária, inteiras, em páginas de 1.000 por id.
   Cada tabela lida inteira passa por `ingest.delete_missing`, que apaga o que não apareceu, sem cópia (decisão 0015).
   É ela que pega o que a janela não vê: a alteração que o CRM não carimba (renomear usuário, excluir cliente), a linha
-  com carimbo mais antigo que a janela e o cliente que nenhuma linha citou.
+  com carimbo mais antigo que a janela e o cliente que nenhuma linha citou. A exceção é o retrato do ERP por marca
+  (`crm_customer_brands`): o par que não apareceu e tem a compra do ERP mais antiga já vista perde só o retrato, e a
+  linha e a data ficam, porque o CRM não tem mais essa data (decisão 0042); ele sai com o cliente, pela cascata.
   As rodadas apps → CRM (`sincronizacoes`) ficam fora: a leitura traz só as últimas de cada marca, e o `pg_cron` apaga
   as de mais de 90 dias.
 - **Trava de exclusão em massa, no banco:** `ingest.delete_missing` conta antes de apagar; acima de 20% das linhas de
   uma tabela, nada é apagado, a rodada termina `partial` com `MASS_DELETE_BLOCKED` e o cartão avisa (protege contra
-  leitura que voltou vazia por engano). O bloqueio em 3 passadas seguidas vira o aviso urgente "Exclusão em massa
+  leitura que voltou vazia por engano). No retrato do ERP por marca, conta só o que a chamada muda (o par sem a data,
+  que sai, e o par que ainda tem retrato): o par que já ficou só com a data não segura a passada. O bloqueio em 3 passadas seguidas vira o aviso urgente "Exclusão em massa
   segurada" ao dono. Ele confere e confirma por `api.confirm_mass_delete(run_id)` (permissão `retry_connector`, evento
   `mass_delete_confirmed` no `audit_log`), e a passada seguinte apaga. Uma limpeza de verdade no CRM, inclusive a
   exclusão pedida por titulares, sai daqui assim.
@@ -288,11 +291,13 @@ do negócio; a UTM e o `referrer` por lead; a primeira compra por marca; a régu
 - **Funil de leads, por regra** (decisão 0041, item 1): a leitura de `negocios` (5 min e passada completa) traz todos
   os funis. É funil de leads (`crm_funnels.is_lead_funnel`) o funil padrão do CRM (`funis_venda.padrao`, aqui
   `is_default`: a ingestão faz `is_lead_funnel` seguir `is_default`) e o funil antigo dos leads do site, marcado uma
-  vez, pelo id, por uma função `setup.*`, para o histórico encerrado entrar. Não há trava de um só funil de leads. O
-  lead do site nasce no funil padrão desde 05/11/2026, na primeira fase; os negócios abertos do funil antigo foram
-  movidos para o padrão com o mesmo id e o mesmo `criado_em`, e os encerrados ficaram no funil antigo.
+  vez, pelo id, por `setup.mark_lead_funnel`, para o histórico encerrado entrar (depois da primeira passada completa:
+  o funil ainda não lido é recusado). Não há trava de um só funil de leads. O lead do site nasce no funil padrão desde
+  05/11/2026, na primeira fase; os negócios abertos do funil antigo foram movidos para o padrão com o mesmo id e o
+  mesmo `criado_em`, e os encerrados ficaram no funil antigo.
 - **Negócio sem funil:** no CRM, negócio com `funil_id` nulo também é do funil padrão (é como nasce o negócio da
-  conversão do SDR). Aqui ele conta como do funil padrão e entra.
+  conversão do SDR). Aqui ele conta como do funil padrão e entra, com o id do funil padrão quando a réplica tem um só;
+  sem como saber qual é, sem funil.
 - **O que entra em `crm_leads`:** `ingest.upsert_crm_leads` grava o negócio que está num funil de leads, o negócio sem
   funil e o que já existe em `crm_leads`, e ignora o resto. `ingest.delete_missing` em `crm_leads` (`kind = 'deal'`)
   apaga só o id que não existe mais em `negocios`, em qualquer funil: o negócio que sai do funil de leads continua
@@ -327,6 +332,7 @@ do negócio; a UTM e o `referrer` por lead; a primeira compra por marca; a régu
 | `sincronizacoes.disparo` | `mkt.upstream_trigger` |
 | `negocios.origem` | `crm_origin_raw` só quando está no de-para, é uma fonte de UTM conhecida ou é a `utm_source` de primeiro contato do cliente; outro texto não é gravado e o lead fica `is_origin_unmapped` ([`tabelas.md`](tabelas.md), seção 2; a classificação é SQL, `metricas.md` 3.1). A origem já vem limpa da view (nota do quadro 3.2): a que a view zerou chega nula e não vira origem sem de-para. O lead do site traz a `utm_source` como veio, sem normalizar maiúsculas, ou `site` quando não veio UTM |
 | UTM do CRM | cortada em 150 letras; vira nulo o valor com `@` ou que pareça dado pessoal (`PERSONAL_DATA_DROPPED`). A UTM já vem limpa da view `clientes_utm`: o teste daqui continua, como segunda barreira, e o que a view já tirou não entra nessa contagem |
+| `funis_venda.nome` | `crm_funnels.name`, cortado em 150 letras. Já vem da view com o rótulo no lugar do nome com dado pessoal; o teste daqui continua, como segunda barreira: com `@` ou com cara de dado pessoal, entra o rótulo `Funil` e os 8 primeiros caracteres do id, nunca o texto, e conta `PERSONAL_DATA_DROPPED` (a linha não é recusada, para o funil de leads não sumir) |
 | lead do SDR | código `LEAD-` gerado aqui; marca nula (decisão 0014) |
 | negócio da conversão do SDR | nasce no CRM com a origem "SDR WhatsApp", sem `funil_id` e sem marca; conta como do funil padrão. O de-para leva `sdr whatsapp` para `sdr`, e o lead conta uma vez, ligado ao lead do SDR pelo cliente (decisão 0041, item 3) |
 | instante exatamente à meia-noite UTC (`criado_em` gravado pela tela do CRM, só com o dia) | é data pura: no dia do lead e do cliente vale a data como está, sem converter para São Paulo. Os outros instantes convertem (decisão 0041, item 5; [`metricas.md`](metricas.md), seção 3.4) |
@@ -581,10 +587,17 @@ escrita (decisão 0017).
   a Meta conta o gasto depois do `reset` fica a confirmar na primeira escrita, antes de ligar a escrita (seção 19).
 - **Campanha criada pela central** leva o código da ação no nome (`…-act-0012`), dentro da convenção da UTM, e o id
   da campanha no sufixo do link (decisão 0031). O executor procura o nome antes de criar e grava a campanha, com
-  `created_by_action_id` e `managed_by = 'claude'`, na mesma transação que confirma a execução. Se a leitura de hora em
-  hora chegar antes, `ingest.upsert_campaigns`, ao inserir campanha cujo nome termina com o código de uma ação `create`
-  aprovada, com execução `sent` ou `confirmed` na mesma conta, já grava `managed_by = 'claude'` e a ação (decisão
-  0008). O operador nunca muda por `update` do worker ou do executor.
+  `created_by_action_id` e `managed_by = 'claude'`, na mesma transação que confirma a execução: a criação só confirma
+  com a campanha relida, da conta da execução (o id de uma campanha de outra conta é recusado, `PT422`, e nada muda).
+  Se a leitura de hora em hora chegar antes, `ingest.upsert_campaigns`, ao inserir campanha cujo nome termina com o
+  código de uma ação `create` aprovada, com execução `sent` ou `confirmed` na mesma conta e a ação ainda sem campanha,
+  já grava `managed_by = 'claude'` e a ação (decisão 0008: uma ação `create`, uma campanha). Se ela chegou com a
+  execução ainda na fila (o executor mandou e caiu antes de gravar `sent`) ou com a ação que falhou e foi aprovada de
+  novo, a campanha entra do humano, e a confirmação a passa para o Claude, com a ação, só se ela entrou aqui depois da
+  primeira execução de criar da ação: a campanha que já existia, mesmo renomeada com o código, continua do humano
+  ([`tabelas.md`](tabelas.md), `campaigns`). Fora isso, o operador nunca muda por `update` do worker ou do executor.
+  Na fase 4, o executor não dá por criada (passo 4) a campanha que a plataforma diz ter criado antes da primeira
+  execução de criar da ação: com ela, a ação ficaria feita sem a campanha nova.
 - **Ajuste de orçamento** numa campanha com orçamento nos conjuntos, ou com orçamento compartilhado no Google, é
   recusado já na proposta (`private.validate_action`, chamada por `api.propose_action` e por
   `ingest.add_claude_proposal`), com o texto "O orçamento desta campanha é dividido com outras ou fica nos conjuntos:
@@ -609,13 +622,16 @@ escrita (decisão 0017).
   gasto do mês e projeção; a estratégia do mês (texto e metas); as pendências de medição; o estado dos conectores. Das
   ações dos últimos 30 dias vão só `code`, `kind`, `status`, `platform`, campanha, `params`, `done_via` e
   `discard_reason`; o título vai só nas propostas do próprio Claude. Nunca vão `rationale`, `result` nem
-  `discard_note`. O único texto livre escrito por pessoa é `traffic_strategies.body`, e a tela da estratégia diz,
-  embaixo do campo: "Este texto vai para o Claude. Não escreva nome de cliente, lead ou pessoa."
+  `discard_note`. Das pendências de medição vão `code`, `area`, `env`, `status`, `platform` e `created_on`, e nas ações
+  vai também `proposed_by`, só para o banco conferir que o título é de uma proposta do Claude. O único texto livre
+  escrito por pessoa é `traffic_strategies.body`, e a tela da estratégia diz, embaixo do campo: "Este texto vai para o
+  Claude. Não escreva nome de cliente, lead ou pessoa."
 - **Nunca vai:** id ou código de lead e de cliente, código de representante, nome, telefone, e-mail, documento,
-  endereço, texto vindo do CRM. `mkt.valid_claude_context` aceita só as chaves previstas e recusa qualquer outra chave
-  de texto, e todo texto passa por `mkt.has_personal_data`. Recusado, a rodada falha antes de chamar a API
-  (`CONTEXT_REFUSED`). O filtro não reconhece nome: o nome digitado na estratégia ou no nome de uma campanha é risco
-  residual, com a Anthropic como operadora ([README](README.md), "Dado pessoal"), aceito como exceção na decisão 0020.
+  endereço, texto vindo do CRM. `mkt.valid_claude_context` aceita só as chaves previstas em cada lugar do contexto e
+  recusa qualquer outra chave, e todo texto passa por `mkt.has_personal_data`. Recusado, a rodada falha antes de
+  chamar a API (`CONTEXT_REFUSED`). O filtro não reconhece nome: o nome digitado na estratégia ou no nome de uma
+  campanha é risco residual, com a Anthropic como operadora ([README](README.md), "Dado pessoal"), aceito como exceção
+  na decisão 0020.
 - **Instrução:** texto versionado no repositório do worker (`prompt_version`): o Claude só propõe; responde no formato
   combinado; respeita o limite e a estratégia; nome de campanha nova pela convenção da UTM.
 - **Resposta:** JSON estruturado, uma proposta por item (tipo, marca, canal, campanha, título, motivo, parâmetros,
@@ -745,4 +761,6 @@ aviso vai para o WhatsApp de cada perfil, decisão 0019). O `.env.example` muda 
   Ads, do GA4 e do Search Console; se o projeto estiver numa organização, liberar a criação de chave para as três
   contas de serviço (`iam.disableServiceAccountKeyCreation`).
 - **Sites:** o ID do GA4 nos dois sites, para o conector deixar de estar "A ligar".
-- **Dono:** quais contas de anúncio, perfis e propriedades são de cada marca (para os scripts de cadastro).
+- **Dono:** quais contas de anúncio, perfis e propriedades são de cada marca (para os scripts de cadastro), e o id do
+  funil antigo dos leads do site no CRM, que o script de configuração marca depois da primeira passada completa
+  ([`plano.md`](plano.md), "Seed").

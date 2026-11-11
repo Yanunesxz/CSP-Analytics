@@ -1,8 +1,9 @@
 // Migração 10, o worker: as rodadas (start_run, take_requested_run, finish_run), uma upsert por tabela de fora (o
-// formato do evento, a limpeza do texto do CRM, o funil de leads, a regra CSV × API, o operador da campanha), a
-// releitura que troca o dia (replace_day) e a passada completa que apaga o que sumiu, com a trava de 20%
-// (delete_missing). docs/dados/integracoes.md, seções 2, 3 e 12; tabelas.md, seções 2 e 3. Dados inventados de
-// fixtures/usuarios.sql, marketing.sql, trafego.sql e conectores.sql.
+// formato do evento, a limpeza do texto do CRM, o CRM como ele é nas decisões 0041 e 0042 — o funil de leads por regra,
+// com o funil antigo marcado por setup.mark_lead_funnel, o negócio sem funil, o nulo no que não vem e a compra do ERP
+// mais antiga —, a regra CSV × API, o operador da campanha), a releitura que troca o dia (replace_day) e a passada
+// completa que apaga o que sumiu, com a trava de 20% (delete_missing). docs/dados/integracoes.md, seções 2, 3 e 12;
+// tabelas.md, seções 2 e 3. Dados inventados de fixtures/usuarios.sql, marketing.sql, trafego.sql e conectores.sql.
 import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { abrirBanco, aplicarFixture, caso, postgres, servico, usuario } from './apoio/banco';
@@ -20,8 +21,11 @@ import {
 import {
   CAMPANHA_CLAUDE_CS,
   CAMPANHA_HUMANO_CS,
+  CLIENTE_A,
   CLIENTE_B,
   CONTA_META_CS,
+  FUNIL_ANTIGO_DE_LEADS,
+  FUNIL_DE_LEADS,
   GA4_CS,
   GSC_CS,
   LEAD_SDR,
@@ -309,51 +313,170 @@ describe('o lote e o evento de ingestão', () => {
 });
 
 describe('a réplica do CRM', () => {
-  it('funis e representantes: a releitura não muda o funil de leads nem gasta código', async () => {
+  const funil = (externo: string, nome: string, padrao: boolean) => ({
+    key: { external_id: externo },
+    values: { name: nome, is_default: padrao },
+  });
+
+  it('funis: o padrão do CRM é o de leads; o antigo dos leads do site, marcado pelo script, continua; o que deixa de ser o padrão deixa de ser de leads (decisão 0041)', async () => {
     await caso(db, postgres, async (s) => {
-      // A sequência não volta com o rollback de outro caso: começa de onde a fixture deixou (REP-0002).
-      await s.exec(`select setval('mkt.sales_rep_code_seq', 2)`);
+      const funis = () =>
+        s.linhas(`select external_id, is_default, is_lead_funnel from mkt.crm_funnels order by 1`);
+      const rodada = await abrirRodada(s, 'csp360', 'crm_full_pass');
+      // A releitura: o padrão segue de leads; o antigo, marcado (fixture), continua; um funil novo que não é o padrão
+      // nasce fora dos funis de leads.
+      expect(
+        await gravar(s, 'upsert_crm_funnels', rodada, [
+          funil('funil-teste-0001', 'Funil de vendas', true),
+          funil('funil-teste-0002', 'Funil antigo dos leads do site', false),
+          funil('funil-teste-0004', 'Funil de pós-venda', false),
+        ]),
+      ).toEqual([]);
+      expect(await funis()).toEqual([
+        { external_id: 'funil-teste-0001', is_default: true, is_lead_funnel: true },
+        { external_id: 'funil-teste-0002', is_default: false, is_lead_funnel: true },
+        { external_id: 'funil-teste-0004', is_default: false, is_lead_funnel: false },
+      ]);
+      // O CRM troca o funil padrão: o novo é de leads, o que deixou de ser deixa de ser; o antigo marcado fica.
+      expect(
+        await gravar(s, 'upsert_crm_funnels', rodada, [
+          funil('funil-teste-0001', 'Funil de vendas', false),
+          funil('funil-teste-0003', 'Funil de vendas novo', true),
+        ]),
+      ).toEqual([]);
+      expect(await funis()).toEqual([
+        { external_id: 'funil-teste-0001', is_default: false, is_lead_funnel: false },
+        { external_id: 'funil-teste-0002', is_default: false, is_lead_funnel: true },
+        { external_id: 'funil-teste-0003', is_default: true, is_lead_funnel: true },
+        { external_id: 'funil-teste-0004', is_default: false, is_lead_funnel: false },
+      ]);
+    });
+  });
+
+  it('funis: o nome com e-mail, telefone, documento ou @ vira o rótulo, nunca o texto, e a rodada conta (segunda barreira)', async () => {
+    await caso(db, postgres, async (s) => {
       const rodada = await abrirRodada(s, 'csp360', 'crm_full_pass');
       expect(
         await gravar(s, 'upsert_crm_funnels', rodada, [
-          { key: { external_id: 'funil-teste-0001' }, values: { name: 'Funil de leads renomeado' } },
-          { key: { external_id: 'funil-teste-0002' }, values: { name: 'Vendas', is_default: true } },
+          funil('a1000000-0000-4000-8000-000000000001', 'Funil contato.teste@exemplo.com', false),
+          funil('a2000000-0000-4000-8000-000000000002', 'Funil (11) 98765-4321', false),
+          funil('a3000000-0000-4000-8000-000000000003', 'Funil CPF 123.456.789-09', false),
+          funil('a4000000-0000-4000-8000-000000000004', 'Leads @equipe', false),
+          funil('a5000000-0000-4000-8000-000000000005', 'Funil de pós-venda', false),
         ]),
       ).toEqual([]);
       expect(
         await s.linhas(
-          `select external_id, name, is_default, is_lead_funnel from mkt.crm_funnels order by external_id`,
+          `select name from mkt.crm_funnels where external_id like 'a_000000-%' order by external_id`,
         ),
       ).toEqual([
+        { name: 'Funil a1000000' },
+        { name: 'Funil a2000000' },
+        { name: 'Funil a3000000' },
+        { name: 'Funil a4000000' },
+        { name: 'Funil de pós-venda' },
+      ]);
+      expect(await contagens(s, rodada)).toEqual({
+        rows_written: 5,
+        rows_refused: 0,
+        rows_deleted: 0,
+        personal_data_dropped: 4,
+      });
+    });
+  });
+
+  it('o funil antigo dos leads do site: setup.mark_lead_funnel marca o funil já lido, pelo id do CRM, e a releitura não desmarca; o não lido, o padrão e o dono do banco são recusados', async () => {
+    await caso(db, postgres, async (s) => {
+      const rodada = await abrirRodada(s, 'csp360', 'crm_full_pass');
+      const leitura = [funil('funil-teste-0004', 'Outro funil antigo de leads', false)];
+      await gravar(s, 'upsert_crm_funnels', rodada, leitura);
+      await s.como(servico('mkt_setup'));
+      const recusa = async (codigo: string, externo: unknown) => {
+        const e = await s.erro(codigo, `select setup.mark_lead_funnel($1)`, [externo]);
+        return [e.message, e.detail];
+      };
+      // O funil que a réplica ainda não leu: recusado com clareza (rodar depois da primeira passada completa).
+      expect(await recusa('PT404', 'funil-nao-lido')).toEqual(['SET-404', 'funnel']);
+      // O funil padrão já é de leads pela regra: marcar seria engano de id.
+      expect(await recusa('PT422', 'funil-teste-0001')).toEqual(['SET-422', 'default_funnel']);
+      expect(await recusa('PT422', 'funil 0004')).toEqual(['SET-422', 'external_id']);
+      expect(await recusa('PT422', null)).toEqual(['SET-422', 'external_id']);
+      // O id tem até 64 letras: o de 64 é procurado; o de 65 é recusado antes.
+      expect(await recusa('PT404', 'f'.repeat(64))).toEqual(['SET-404', 'funnel']);
+      expect(await recusa('PT422', 'f'.repeat(65))).toEqual(['SET-422', 'external_id']);
+
+      const id = await s.valor<string>(`select setup.mark_lead_funnel('funil-teste-0004')::text`);
+      // Rodar de novo devolve o mesmo funil; a releitura do funil não tira a marca.
+      expect(await s.valor(`select setup.mark_lead_funnel('funil-teste-0004')::text`)).toBe(id);
+      // Rodar de novo não regrava a linha: o funil da fixture, marcado antes deste caso, fica igual, também o
+      // updated_at e a versão da linha (xmin). Na mesma transação o updated_at não andaria (o now() é o do começo dela).
+      const linha = `select row_to_json(f)::text || ' ' || f.xmin::text from mkt.crm_funnels f where f.id = $1`;
+      await s.como(postgres);
+      const antes = await s.valor<string>(linha, [FUNIL_ANTIGO_DE_LEADS]);
+      await s.como(servico('mkt_setup'));
+      expect(await s.valor(`select setup.mark_lead_funnel('funil-teste-0002')::text`)).toBe(
+        FUNIL_ANTIGO_DE_LEADS,
+      );
+      await s.como(postgres);
+      expect(await s.valor<string>(linha, [FUNIL_ANTIGO_DE_LEADS])).toBe(antes);
+      await s.como(servico('mkt_worker'));
+      expect(await gravar(s, 'upsert_crm_funnels', rodada, leitura)).toEqual([]);
+      await s.como(postgres);
+      expect(
+        await s.linhas(
+          `select id::text, external_id, is_default, is_lead_funnel from mkt.crm_funnels where is_lead_funnel order by 2`,
+        ),
+      ).toEqual([
+        { id: FUNIL_DE_LEADS, external_id: 'funil-teste-0001', is_default: true, is_lead_funnel: true },
         {
-          external_id: 'funil-teste-0001',
-          name: 'Funil de leads renomeado',
+          id: FUNIL_ANTIGO_DE_LEADS,
+          external_id: 'funil-teste-0002',
           is_default: false,
           is_lead_funnel: true,
         },
-        { external_id: 'funil-teste-0002', name: 'Vendas', is_default: true, is_lead_funnel: false },
+        { id, external_id: 'funil-teste-0004', is_default: false, is_lead_funnel: true },
       ]);
+      // Só a conexão do script: o dono do banco, que executa a função, não marca.
+      expect((await s.erro('PT403', `select setup.mark_lead_funnel('funil-teste-0004')`)).message).toBe(
+        'SET-403',
+      );
+    });
+  });
 
+  it('representantes: o papel fora da lista entra nulo, sem recusar a linha (decisão 0041, item 8); a releitura não gasta código', async () => {
+    await caso(db, postgres, async (s) => {
+      // A sequência não volta com o rollback de outro caso: começa de onde a fixture deixou (REP-0002).
+      await s.exec(`select setval('mkt.sales_rep_code_seq', 2)`);
+      const rodada = await abrirRodada(s, 'csp360', 'crm_full_pass');
       const reps = [
         { key: { external_id: 'usr-teste-0001' }, values: { crm_role: 'supervisor', is_active: false } },
-        { key: { external_id: 'usr-teste-0002' }, values: { crm_role: 'field_rep' } },
+        { key: { external_id: 'usr-teste-0002' }, values: { crm_role: 'customer_service' } },
+        { key: { external_id: 'usr-teste-0003' }, values: { crm_role: 'chefe' } },
+        { key: { external_id: 'usr-teste-0004' }, values: { crm_role: 'relationship' } },
       ];
       expect(await gravar(s, 'upsert_sales_reps', rodada, reps)).toEqual([]);
       expect(await gravar(s, 'upsert_sales_reps', rodada, reps)).toEqual([]);
-      expect(
-        await gravar(s, 'upsert_sales_reps', rodada, [
-          { key: { external_id: 'usr-x' }, values: { crm_role: 'chefe' } },
-        ]),
-      ).toEqual([{ item: 1, code: 'CHECK', is_refused: true }]);
       expect(
         await s.linhas(`select code, external_id, crm_role, is_active from mkt.sales_reps order by code`),
       ).toEqual([
         { code: 'REP-0001', external_id: 'usr-teste-0001', crm_role: 'supervisor', is_active: false },
         { code: 'REP-0002', external_id: null, crm_role: null, is_active: true },
-        { code: 'REP-0003', external_id: 'usr-teste-0002', crm_role: 'field_rep', is_active: true },
+        { code: 'REP-0003', external_id: 'usr-teste-0002', crm_role: 'customer_service', is_active: true },
+        { code: 'REP-0004', external_id: 'usr-teste-0003', crm_role: null, is_active: true },
+        { code: 'REP-0005', external_id: 'usr-teste-0004', crm_role: null, is_active: true },
       ]);
+      // Na releitura, o papel fora da lista (aqui, o do CRM sem a conversão do worker) troca o que havia por nulo.
+      expect(
+        await gravar(s, 'upsert_sales_reps', rodada, [
+          { key: { external_id: 'usr-teste-0002' }, values: { crm_role: 'atendimento' } },
+        ]),
+      ).toEqual([]);
+      expect(
+        await s.valor(`select crm_role from mkt.sales_reps where external_id = 'usr-teste-0002'`),
+      ).toBeNull();
+      expect((await contagens(s, rodada)).rows_refused).toBe(0);
       await s.como(postgres);
-      expect(await s.valor(`select last_value::int from mkt.sales_rep_code_seq`)).toBe(3);
+      expect(await s.valor(`select last_value::int from mkt.sales_rep_code_seq`)).toBe(5);
     });
   });
 
@@ -548,41 +671,211 @@ describe('a réplica do CRM', () => {
     });
   });
 
-  it('leads: o negócio do funil de leads entra; o de outro funil é ignorado (não é recusa), a menos que já esteja aqui', async () => {
+  it('leads: entra o negócio de um funil de leads, o sem funil (no funil padrão, quando há um só) e o que já está aqui, em qualquer funil; o resto é ignorado (não é recusa)', async () => {
     await caso(db, postgres, async (s) => {
       const rodada = await abrirRodada(s, 'csp360', 'crm_incremental');
-      await gravar(s, 'upsert_crm_funnels', rodada, [
-        { key: { external_id: 'funil-teste-0002' }, values: { name: 'Vendas' } },
-      ]);
-      const negocio = (externo: string, funil: string, codigo: string) => ({
+      await gravar(s, 'upsert_crm_funnels', rodada, [funil('funil-teste-0004', 'Vendas diretas', false)]);
+      const negocio = (externo: string, funilDoCrm: string | null, codigo: string) => ({
         brand: 'cs',
         key: { kind: 'deal', external_id: externo },
-        values: { code: codigo, funnel_external_id: funil, source_created_at: '2026-11-02T10:00:00Z' },
+        values: {
+          code: codigo,
+          ...(funilDoCrm === null ? {} : { funnel_external_id: funilDoCrm }),
+          source_created_at: '2026-11-02T10:00:00Z',
+        },
       });
+      const negocios = () =>
+        s.linhas(
+          `select l.external_id, l.code, f.external_id as funil from mkt.crm_leads l
+             left join mkt.crm_funnels f on f.id = l.crm_funnel_id where l.kind = 'deal' order by 1`,
+        );
       expect(
         await gravar(s, 'upsert_crm_leads', rodada, [
           negocio('neg-teste-0101', 'funil-teste-0001', 'NEG-9101'),
-          negocio('neg-teste-0102', 'funil-teste-0002', 'NEG-9102'),
-          negocio('neg-teste-0001', 'funil-teste-0002', 'NEG-9001'),
+          negocio('neg-teste-0102', 'funil-teste-0004', 'NEG-9102'),
+          negocio('neg-teste-0001', 'funil-teste-0004', 'NEG-9001'),
           {
             key: { kind: 'deal', external_id: 'neg-teste-0103' },
             values: { funnel_external_id: 'funil-teste-0001', source_created_at: '2026-11-02T10:00:00Z' },
           },
+          negocio('neg-teste-0104', null, 'NEG-9104'),
+          negocio('neg-teste-0105', 'funil-nao-lido', 'NEG-9105'),
+          // Um lead encerrado que ficou no funil antigo dos leads do site.
+          negocio('neg-teste-0108', 'funil-teste-0002', 'NEG-9108'),
         ]),
       ).toEqual([
         { item: 2, code: 'NOT_LEAD_FUNNEL', is_refused: false },
         { item: 4, code: 'NOT_NULL', is_refused: true },
+        { item: 6, code: 'NOT_LEAD_FUNNEL', is_refused: false },
       ]);
-      expect(
-        await s.linhas(
-          `select l.external_id, l.code, f.external_id as funil from mkt.crm_leads l
-             left join mkt.crm_funnels f on f.id = l.crm_funnel_id where l.kind = 'deal' order by 1`,
-        ),
-      ).toEqual([
-        { external_id: 'neg-teste-0001', code: 'NEG-9001', funil: 'funil-teste-0002' },
+      expect(await negocios()).toEqual([
+        // O que já estava aqui continua entrando, também num funil que não é de leads.
+        { external_id: 'neg-teste-0001', code: 'NEG-9001', funil: 'funil-teste-0004' },
+        // O da fixture, fora deste lote, fica como estava (o sem funil daqui é o neg-teste-0104; o da conversão do
+        // SDR, o caso seguinte).
+        { external_id: 'neg-teste-0002', code: 'NEG-9002', funil: 'funil-teste-0001' },
         { external_id: 'neg-teste-0101', code: 'NEG-9101', funil: 'funil-teste-0001' },
+        { external_id: 'neg-teste-0104', code: 'NEG-9104', funil: 'funil-teste-0001' },
+        { external_id: 'neg-teste-0108', code: 'NEG-9108', funil: 'funil-teste-0002' },
       ]);
       expect((await contagens(s, rodada)).rows_refused).toBe(1);
+
+      // Dois funis padrão na réplica: não há como saber qual é o do negócio sem funil. Ele entra, sem funil.
+      await gravar(s, 'upsert_crm_funnels', rodada, [funil('funil-teste-0003', 'Outro funil padrão', true)]);
+      expect(
+        await gravar(s, 'upsert_crm_leads', rodada, [
+          negocio('neg-teste-0104', null, 'NEG-9104'),
+          negocio('neg-teste-0106', null, 'NEG-9106'),
+        ]),
+      ).toEqual([]);
+      // E sem nenhum funil padrão, também.
+      await gravar(s, 'upsert_crm_funnels', rodada, [
+        funil('funil-teste-0001', 'Funil de vendas', false),
+        funil('funil-teste-0003', 'Outro funil padrão', false),
+      ]);
+      expect(
+        await gravar(s, 'upsert_crm_leads', rodada, [negocio('neg-teste-0107', null, 'NEG-9107')]),
+      ).toEqual([]);
+      expect(
+        await s.linhas(
+          `select external_id, crm_funnel_id from mkt.crm_leads
+            where external_id in ('neg-teste-0104', 'neg-teste-0106', 'neg-teste-0107') order by 1`,
+        ),
+      ).toEqual([
+        { external_id: 'neg-teste-0104', crm_funnel_id: null },
+        { external_id: 'neg-teste-0106', crm_funnel_id: null },
+        { external_id: 'neg-teste-0107', crm_funnel_id: null },
+      ]);
+    });
+  });
+
+  it('o negócio da conversão do SDR: sem funil e sem marca, com a origem "SDR WhatsApp"; entra no funil padrão, com a origem sdr do de-para (decisão 0041, itens 1 e 3)', async () => {
+    await caso(db, postgres, async (s) => {
+      const rodada = await abrirRodada(s, 'csp360', 'crm_incremental');
+      expect(
+        await gravar(s, 'upsert_crm_leads', rodada, [
+          {
+            key: { kind: 'deal', external_id: 'neg-teste-0201' },
+            values: {
+              code: 'NEG-9201',
+              customer_external_id: 'cli-teste-0002',
+              origin: ' SDR WhatsApp ',
+              source_created_at: '2026-11-04T00:00:00Z',
+            },
+          },
+        ]),
+      ).toEqual([]);
+      expect(
+        await s.linhas(
+          `select l.brand_id, f.external_id as funil, l.crm_origin_raw, l.is_origin_unmapped, m.origin
+             from mkt.crm_leads l
+             left join mkt.crm_funnels f on f.id = l.crm_funnel_id
+             left join mkt.crm_origin_map m on m.raw_value = l.crm_origin_raw
+            where l.kind = 'deal' and l.external_id = 'neg-teste-0201'`,
+        ),
+      ).toEqual([
+        {
+          brand_id: null,
+          funil: 'funil-teste-0001',
+          crm_origin_raw: 'sdr whatsapp',
+          is_origin_unmapped: false,
+          origin: 'sdr',
+        },
+      ]);
+    });
+  });
+
+  it('leads: o responsável pelo código do representante; o negócio que vem sem ele fica sem, mesmo que antes tivesse (decisão 0041, item 6)', async () => {
+    await caso(db, postgres, async (s) => {
+      const rodada = await abrirRodada(s, 'csp360', 'crm_incremental');
+      const negocio = (responsavel?: string) => ({
+        brand: 'cs',
+        key: { kind: 'deal', external_id: 'neg-teste-0001' },
+        values: {
+          code: 'NEG-9001',
+          funnel_external_id: 'funil-teste-0001',
+          source_created_at: '2026-10-22T10:00:00Z',
+          ...(responsavel === undefined ? {} : { assigned_rep_external_id: responsavel }),
+        },
+      });
+      const responsavel = () =>
+        s.valor(`select assigned_rep_id::text from mkt.crm_leads where external_id = 'neg-teste-0001'`);
+      expect(await gravar(s, 'upsert_crm_leads', rodada, [negocio('usr-teste-0001')])).toEqual([]);
+      expect(await responsavel()).toBe(REP_DO_CRM);
+      // Fora da view negocios_responsavel (nome repetido, desconhecido ou vazio no CRM): "Sem representante".
+      expect(await gravar(s, 'upsert_crm_leads', rodada, [negocio()])).toEqual([]);
+      expect(await responsavel()).toBeNull();
+      // O id que ainda não está na réplica também fica nulo, sem recusar o lead.
+      await gravar(s, 'upsert_crm_leads', rodada, [negocio('usr-teste-0001')]);
+      expect(await gravar(s, 'upsert_crm_leads', rodada, [negocio('usr-nao-lido')])).toEqual([]);
+      expect(await responsavel()).toBeNull();
+    });
+  });
+
+  it('retrato do ERP por cliente e marca: o que o CRM não entrega fica nulo; o total negativo vira nulo; a compra mais antiga já vista só anda para trás (decisões 0041 e 0042)', async () => {
+    await caso(db, postgres, async (s) => {
+      const rodada = await abrirRodada(s, 'csp360', 'crm_incremental');
+      const retrato = (valores: Record<string, unknown>) => ({
+        brand: 'plumene',
+        key: { customer_external_id: 'cli-teste-0002' },
+        values: valores,
+      });
+      const ler = async (...retratos: Record<string, unknown>[]) => {
+        expect(await gravar(s, 'upsert_crm_customer_brands', rodada, retratos.map(retrato))).toEqual([]);
+        const [linha] = await s.linhas(
+          `select situation, is_lost_manual, last_purchase_on, situation_computed_at,
+                  erp_first_purchase_on::text as primeira, erp_last_purchase_on::text as ultima,
+                  erp_earliest_purchase_on::text as mais_antiga, erp_total_purchased_cents as total
+             from mkt.crm_customer_brands
+            where customer_id = $1 and brand_id = (select id from mkt.brands where code = 'plumene')`,
+          [CLIENTE_B],
+        );
+        return linha;
+      };
+      // A primeira leitura: só o retrato. Situação, perdido à mão, última compra da régua e hora do cálculo: nulos.
+      expect(await ler({ erp_last_purchase_on: '2026-03-10', erp_total_purchased_cents: 150000 })).toEqual({
+        situation: null,
+        is_lost_manual: null,
+        last_purchase_on: null,
+        situation_computed_at: null,
+        primeira: null,
+        ultima: '2026-03-10',
+        mais_antiga: '2026-03-10',
+        total: 150000,
+      });
+      // O retrato trocado pela compra nova feita pelo app: a última compra anda para a frente; a mais antiga, não.
+      expect(
+        await ler({ erp_last_purchase_on: '2026-09-20', erp_total_purchased_cents: 210000 }),
+      ).toMatchObject({
+        ultima: '2026-09-20',
+        mais_antiga: '2026-03-10',
+      });
+      // Uma última compra anterior à guardada: a mais antiga anda para trás.
+      expect(await ler({ erp_last_purchase_on: '2026-02-01' })).toMatchObject({ mais_antiga: '2026-02-01' });
+      // A primeira compra, quando o CRM a entregar, vale se for mais antiga; posterior, não.
+      expect(
+        await ler({ erp_first_purchase_on: '2025-06-01', erp_last_purchase_on: '2026-10-05' }),
+      ).toMatchObject({ primeira: '2025-06-01', ultima: '2026-10-05', mais_antiga: '2025-06-01' });
+      expect(await ler({ erp_first_purchase_on: '2025-12-01' })).toMatchObject({
+        primeira: '2025-12-01',
+        ultima: null,
+        mais_antiga: '2025-06-01',
+      });
+      // Sem nenhuma data no retrato, fica a guardada.
+      expect(await ler({})).toMatchObject({ primeira: null, ultima: null, mais_antiga: '2025-06-01' });
+      // O perdido à mão só quando vier; o total negativo vira nulo, sem recusar a linha.
+      expect(await ler({ is_lost_manual: true, erp_total_purchased_cents: -500 })).toMatchObject({
+        is_lost_manual: true,
+        total: null,
+      });
+      expect(await ler({})).toMatchObject({ is_lost_manual: null, total: null });
+      // A data mais antiga é calculada aqui: o worker não manda.
+      expect(
+        await gravar(s, 'upsert_crm_customer_brands', rodada, [
+          retrato({ erp_earliest_purchase_on: '2000-01-01' }),
+        ]),
+      ).toEqual([{ item: 1, code: 'UNKNOWN_FIELD', is_refused: true }]);
+      expect(await contagens(s, rodada)).toMatchObject({ rows_written: 8, rows_refused: 1 });
     });
   });
 
@@ -1494,6 +1787,184 @@ describe('a passada completa apaga o que sumiu do CRM: delete_missing', () => {
       ]);
       expect(await s.valor(`select count(*)::int from mkt.sales_reps where id = $1`, [REP_DO_APP])).toBe(0);
       expect(await s.valor(`select count(*)::int from mkt.sales_reps where id = $1`, [REP_DO_CRM])).toBe(1);
+    });
+  });
+
+  it('leads: o NEG- que o CRM reaproveita entra na leitura de 5 min com o código do negócio apagado, e a passada completa tira só o antigo (decisão 0041, item 2)', async () => {
+    await caso(db, postgres, async (s) => {
+      const negocio = (externo: string, codigo: string) => ({
+        brand: 'cs',
+        key: { kind: 'deal', external_id: externo },
+        values: {
+          code: codigo,
+          funnel_external_id: 'funil-teste-0001',
+          source_created_at: '2026-11-11T13:00:00Z',
+        },
+      });
+      const comOCodigo = () =>
+        s.linhas(`select external_id from mkt.crm_leads where code = 'NEG-9001' order by 1`);
+      // O negócio da fixture (neg-teste-0001, NEG-9001) foi apagado no CRM, e o negócio novo ganhou o código dele.
+      const incremental = await abrirRodada(s, 'csp360', 'crm_incremental');
+      expect(
+        await gravar(s, 'upsert_crm_leads', incremental, [negocio('neg-teste-0950', 'NEG-9001')]),
+      ).toEqual([]);
+      expect((await contagens(s, incremental)).rows_refused).toBe(0);
+      expect(await comOCodigo()).toEqual([
+        { external_id: 'neg-teste-0001' },
+        { external_id: 'neg-teste-0950' },
+      ]);
+      // A passada completa não vê o antigo e o apaga; o novo fica.
+      const passada = await abrirRodada(s, 'csp360', 'crm_full_pass');
+      expect(
+        await gravar(s, 'upsert_crm_leads', passada, [
+          {
+            key: { kind: 'deal', external_id: 'neg-teste-0002' },
+            values: {
+              code: 'NEG-9002',
+              customer_external_id: 'cli-teste-0002',
+              origin: 'SDR WhatsApp',
+              source_created_at: '2026-11-09T10:00:00Z',
+            },
+          },
+          {
+            key: { kind: 'sdr', external_id: 'sdr-teste-0001' },
+            values: { customer_external_id: 'cli-teste-0002', source_created_at: '2026-11-08T10:00:00Z' },
+          },
+          negocio('neg-teste-0950', 'NEG-9001'),
+          negocio('neg-teste-0951', 'NEG-9951'),
+          negocio('neg-teste-0952', 'NEG-9952'),
+        ]),
+      ).toEqual([]);
+      expect(await s.linhas(`select * from ingest.delete_missing('crm_leads', $1)`, [passada])).toEqual([
+        { deleted: 1, code: null },
+      ]);
+      expect(await comOCodigo()).toEqual([{ external_id: 'neg-teste-0950' }]);
+    });
+  });
+
+  it('o par cliente × marca que a passada não viu perde só o retrato: a compra do ERP mais antiga fica, e o par que volta com a recompra pelo app continua antigo; ele sai com o cliente (decisões 0015 e 0042)', async () => {
+    await caso(db, postgres, async (s) => {
+      const par = (externo: string, valores: Record<string, unknown> = {}) => ({
+        brand: 'cs',
+        key: { customer_external_id: externo },
+        values: valores,
+      });
+      const doClienteA = () =>
+        s.linhas(
+          `select cb.erp_earliest_purchase_on = current_date - 400 as mais_antiga_guardada,
+                  cb.erp_last_purchase_on::text as ultima, cb.erp_total_purchased_cents as total
+             from mkt.crm_customer_brands cb join mkt.brands b on b.id = cb.brand_id
+            where cb.customer_id = $1 and b.code = 'cs'`,
+          [CLIENTE_A],
+        );
+      const outros = ['0003', '0004', '0005', '0006'].map((n) => `cli-teste-${n}`);
+      const passada = await abrirRodada(s, 'csp360', 'crm_full_pass');
+      expect(
+        await gravar(
+          s,
+          'upsert_crm_customers',
+          passada,
+          outros.map((c) => cliente(c)),
+        ),
+      ).toEqual([]);
+      // A passada vê 4 dos 5 pares; o do cliente A (fixture: a compra mais antiga há 400 dias) não veio.
+      expect(
+        await gravar(
+          s,
+          'upsert_crm_customer_brands',
+          passada,
+          outros.map((c) => par(c, { erp_last_purchase_on: '2026-10-01' })),
+        ),
+      ).toEqual([]);
+      expect(
+        await s.linhas(`select * from ingest.delete_missing('crm_customer_brands', $1)`, [passada]),
+      ).toEqual([{ deleted: 0, code: null }]);
+      // O par fica, sem o retrato; a data mais antiga, que o CRM não tem mais, fica.
+      expect(await doClienteA()).toEqual([{ mais_antiga_guardada: true, ultima: null, total: null }]);
+      expect((await contagens(s, passada)).rows_deleted).toBe(0);
+
+      // O par volta com a recompra pelo app: a última compra é a nova, e a mais antiga não anda para a frente.
+      const recompra = await s.valor<string>(`select (current_date - 5)::text`);
+      const incremental = await abrirRodada(s, 'csp360', 'crm_incremental');
+      expect(
+        await gravar(s, 'upsert_crm_customer_brands', incremental, [
+          par('cli-teste-0001', { erp_last_purchase_on: recompra }),
+        ]),
+      ).toEqual([]);
+      expect(await doClienteA()).toEqual([{ mais_antiga_guardada: true, ultima: recompra, total: null }]);
+      // Pela regra do histórico (metricas.md, 3.5), ele continua antigo: a data é anterior ao 1º pedido enviado.
+      expect(
+        await s.valor(
+          `select cb.erp_earliest_purchase_on < min(mkt.sp_day(o.source_created_at))
+             from mkt.crm_customer_brands cb
+             join mkt.crm_orders o on o.customer_id = cb.customer_id and o.brand_id = cb.brand_id and o.status = 'sent'
+            where cb.customer_id = $1
+            group by cb.erp_earliest_purchase_on`,
+          [CLIENTE_A],
+        ),
+      ).toBe(true);
+
+      // O par sai com o cliente: a passada que não vê o cliente A o apaga, e o par vai junto, data e tudo.
+      const seguinte = await abrirRodada(s, 'csp360', 'crm_full_pass');
+      expect(await gravar(s, 'upsert_crm_customers', seguinte, [cliente('cli-teste-0002')])).toEqual([]);
+      expect(await s.linhas(`select * from ingest.delete_missing('crm_customers', $1)`, [seguinte])).toEqual([
+        { deleted: 1, code: null },
+      ]);
+      expect(await doClienteA()).toEqual([]);
+    });
+  });
+
+  it('na trava do par cliente × marca, conta só o que a chamada muda: o par já sem retrato não segura a passada; o par sem a data sai', async () => {
+    await caso(db, postgres, async (s) => {
+      // Dois pares que uma passada anterior já deixou sem retrato, só com a compra mais antiga, e um par sem data.
+      await s.exec(`
+        insert into mkt.crm_customer_brands (customer_id, brand_id, erp_earliest_purchase_on, last_seen_at)
+        select '${CLIENTE_A}', b.id, '2024-01-10', now() - interval '1 day' from mkt.brands b where b.code = 'plumene';
+        insert into mkt.crm_customer_brands (customer_id, brand_id, erp_earliest_purchase_on, last_seen_at)
+        select '${CLIENTE_B}', b.id, '2024-02-01', now() - interval '1 day' from mkt.brands b where b.code = 'plumene';
+        insert into mkt.crm_customer_brands (customer_id, brand_id, last_seen_at)
+        select '${CLIENTE_B}', b.id, now() - interval '1 day' from mkt.brands b where b.code = 'cs';
+      `);
+      const outros = ['0003', '0004', '0005', '0006'].map((n) => `cli-teste-${n}`);
+      const passada = await abrirRodada(s, 'csp360', 'crm_full_pass');
+      expect(
+        await gravar(
+          s,
+          'upsert_crm_customers',
+          passada,
+          outros.map((c) => cliente(c)),
+        ),
+      ).toEqual([]);
+      expect(
+        await gravar(
+          s,
+          'upsert_crm_customer_brands',
+          passada,
+          ['cli-teste-0001', ...outros].map((c) => ({
+            brand: 'cs',
+            key: { customer_external_id: c },
+            values: { erp_last_purchase_on: '2026-10-01' },
+          })),
+        ),
+      ).toEqual([]);
+      // Não vistos: 3 de 8 pares. Só o sem data muda (sai); os dois já sem retrato ficam como estão.
+      expect(
+        await s.linhas(`select * from ingest.delete_missing('crm_customer_brands', $1)`, [passada]),
+      ).toEqual([{ deleted: 1, code: null }]);
+      expect(
+        await s.linhas(
+          `select c.external_id, b.code as marca, cb.erp_earliest_purchase_on::text as mais_antiga
+             from mkt.crm_customer_brands cb
+             join mkt.crm_customers c on c.id = cb.customer_id join mkt.brands b on b.id = cb.brand_id
+            where cb.customer_id in ($1, $2) order by 1, 2`,
+          [CLIENTE_A, CLIENTE_B],
+        ),
+      ).toEqual([
+        { external_id: 'cli-teste-0001', marca: 'cs', mais_antiga: expect.any(String) },
+        { external_id: 'cli-teste-0001', marca: 'plumene', mais_antiga: '2024-01-10' },
+        { external_id: 'cli-teste-0002', marca: 'plumene', mais_antiga: '2024-02-01' },
+      ]);
+      expect((await contagens(s, passada)).rows_deleted).toBe(1);
     });
   });
 });

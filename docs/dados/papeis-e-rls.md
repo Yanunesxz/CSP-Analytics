@@ -13,7 +13,7 @@
 | `authenticator` | o PostgREST (a API) | Troca para `anon` ou `authenticated` a cada chamada. É o `session_user` de toda chamada pela API: os gatilhos conferem esse nome para separar a pessoa dos serviços |
 | `mkt_worker` | conexão Postgres própria do worker de leitura (decisão 0017) | Lê as tabelas de `mkt` da lista dele (nunca as de pessoas: perfis, convites, preferências, filtros, auditoria e fila de avisos); grava só pelas funções `ingest.*` dele; lê e troca só credenciais de **leitura** (`private.read_credential`, `private.rotate_credential`). Não chama `api.*` e não escreve nas plataformas |
 | `mkt_executor` | conexão Postgres própria do executor, um serviço à parte no Railway (decisão 0017) | Lê as tabelas de tráfego, contas, campanhas, gasto, limites e conectores; executa só `ingest.next_execution`, `ingest.update_execution` e `ingest.set_action_progress`. É o único com os tokens de escrita das plataformas, que ficam só nas variáveis dele: o executor não lê o Vault |
-| `mkt_setup` | conexão usada só pelos scripts de configuração (`MKT_SETUP_DATABASE_URL`, lida do `.env` na hora, nunca no Railway) | Só as funções `setup.*`: cadastrar conta de anúncio, perfil do Instagram, propriedade de site, credencial e o convite do primeiro dono. `setup.register_credential(connector_code, purpose, account_ref, secret, expires_at)` cria o segredo no Vault e a linha de `private.connector_credentials`, com o segredo como parâmetro ligado, nunca no texto do SQL; a credencial de escrita ganha só a linha de estado, sem segredo |
+| `mkt_setup` | conexão usada só pelos scripts de configuração (`MKT_SETUP_DATABASE_URL`, lida do `.env` na hora, nunca no Railway) | Só as funções `setup.*`: cadastrar conta de anúncio, perfil do Instagram, propriedade de site, credencial e o convite do primeiro dono, e marcar o funil antigo dos leads do site (`setup.mark_lead_funnel`, decisão 0041). `setup.register_credential(connector_code, purpose, account_ref, secret, expires_at)` cria o segredo no Vault e a linha de `private.connector_credentials`, com o segredo como parâmetro ligado, nunca no texto do SQL; a credencial de escrita ganha só a linha de estado, sem segredo |
 | `n8n_notifier` | conexão Postgres própria do n8n | Só `notify.claim_pending`, `notify.mark_sent` e `notify.mark_failed`. Não lê tabela nenhuma |
 | `service_role` | chave do projeto, só nas Edge Functions `convidar` e `tirar-acesso` e no job manual do primeiro dono | Usada só para o que o Auth exige: mandar o convite, bloquear o login, derrubar sessão e trocar o e-mail de quem perdeu o acesso. Nunca no worker, nunca no front |
 | `postgres` | CI, ao aplicar migrações | Dono dos objetos; não é usado por pessoa nem por serviço no dia a dia |
@@ -31,13 +31,13 @@ As funções que as políticas chamam ficam num esquema só delas, `authz`. Assi
 -- Ações que pedem o segundo fator (TOTP; decisão 0023): a lista mora só aqui, e authz.can,
 -- api.my_permissions() e api.list_role_permissions() chamam esta função. Parar tudo nunca pede.
 create or replace function authz.requires_second_factor(p_action mkt.app_action) returns boolean
-language sql immutable set search_path = '' as $$
+language sql immutable set search_path = pg_catalog, pg_temp as $$
   select p_action in ('approve_action', 'configure_traffic', 'manage_users', 'retry_connector')
 $$;
 
 -- Permissão do usuário logado: perfil ativo + papel com a ação em role_permissions.
 create or replace function authz.can(p_action mkt.app_action) returns boolean
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = pg_catalog, pg_temp as $$
   select exists (
     select 1
       from mkt.profiles p
@@ -50,7 +50,7 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 create or replace function authz.is_active_user() returns boolean
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = pg_catalog, pg_temp as $$
   select exists (select 1 from mkt.profiles p where p.id = auth.uid() and p.is_active)
 $$;
 
@@ -122,7 +122,8 @@ grant execute on function notify.claim_pending(integer), notify.mark_sent(uuid),
 -- scripts de configuração
 grant usage on schema setup to mkt_setup;
 grant execute on function setup.register_ad_account(…), setup.register_ig_account(…),
-  setup.register_web_property(…), setup.register_credential(…), setup.create_first_owner_invitation(…) to mkt_setup;
+  setup.register_web_property(…), setup.mark_lead_funnel(text), setup.register_credential(…),
+  setup.create_first_owner_invitation(…) to mkt_setup;
 ```
 
 - `grant select` em `mkt` não abre as tabelas na API: o esquema não está na lista do PostgREST. Serve para as views
@@ -256,10 +257,14 @@ contexto do Claude (nenhuma view de `api` os devolve na v1: `api.v_traffic_actio
 
 Regras de todas:
 
+- **Toda função dos sete esquemas** (`mkt`, `api`, `authz`, `ingest`, `notify`, `private` e `setup`; `security
+  definer` ou `invoker`, `sql` ou `plpgsql`, também as de gatilho) tem `set search_path = pg_catalog, pg_temp`, com o
+  `pg_temp` explícito e por último: sem o `pg_temp` no caminho, o esquema temporário da sessão é procurado primeiro
+  para tipos e tabelas, e um serviço com conexão própria criaria lá um `uuid` ou um `text` com um `check` que roda
+  como o dono da função (RLS-27). Nomes de fora do `pg_catalog` vão sempre qualificados (`mkt.traffic_actions`).
 - **Toda função `security definer`, de qualquer esquema** (`api`, `authz`, `ingest`, `notify`, `private`, `setup` e as
-  de gatilho), tem `set search_path = ''`, nomes sempre qualificados (`mkt.traffic_actions`) e dono `postgres`, com
-  `revoke execute … from public, anon` e `grant execute` só ao papel que a usa. As de `api` são executáveis só por
-  `authenticated`; nenhuma pelo worker, pelo executor nem pelo n8n.
+  de gatilho), tem dono `postgres`, com `revoke execute … from public, anon` e `grant execute` só ao papel que a usa.
+  As de `api` são executáveis só por `authenticated`; nenhuma pelo worker, pelo executor nem pelo n8n.
 - A primeira linha confere `authz.can(...)`. Depois, a trava otimista: a tela manda o `updated_at` que leu; se mudou,
   nada é gravado e a tela diz "Outra pessoa alterou este registro" e recarrega (seção 9 do padrão). O `updated_at` é
   gravado em milissegundos, para o valor lido pela tela voltar igual (texto no Supabase, `Date` no PGlite).
@@ -331,7 +336,13 @@ Por isso os gatilhos que protegem aprovação, papel e operador conferem também
   `done_via = 'platform_api'`). Inserção pelo `mkt_worker` só em `idea`, com `proposed_by_kind = 'claude'`.
 - `profiles_guard` e `campaigns_managed_by_guard`: além da chave da transação (`mkt.allow_role_change`,
   `mkt.allow_operator_change`), `session_user = 'authenticator'` e a permissão (`manage_users`, `configure_traffic`).
-  O `profiles_guard` conta os donos ativos depois de `select … for update` neles.
+  O `profiles_guard` conta os donos ativos depois de `select … for update` neles. O `campaigns_managed_by_guard` tem
+  uma exceção, só com `session_user = 'mkt_executor'`: a campanha que a leitura importou do humano antes de a criação
+  ser confirmada passa para o Claude na transação que confirma, com a ação `create` da mesma conta cuja execução essa
+  transação confirmou, sem mudar a conta nem o nome no mesmo `update`, o código dela no fim do nome, nenhuma troca de
+  operador anterior por uma pessoa e importada depois da primeira execução de criar da ação: a campanha que já
+  existia, mesmo renomeada com o código, continua do humano (o `created_at` só o dono do banco grava;
+  [`tabelas.md`](tabelas.md), `campaigns`).
 - `platform_executions_guard`: `insert` só pela API (dentro das funções de ação) ou por
   `private.queue_monthly_spend_caps`, que só o `pg_cron` chama; `request`, `operation`, `idempotency_key`,
   `traffic_action_id`, `traffic_stop_campaign_id`, `spend_limit_id`, `campaign_id` e `ad_account_id` nunca mudam; o
@@ -343,7 +354,7 @@ Por isso os gatilhos que protegem aprovação, papel e operador conferem também
 ```sql
 create or replace function api.approve_action(p_action_id uuid, p_expected_updated_at timestamptz)
 returns mkt.traffic_actions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.traffic_actions;
 begin
@@ -380,7 +391,7 @@ grant execute on function api.approve_action(uuid, timestamptz) to authenticated
 ```sql
 create or replace function api.stop_all(p_brand mkt.brand_code, p_expected_count integer)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_stop uuid;
   v_brand uuid := (select id from mkt.brands where code = p_brand);   -- nulo = as duas marcas
@@ -450,7 +461,7 @@ mesma lista e sai o aviso urgente "Parar tudo sem confirmação" (decisão 0022)
 |---|---|---|
 | `ingest.upsert_*` (uma por tabela de fora) | `mkt_worker` | Insere ou atualiza pela chave natural; converte nada (já chega convertido); aplica a regra CSV × API; trata o texto que vem do CRM ([`tabelas.md`](tabelas.md), seção 2) |
 | `ingest.replace_day(…)` | `mkt_worker` | Releitura: grava as linhas lidas e apaga as do mesmo dia e da mesma conta, perfil ou propriedade que não vieram, numa transação ([`integracoes.md`](integracoes.md), seção 2.3) |
-| `ingest.delete_missing(p_table, p_run_id)` | `mkt_worker` | `p_table` só da lista fixa (`crm_funnels`, `crm_customers`, `crm_customer_brands`, `crm_customer_reps`, `crm_leads`, `crm_orders`, `sales_reps`, `sales_rep_app_logins`; `crm_upstream_runs` fica fora: a leitura traz só as últimas rodadas de cada marca, e o `pg_cron` apaga o que passou de 90 dias), montada com `format('delete from mkt.%I …', p_table)`. O corte é o `started_at` da rodada `p_run_id`, que precisa ser `crm_full_pass` em `running`. A função conta antes de apagar; acima de 20% da tabela, não apaga nada e devolve `MASS_DELETE_BLOCKED`, a menos que o dono tenha confirmado a rodada anterior (`api.confirm_mass_delete`) |
+| `ingest.delete_missing(p_table, p_run_id)` | `mkt_worker` | `p_table` só da lista fixa (`crm_funnels`, `crm_customers`, `crm_customer_brands`, `crm_customer_reps`, `crm_leads`, `crm_orders`, `sales_reps`, `sales_rep_app_logins`; `crm_upstream_runs` fica fora: a leitura traz só as últimas rodadas de cada marca, e o `pg_cron` apaga o que passou de 90 dias), montada com `format('delete from mkt.%I …', p_table)`. O corte é o `started_at` da rodada `p_run_id`, que precisa ser `crm_full_pass` em `running`. A função conta antes de apagar; acima de 20% da tabela, não apaga nada e devolve `MASS_DELETE_BLOCKED`, a menos que o dono tenha confirmado a rodada anterior (`api.confirm_mass_delete`). Em `crm_customer_brands`, o par que tem a compra do ERP mais antiga já vista não sai: perde só o retrato, e a data fica (decisão 0042; sai com o cliente, pela cascata); ali a trava conta só o que a chamada muda |
 | `ingest.start_run`, `ingest.finish_run`, `ingest.take_requested_run` | `mkt_worker` | Abre, fecha e pega pedidos de rodada em `sync_runs`; `finish_run` atualiza `connectors` e `connector_jobs` |
 | `mkt.claude_context(brand_id)` | `mkt_worker` | Devolve o contexto da rodada do Claude ([`integracoes.md`](integracoes.md), seção 15): só agregados, com as chaves que `mkt.valid_claude_context` aceita. Não grava nada. É `security invoker`: as views `mkt.v_*` que ela lê entram no `grant select` do `mkt_worker`, na migração que as cria |
 | `ingest.record_claude_run`, `ingest.add_claude_proposal` | `mkt_worker` | Grava a rodada (upsert pelo id que o worker cria antes de chamar a API) e as propostas, por `(claude_run_id, claude_item)`: repetir não duplica. Cada proposta passa por `private.validate_action`, a mesma de `api.propose_action`, e nasce `idea` |
@@ -460,6 +471,7 @@ mesma lista e sai o aviso urgente "Parar tudo sem confirmação" (decisão 0022)
 | `notify.claim_pending(limit)` | `n8n_notifier` | Devolve os avisos vencidos com o endereço de entrega (e-mail do login ou WhatsApp do perfil) e marca a tentativa. Só devolve aviso de perfil ativo, cujo papel ainda tem a permissão do aviso e cuja preferência ainda liga o canal; os outros viram `skipped` na mesma chamada. O que não é urgente e cai no mesmo horário vai num resumo por pessoa e canal |
 | `notify.mark_sent(id)`, `notify.mark_failed(id, error_code)` | `n8n_notifier` | Fecha o aviso (e todas as linhas do resumo) |
 | `setup.register_ad_account`, `setup.register_ig_account`, `setup.register_web_property`, `setup.create_first_owner_invitation` | `mkt_setup` | Cadastro feito pelos scripts com `--executar` ([`plano.md`](plano.md), seção "Seed"): a conta, o perfil ou a propriedade com a marca |
+| `setup.mark_lead_funnel(external_id)` | `mkt_setup` | Marca uma vez, pelo id do funil no CRM, o funil antigo dos leads do site como funil de leads (decisão 0041, item 1), para o histórico encerrado entrar na passada completa seguinte. Confere o `session_user` (o dono do banco recebe `SET-403`). Recusa o funil que a réplica ainda não leu (`SET-404`: rodar depois da primeira passada completa) e o funil padrão, que já é de leads pela regra (`SET-422`). Rodar de novo não muda nada; a leitura dos funis não tira a marca. Quando e com que id: [`plano.md`](plano.md), seção "Seed" |
 | `setup.register_credential(connector_code, purpose, account_ref, secret, expires_at)` | `mkt_setup` | Cria o segredo no Vault e a linha de `private.connector_credentials`, com o segredo como parâmetro ligado, nunca no texto do SQL. A credencial de escrita, que fica só nas variáveis do executor, ganha só a linha de estado, sem segredo, quando a plataforma aprova a escrita |
 
 ## Teste de RLS (portão da fase 3)
@@ -495,7 +507,9 @@ rollback;
 
 - **Prova:** políticas, `grant`s, as conferências de cada função, os `check`, os gatilhos (só-acréscimo, papel
   protegido, operador protegido, transições da ação, execução protegida), `security_invoker` em toda view, o catálogo
-  (RLS-27) e a paridade dos `domain` com o `labels.ts`.
+  (RLS-27, também o caminho de busca: um `domain` com nome de tipo do catálogo no `pg_temp` de cada serviço não roda
+  como o dono em nenhuma função `security definer` que o serviço executa) e a paridade dos `domain` com o
+  `labels.ts`.
 - **Não prova:** a configuração do projeto Supabase (esquemas expostos, GraphQL desligado, cadastro aberto desligado,
   `grant`s que o Supabase cria sozinho), o login de verdade e o token, as Edge Functions, a conexão do worker, do
   executor e do n8n.
@@ -544,7 +558,7 @@ rollback;
 | RLS-24 | qualquer view de `api` e de `mkt` | conferir `security_invoker = true` | todas |
 | RLS-25 | cada `domain` × `labels.ts` | comparar | iguais |
 | RLS-26 | `traffic_manager` | `upload_csv`; ler `csv_imports` | `PT403`; leitura permitida (controle positivo) |
-| RLS-27 | catálogo (camada 1) | toda tabela de `mkt` e `private` com `relrowsecurity`; toda função com `prosecdef` tem `search_path` em `proconfig`; `has_function_privilege` de `anon`, `authenticated`, `mkt_worker`, `mkt_executor`, `mkt_setup` e `n8n_notifier` em cada função de `mkt`, `api`, `authz`, `ingest`, `notify`, `private` e `setup` igual à lista permitida do teste; nenhuma sequência com privilégio para `anon` ou `authenticated`; nenhum papel de serviço com `bypassrls` | tudo bate |
+| RLS-27 | catálogo (camada 1); e cada serviço que executa função `security definer` (`mkt_worker`, `mkt_executor`, `mkt_setup`; o `n8n_notifier` quando houver `notify.*`) | toda tabela de `mkt` e `private` com `relrowsecurity`; toda função dos sete esquemas com `search_path=pg_catalog, pg_temp` em `proconfig`; `has_function_privilege` de `anon`, `authenticated`, `mkt_worker`, `mkt_executor`, `mkt_setup` e `n8n_notifier` em cada função de `mkt`, `api`, `authz`, `ingest`, `notify`, `private` e `setup` igual à lista permitida do teste; nenhuma sequência com privilégio para `anon` ou `authenticated`; nenhum papel de serviço com `bypassrls`; como cada serviço, criar no `pg_temp` um `domain` com o nome de cada tipo do catálogo que as funções usam sem esquema (`uuid`, `text`, `jsonb`, `date`, `timestamptz` e `regproc`), com um `check` que anota quem roda, e chamar cada função `security definer` que ele executa | tudo bate; o `check` nunca roda como o dono das funções |
 | RLS-28 | `traffic_manager`, `owner`, `n8n_notifier` | chamar `private.read_credential`, `private.rotate_credential` e `private.queue_execution`; ler `vault.decrypted_secrets` | negado |
 | RLS-29 | cada papel | `POST`, `PATCH` e `DELETE` em cada view de `api` | negado |
 | RLS-30 | `mkt_worker` | ler `profiles`, `invitations`, `notification_preferences`, `saved_filters` e `audit_log`; com `request.jwt.claims` do dono, aprovar ou descartar por cada `ingest.*`; levar uma ação de `idea` a `approved`; `ingest.delete_missing` fora da lista da réplica; chamar `ingest.next_execution`; ler credencial de escrita | negado, nada muda |

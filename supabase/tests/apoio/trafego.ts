@@ -101,7 +101,7 @@ export const NINGUEM_LE: readonly string[] = ['mkt.notification_outbox', 'privat
  */
 export const FUNCAO_DE_TESTE = `
   create or replace function test.rodar(p_sql text) returns void
-  language plpgsql security definer set search_path = '' as $$
+  language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
   begin
     execute p_sql;
   end $$;

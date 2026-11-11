@@ -10,7 +10,7 @@
 --   vale (view_traffic; a campanha e a conta, view_numbers). Só authenticated lê, e só lê.
 -- Risco: baixo. Só cria uma lista, uma função e duas views; nada grava. Uma view sem security_invoker pularia a RLS: o
 --   teste de RLS confere a opção em todas (RLS-24).
--- Como reverter (só no projeto de teste, antes de produção):
+-- Como reverter (só no projeto de teste, antes de produção, e depois de reverter as migrações seguintes):
 --   drop view api.v_traffic_log, api.v_traffic_actions;
 --   drop function mkt.action_alert(uuid);
 --   drop domain mkt.action_alert;
@@ -36,7 +36,7 @@ end $$;
 -- e, só no que aumenta o gasto e com a conta da ação: conta sem limite vigente; passa do limite do mês, ou sem base
 -- para a conta (a mesma conta da trava da execução, mkt.action_exceeds_limit). Ação sem canal não tem alerta de limite.
 create or replace function mkt.action_alert(p_action_id uuid) returns mkt.action_alert
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select (case
     when a.status in ('done', 'discarded') then null
     when c.status = 'ended' then 'campaign_ended'

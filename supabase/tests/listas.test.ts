@@ -115,6 +115,17 @@ describe('os domain de mkt', () => {
       }
     });
   });
+
+  it('o papel do representante no CRM: atendimento entrou no lugar de relacionamento (decisão 0041, item 8)', () => {
+    // Só no banco (SO_NO_BANCO): o teste de paridade não confere esta lista. Na ordem de listas.md.
+    expect(domains.find((d) => d.nome === 'rep_crm_role')?.codigos).toEqual([
+      'manager',
+      'supervisor',
+      'internal_seller',
+      'field_rep',
+      'customer_service',
+    ]);
+  });
 });
 
 describe('RLS-25: cada domain igual à lista do labels.ts', () => {

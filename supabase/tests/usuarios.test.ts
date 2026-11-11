@@ -304,7 +304,7 @@ describe('perfil só com convite válido (gatilho em auth.users)', () => {
 /** Stand-ins de api.change_role e api.revoke_access (migração 09): ligam a chave da transação e gravam. */
 const FUNCOES_DE_TESTE = `
   create function test.mudar_papel(p_id uuid, p_role mkt.role, p_chave boolean default true) returns void
-  language plpgsql security definer set search_path = '' as $$
+  language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
   begin
     if p_chave then
       perform set_config('mkt.allow_role_change', 'on', true);
@@ -313,7 +313,7 @@ const FUNCOES_DE_TESTE = `
     perform set_config('mkt.allow_role_change', 'off', true);
   end $$;
   create function test.tirar_acesso(p_id uuid) returns void
-  language plpgsql security definer set search_path = '' as $$
+  language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
   begin
     perform set_config('mkt.allow_role_change', 'on', true);
     update mkt.profiles
@@ -322,7 +322,7 @@ const FUNCOES_DE_TESTE = `
     perform set_config('mkt.allow_role_change', 'off', true);
   end $$;
   create function test.devolver_acesso(p_id uuid) returns void
-  language plpgsql security definer set search_path = '' as $$
+  language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
   begin
     perform set_config('mkt.allow_role_change', 'on', true);
     update mkt.profiles
@@ -745,7 +745,7 @@ describe('privilégios e forma das funções da migração 03', () => {
     'private.append_only()': { quem: [], definer: false, volatilidade: 'v' },
   };
 
-  it('existem com search_path vazio, definer só onde lê perfis, e a volatilidade certa', async () => {
+  it('existem com search_path pg_catalog, pg_temp, definer só onde lê perfis, e a volatilidade certa', async () => {
     await caso(db, postgres, async (s) => {
       const linhas = await s.linhas<{
         funcao: string;
@@ -759,7 +759,7 @@ describe('privilégios e forma das funções da migração 03', () => {
       );
       expect(linhas.map((l) => l.funcao)).toEqual(Object.keys(FUNCOES).sort());
       for (const l of linhas) {
-        expect(l.config, l.funcao).toEqual(['search_path=""']);
+        expect(l.config, l.funcao).toEqual(['search_path=pg_catalog, pg_temp']);
         expect(l.prosecdef, l.funcao).toBe(FUNCOES[l.funcao]?.definer);
         expect(l.provolatile, l.funcao).toBe(FUNCOES[l.funcao]?.volatilidade);
       }

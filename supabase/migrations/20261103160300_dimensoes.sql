@@ -5,9 +5,11 @@
 --   (docs/dados/tabelas.md, seção 1). Cada tabela nasce com a RLS ligada, a leitura de quem tem a permissão
 --   (view_numbers; o histórico de operador, view_traffic) e a do worker e do executor, só nas tabelas da lista de cada
 --   um (papeis-e-rls.md). Gatilhos: o operador da campanha só muda por api.change_campaign_operator (migração 09),
---   pela API e com configure_traffic; campanha nova nasce do humano, e do Claude só com a ação que a criou; toda troca
---   vai para o histórico, que é só de acréscimo; o código REP- do representante vem da sequência, nunca muda e não gasta
---   número na releitura.
+--   pela API e com configure_traffic, ou, do humano para o Claude, na confirmação da campanha criada pela central que
+--   a leitura importou depois da primeira execução de criar da ação e antes da confirmação (ingest.update_execution,
+--   migração 10); campanha nova nasce do humano, e do Claude só com a ação que a criou; toda troca vai para o
+--   histórico, que é só de acréscimo; o código REP- do representante vem da sequência, nunca muda e não gasta número
+--   na releitura.
 -- Risco: baixo. Só cria; as tabelas nascem vazias, menos brands (as duas marcas). Nada lê o CRM nem as plataformas.
 -- Como reverter (só no projeto de teste, antes de produção, e depois de reverter as migrações seguintes):
 --   drop table mkt.web_properties, mkt.ig_accounts, mkt.sales_rep_app_logins, mkt.sales_reps,
@@ -202,10 +204,17 @@ create or replace trigger web_properties_updated_at before update on mkt.web_pro
 -- O operador da campanha (tabelas.md, campaigns; papeis-e-rls.md, "Gatilhos que conferem quem pede"). Na inserção:
 -- campanha nova nasce do humano; do Claude, só a que a central criou, com a ação (decisão 0008). Depois, o operador só
 -- muda dentro de api.change_campaign_operator: com a chave da transação (set_config('mkt.allow_operator_change', 'on',
--- true)), pela API (session_user authenticator, que uma sessão direta não troca) e com configure_traffic. O worker e o
--- executor nunca mudam o operador, nem com o token de alguém.
+-- true)), pela API (session_user authenticator, que uma sessão direta não troca) e com configure_traffic. O worker
+-- nunca muda o operador, nem com o token de alguém. O executor só tem uma exceção: a campanha que a leitura do worker
+-- importou do humano, sem a ação, antes de a criação ser confirmada (ingest.update_execution, migração 10, que a lê na
+-- transação que confirma). Passa para o Claude só com a ação create da mesma conta, cuja execução esta transação
+-- confirmou, sem mudar a conta nem o nome no mesmo update, com o código dela no fim do nome, sem troca de operador
+-- anterior por uma pessoa e importada depois da primeira execução de criar da ação: a central só cria a campanha
+-- depois disso, e a campanha que já existia, mesmo renomeada com o código, continua do humano (created_at só o dono do
+-- banco grava). A conferência lê traffic_actions e platform_executions, que nascem na migração 07: antes dela, nada
+-- grava campanha.
 create or replace function private.campaigns_managed_by_guard() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if tg_op = 'INSERT' then
     if new.managed_by = 'claude' and new.created_by_action_id is null then
@@ -216,6 +225,25 @@ begin
 
   if new.managed_by is not distinct from old.managed_by then
     return new;
+  end if;
+  if session_user::text = 'mkt_executor' then
+    if old.managed_by = 'human' and new.managed_by = 'claude'
+       and old.created_by_action_id is null and new.created_by_action_id is not null
+       and (new.ad_account_id, new.name) is not distinct from (old.ad_account_id, old.name)
+       and exists (select 1
+                     from mkt.traffic_actions a
+                     join mkt.platform_executions e on e.traffic_action_id = a.id
+                    where a.id = new.created_by_action_id and a.kind = 'create'
+                      and a.ad_account_id = new.ad_account_id and e.ad_account_id = new.ad_account_id
+                      and e.operation = 'create_campaign' and e.status = 'confirmed' and e.confirmed_at = now()
+                      and right(lower(new.name), length(a.code) + 1) = '-' || lower(a.code)
+                      and old.created_at >= (select min(x.created_at) from mkt.platform_executions x
+                                              where x.traffic_action_id = a.id and x.operation = 'create_campaign'))
+       and not exists (select 1 from mkt.campaign_managed_by_history h
+                        where h.campaign_id = new.id and h.reason <> 'imported') then
+      return new;
+    end if;
+    raise sqlstate 'PT403' using message = 'TRF-403';
   end if;
   if coalesce(current_setting('mkt.allow_operator_change', true), '') <> 'on'
      or session_user::text <> 'authenticator'
@@ -229,16 +257,21 @@ create or replace trigger campaigns_managed_by_guard before insert or update on 
   for each row execute function private.campaigns_managed_by_guard();
 
 -- Toda campanha nova e toda troca de operador vão para o histórico. Na inserção: importada (o sistema) ou criada pela
--- central (o Claude). Na troca, a pessoa que pediu, com o motivo e a nota que api.change_campaign_operator deixa na
--- transação (set_config('mkt.operator_change_reason', …, true) e set_config('mkt.operator_change_note', …, true)).
+-- central (o Claude). A importada que a confirmação da criação passou para o Claude (a exceção do executor, acima):
+-- criada pelo Claude, do humano para o Claude. Na troca, a pessoa que pediu, com o motivo e a nota que
+-- api.change_campaign_operator deixa na transação (set_config('mkt.operator_change_reason', …, true) e
+-- set_config('mkt.operator_change_note', …, true)).
 create or replace function private.campaigns_managed_by_audit() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if tg_op = 'INSERT' then
     insert into mkt.campaign_managed_by_history (campaign_id, from_operator, to_operator, reason, actor_kind)
     values (new.id, null, new.managed_by,
             case when new.managed_by = 'claude' then 'created_by_claude' else 'imported' end,
             case when new.managed_by = 'claude' then 'claude' else 'system' end);
+  elsif new.managed_by is distinct from old.managed_by and session_user::text = 'mkt_executor' then
+    insert into mkt.campaign_managed_by_history (campaign_id, from_operator, to_operator, reason, actor_kind)
+    values (new.id, old.managed_by, new.managed_by, 'created_by_claude', 'claude');
   elsif new.managed_by is distinct from old.managed_by then
     insert into mkt.campaign_managed_by_history (campaign_id, from_operator, to_operator, reason, note, actor_kind,
                                                  changed_by)
@@ -265,7 +298,7 @@ create or replace trigger campaign_managed_by_history_no_truncate before truncat
 -- mesmo código e a sequência não anda: só representante novo gasta número. O código que vier no insert é ignorado, e o
 -- código nunca muda.
 create or replace function private.sales_reps_code() returns trigger
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_code text;
 begin

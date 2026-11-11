@@ -7,9 +7,10 @@
 --   revogar convite, mudar papel e tirar acesso; tema, avisos e "Meus filtros". E as de leitura com regra própria:
 --   api.my_profile, api.my_permissions, api.list_role_permissions, api.check_text, api.list_users,
 --   api.credential_status e api.my_notification_preferences. Toda função de api é security definer, com search_path
---   vazio, confere a permissão antes de tudo (authz.can; nas de usuários, logo depois da trava de uma chamada por
---   vez; my_profile responde a qualquer pessoa logada), recusa com o código HTTP no sqlstate e o código da tela na
---   mensagem (PT403, PT404, PT409 e PT422; o motivo, quando ajuda a tela, no detail) e só authenticated executa.
+--   pg_catalog, pg_temp (o esquema temporário da sessão por último), confere a permissão antes de tudo (authz.can;
+--   nas de usuários, logo depois da trava de uma chamada por vez; my_profile responde a qualquer pessoa logada),
+--   recusa com o código HTTP no sqlstate e o código da tela na mensagem (PT403, PT404, PT409 e PT422; o motivo,
+--   quando ajuda a tela, no detail) e só authenticated executa.
 --   Cria private.validate_action (a conferência da ação, a mesma da proposta do Claude) e, adiantadas da migração 10
 --   porque as funções de ação gravam a fila na mesma transação: private.queue_execution,
 --   private.queue_stop_executions, private.queue_spend_cap (o teto da conta na Meta), mkt.execution_may_increase_spend
@@ -29,7 +30,7 @@
 --     private.write_credential_ok(uuid), private.is_stale(timestamptz, timestamptz),
 --     private.valid_note(text, integer, integer), private.domain_codes(regtype),
 --     mkt.execution_may_increase_spend(uuid), mkt.csv_header_has_personal_data(text);
--- Conferir (cada função de api: definer, search_path vazio e quem executa):
+-- Conferir (cada função de api: definer, search_path pg_catalog, pg_temp e quem executa):
 --   select p.oid::regprocedure, p.prosecdef, p.proconfig,
 --          has_function_privilege('authenticated', p.oid, 'execute') as tela,
 --          has_function_privilege('anon', p.oid, 'execute') as anon,
@@ -41,7 +42,7 @@
 -- Trava otimista (seção 9 do padrão): a tela manda o updated_at que leu. Em milissegundos, como o banco grava: o valor
 -- lido volta igual (texto no Supabase, Date no PGlite). Sem o valor lido, nunca confere.
 create or replace function private.is_stale(p_current timestamptz, p_expected timestamptz) returns boolean
-language sql stable parallel safe set search_path = '' as $$
+language sql stable parallel safe set search_path = pg_catalog, pg_temp as $$
   select p_expected is null
       or date_trunc('milliseconds', p_current) is distinct from date_trunc('milliseconds', p_expected)
 $$;
@@ -49,13 +50,13 @@ $$;
 -- Nota, motivo ou resultado escrito na tela: o tamanho do campo e nada de e-mail, telefone ou documento. É a regra dos
 -- check das tabelas, conferida antes para a tela saber o que corrigir.
 create or replace function private.valid_note(p_note text, p_min integer, p_max integer) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select p_note is not null and length(p_note) between p_min and p_max and not mkt.has_personal_data(p_note)
 $$;
 
 -- Os códigos de uma lista fechada, na ordem dela (listas.md): a lista mora só no check do domain.
 create or replace function private.domain_codes(p_domain regtype) returns text[]
-language sql stable parallel safe set search_path = '' as $$
+language sql stable parallel safe set search_path = pg_catalog, pg_temp as $$
   select coalesce(array_agg(m.found[1] order by m.n), '{}')
     from pg_catalog.pg_constraint c
    cross join lateral regexp_matches(pg_get_constraintdef(c.oid), '''([^'']*)''', 'g') with ordinality as m(found, n)
@@ -66,7 +67,7 @@ $$;
 -- telefone, documento, endereço) recusa o arquivo inteiro (CSV_PERSONAL_DATA, integracoes.md, seção 12). "Nome da
 -- campanha" e "Campaign name" passam. A conferência linha a linha é do worker.
 create or replace function mkt.csv_header_has_personal_data(p_content text) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select exists (
     select 1
       from regexp_split_to_table(split_part(regexp_replace(coalesce(p_content, ''), '^﻿', ''), E'\n', 1),
@@ -92,7 +93,7 @@ $$;
 create or replace function private.execution_request(p_operation mkt.execution_operation, p_platform mkt.platform,
                                                      p_params jsonb default '{}', p_action_code text default null)
 returns jsonb
-language sql immutable set search_path = '' as $$
+language sql immutable set search_path = pg_catalog, pg_temp as $$
   with v as (
     select (p_params ->> 'daily_budget_cents')::bigint as budget_cents,
            (p_params ->> 'spend_cap_cents')::bigint as cap_cents,
@@ -136,7 +137,7 @@ $$;
 -- Credencial de escrita ligada para a conta (integracoes.md, seção 18): a linha de estado da plataforma, válida ou
 -- vencendo logo e ainda no prazo, para todas as contas (account_ref nulo) ou para esta. O segredo fica no executor.
 create or replace function private.write_credential_ok(p_ad_account_id uuid) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select exists (
     select 1
       from mkt.ad_accounts a
@@ -153,7 +154,7 @@ $$;
 -- que o atual da campanha (ou com o atual desconhecido). Pausar, reduzir e o teto da conta, não. "Parar tudo" bloqueia
 -- as da fila (api.stop_all); o executor confere a mesma regra em mkt.execution_allowed (migração 10).
 create or replace function mkt.execution_may_increase_spend(p_execution_id uuid) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select case e.operation
            when 'activate' then true
            when 'create_campaign' then true
@@ -169,7 +170,7 @@ $$;
 -- A execução de uma ação aprovada, quando o tipo executa numa plataforma: pausar, orçamento e criar. Lance, criativo e
 -- pendência não executam pela central (a tela diz "Faça na plataforma e marque como feita"): devolve nulo.
 create or replace function private.queue_execution(p_action_id uuid) returns uuid
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.traffic_actions;
   v_operation mkt.execution_operation;
@@ -196,7 +197,7 @@ end $$;
 -- parada e a operação: pedir de novo não duplica.
 create or replace function private.queue_stop_executions(p_stop_id uuid, p_operation mkt.execution_operation)
 returns integer
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v_count integer;
 begin
@@ -227,7 +228,7 @@ end $$;
 -- ligada; sem ela, nada (devolve nulo). Na Meta, teto 0 quer dizer "sem teto": o mínimo vai como R$ 0,01, e a
 -- plataforma diz se aceita (integracoes.md, seção 19).
 create or replace function private.queue_spend_cap(p_spend_limit_id uuid, p_spend_cap_cents bigint) returns uuid
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.spend_limits;
   v_id uuid := gen_random_uuid();
@@ -248,7 +249,7 @@ end $$;
 -- A ação descartada ou feita à mão: a execução que ainda não saiu (na fila ou bloqueada) não vai mais acontecer
 -- (decisão 0038).
 create or replace function private.cancel_action_executions(p_action_id uuid) returns integer
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 declare
   v_count integer;
 begin
@@ -271,7 +272,7 @@ create or replace function private.validate_action(
   p_brand mkt.brand_code, p_platform mkt.platform, p_campaign_id uuid, p_kind mkt.action_kind, p_title text,
   p_rationale text, p_params jsonb, p_impact mkt.level, p_effort mkt.level, p_cost_cents bigint,
   out brand_id uuid, out ad_account_id uuid)
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   v_brand_id uuid;
   v_account_id uuid;
@@ -346,7 +347,7 @@ create or replace function api.propose_action(
   p_rationale text, p_params jsonb, p_impact mkt.level, p_effort mkt.level, p_cost_cents bigint,
   p_approve_now boolean default false)
 returns mkt.traffic_actions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.traffic_actions;
   v_checked record;
@@ -381,7 +382,7 @@ end $$;
 -- Cria a execução na fila quando o tipo executa numa plataforma.
 create or replace function api.approve_action(p_action_id uuid, p_expected_updated_at timestamptz)
 returns mkt.traffic_actions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.traffic_actions;
 begin
@@ -414,7 +415,7 @@ end $$;
 create or replace function api.discard_action(p_action_id uuid, p_reason mkt.discard_reason, p_note text,
                                               p_expected_updated_at timestamptz)
 returns mkt.traffic_actions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.traffic_actions;
 begin
@@ -454,7 +455,7 @@ end $$;
 -- preenche o aprovador; a execução que ainda não saiu é cancelada.
 create or replace function api.mark_action_done(p_action_id uuid, p_result text, p_expected_updated_at timestamptz)
 returns mkt.traffic_actions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.traffic_actions;
 begin
@@ -496,7 +497,7 @@ end $$;
 -- no teto da conta). O executor confere tudo de novo antes de mandar.
 create or replace function api.retry_execution(p_execution_id uuid, p_expected_updated_at timestamptz)
 returns mkt.platform_executions
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.platform_executions;
 begin
@@ -549,7 +550,7 @@ create or replace function api.save_strategy(
   p_target_cost_per_new_customer_cents bigint, p_target_cost_per_lead_cents bigint, p_target_new_customers integer,
   p_expected_updated_at timestamptz)
 returns mkt.traffic_strategies
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_brand_id uuid;
   v_old mkt.traffic_strategies;
@@ -630,7 +631,7 @@ end $$;
 create or replace function api.set_spend_limit(p_ad_account_id uuid, p_monthly_limit_cents bigint,
                                                p_expected_updated_at timestamptz)
 returns mkt.spend_limits
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_account mkt.ad_accounts;
   v_current mkt.spend_limits;
@@ -700,7 +701,7 @@ end $$;
 -- campanha ganha a sua pausa; o status da campanha só muda quando a plataforma confirmar.
 create or replace function api.stop_all(p_brand mkt.brand_code, p_expected_count integer)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_stop uuid;
   v_brand uuid;
@@ -765,7 +766,7 @@ end $$;
 -- aberta. A reativação passa pelo limite do mês no executor, como todo aumento de gasto.
 create or replace function api.undo_stop(p_stop_id uuid, p_expected_updated_at timestamptz)
 returns mkt.traffic_stops
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.traffic_stops;
 begin
@@ -808,7 +809,7 @@ create or replace function api.change_campaign_operator(p_campaign_id uuid, p_to
                                                         p_reason mkt.operator_change_reason, p_note text,
                                                         p_expected_updated_at timestamptz)
 returns mkt.campaigns
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_old mkt.campaigns;
   v mkt.campaigns;
@@ -858,7 +859,7 @@ end $$;
 -- 1 min. Se já há pedido ou rodada em andamento, devolve a mesma.
 create or replace function api.retry_connector(p_connector_code mkt.connector_code)
 returns mkt.sync_runs
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_connector mkt.connectors;
   v mkt.sync_runs;
@@ -904,7 +905,7 @@ create or replace function api.set_connector_state(p_connector_code mkt.connecto
                                                    p_state mkt.connector_setup_state,
                                                    p_expected_updated_at timestamptz)
 returns mkt.connectors
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_old mkt.connectors;
   v mkt.connectors;
@@ -938,7 +939,7 @@ end $$;
 -- não muda nada.
 create or replace function api.confirm_mass_delete(p_run_id uuid)
 returns mkt.sync_runs
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.sync_runs;
 begin
@@ -973,7 +974,7 @@ end $$;
 create or replace function api.upload_csv(p_connector_code mkt.connector_code, p_brand mkt.brand_code,
                                           p_file_name text, p_content text)
 returns uuid
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_connector_id uuid;
   v_brand_id uuid;
@@ -1023,7 +1024,7 @@ end $$;
 -- convite vale 7 dias; a auditoria leva só o id e o papel. Devolve o id e o e-mail para a Edge Function convidar.
 create or replace function api.invite_user(p_email text, p_display_name text, p_role mkt.role)
 returns table (id uuid, email text, expires_at timestamptz)
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_email text := lower(btrim(p_email));
   v_name text := btrim(p_display_name);
@@ -1073,7 +1074,7 @@ end $$;
 -- Revogar um convite aberto (manage_users, com o segundo fator).
 create or replace function api.revoke_invitation(p_invitation_id uuid)
 returns mkt.invitations
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.invitations;
 begin
@@ -1100,7 +1101,7 @@ end $$;
 -- não recebe viram "não enviado". O mesmo papel: nada muda.
 create or replace function api.change_role(p_profile_id uuid, p_role mkt.role, p_expected_updated_at timestamptz)
 returns mkt.profiles
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_old mkt.profiles;
   v mkt.profiles;
@@ -1146,7 +1147,7 @@ end $$;
 create or replace function api.revoke_access(p_profile_id uuid, p_reason mkt.deactivation_reason, p_note text,
                                              p_expected_updated_at timestamptz)
 returns table (id uuid, email text)
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_old mkt.profiles;
 begin
@@ -1193,7 +1194,7 @@ end $$;
 create or replace function api.save_profile_preferences(p_theme mkt.theme_preference, p_default_brand mkt.brand_code,
                                                         p_default_view mkt.view_mode, p_whatsapp_digits text)
 returns mkt.profiles
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.profiles;
   v_digits text := nullif(regexp_replace(coalesce(p_whatsapp_digits, ''), '[^0-9]', '', 'g'), '');
@@ -1224,7 +1225,7 @@ end $$;
 create or replace function api.save_notification_preference(p_notice mkt.notice_kind, p_email boolean,
                                                             p_whatsapp boolean)
 returns mkt.notification_preferences
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.notification_preferences;
 begin
@@ -1253,7 +1254,7 @@ end $$;
 -- Salvar de novo com o mesmo nome substitui (o id continua o mesmo).
 create or replace function api.save_filter(p_scope mkt.saved_filter_scope, p_name text, p_filters jsonb)
 returns mkt.saved_filters
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v mkt.saved_filters;
   v_name text := btrim(p_name);
@@ -1278,7 +1279,7 @@ end $$;
 -- Apagar um dos próprios "Meus filtros" (edit_settings). O de outra pessoa não aparece: PT404.
 create or replace function api.delete_saved_filter(p_id uuid)
 returns void
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if not authz.can('edit_settings') then
     raise sqlstate 'PT403' using message = 'CFG-403';
@@ -1297,7 +1298,7 @@ create or replace function api.my_profile()
 returns table (id uuid, email text, display_name text, role mkt.role, is_active boolean,
                theme_preference mkt.theme_preference, default_brand mkt.brand_code, default_view mkt.view_mode,
                whatsapp_digits text, deactivated_at timestamptz, created_at timestamptz, updated_at timestamptz)
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = pg_catalog, pg_temp as $$
   select p.id, u.email::text, p.display_name, p.role, p.is_active, p.theme_preference, p.default_brand,
          p.default_view, p.whatsapp_digits, p.deactivated_at, p.created_at, p.updated_at
     from mkt.profiles p
@@ -1309,7 +1310,7 @@ $$;
 -- segundo fator da sessão): a tela mostra ou esconde os botões. Sem perfil ativo, nenhuma.
 create or replace function api.my_permissions()
 returns table (action mkt.app_action, requires_second_factor boolean, is_allowed boolean)
-language sql stable security definer set search_path = '' as $$
+language sql stable security definer set search_path = pg_catalog, pg_temp as $$
   select rp.action, authz.requires_second_factor(rp.action), authz.can(rp.action)
     from mkt.profiles p
     join mkt.role_permissions rp on rp.role = p.role
@@ -1321,7 +1322,7 @@ $$;
 -- perfil ativo (a regra da política de role_permissions).
 create or replace function api.list_role_permissions()
 returns table (role mkt.role, action mkt.app_action, requires_second_factor boolean)
-language plpgsql stable security definer set search_path = '' as $$
+language plpgsql stable security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if not authz.is_active_user() then
     raise sqlstate 'PT403' using message = 'USR-403';
@@ -1337,7 +1338,7 @@ end $$;
 -- enviar (decisão 0018). Para quem tem perfil ativo.
 create or replace function api.check_text(p_text text)
 returns boolean
-language plpgsql stable security definer set search_path = '' as $$
+language plpgsql stable security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if not authz.is_active_user() then
     raise sqlstate 'PT403' using message = 'USR-403';
@@ -1350,7 +1351,7 @@ end $$;
 create or replace function api.list_users()
 returns table (id uuid, display_name text, email text, role mkt.role, is_active boolean, deactivated_at timestamptz,
                created_at timestamptz, updated_at timestamptz)
-language plpgsql stable security definer set search_path = '' as $$
+language plpgsql stable security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if not authz.can('manage_users') then
     raise sqlstate 'PT403' using message = 'USR-403';
@@ -1367,7 +1368,7 @@ end $$;
 create or replace function api.credential_status()
 returns table (connector mkt.connector_code, purpose mkt.credential_purpose, account_ref text,
                status mkt.credential_status, expires_at timestamptz, last_checked_at timestamptz)
-language plpgsql stable security definer set search_path = '' as $$
+language plpgsql stable security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if not authz.can('view_connectors') then
     raise sqlstate 'PT403' using message = 'CON-403';
@@ -1384,7 +1385,7 @@ end $$;
 create or replace function api.my_notification_preferences()
 returns table (notice mkt.notice_kind, is_email_enabled boolean, is_whatsapp_enabled boolean, is_urgent boolean,
                is_default boolean)
-language plpgsql stable security definer set search_path = '' as $$
+language plpgsql stable security definer set search_path = pg_catalog, pg_temp as $$
 begin
   if not authz.can('edit_settings') then
     raise sqlstate 'PT403' using message = 'CFG-403';

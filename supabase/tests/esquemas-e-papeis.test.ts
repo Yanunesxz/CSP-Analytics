@@ -1,8 +1,21 @@
-// Migração 01: esquemas, papéis de serviço, privilégios e as funções base (docs/dados/plano.md).
+// Migração 01: esquemas, papéis de serviço, privilégios e as funções base (docs/dados/plano.md); e a barreira de dado
+// pessoal (mkt.has_personal_data) onde ela é usada, com os dados inventados das fixtures.
 import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { abrirBanco, anon, caso, lerMigracoes, postgres, servico, usuario } from './apoio/banco';
+import {
+  abrirBanco,
+  anon,
+  aplicarFixture,
+  caso,
+  lerMigracoes,
+  postgres,
+  servico,
+  usuario,
+} from './apoio/banco';
 import { ESQUEMAS } from './apoio/catalogo';
+import { CAMPANHA_HUMANO_CS } from './apoio/marketing';
+import { IDEIA_DO_CLAUDE, PENDENCIA } from './apoio/trafego';
+import { DONO, GESTOR } from './apoio/usuarios';
 
 const USUARIO_A = '00000000-0000-4000-8000-00000000000a';
 const SERVICOS = ['mkt_executor', 'mkt_setup', 'mkt_worker', 'n8n_notifier'];
@@ -148,7 +161,7 @@ describe('privilégios das funções', () => {
     'private.next_code(text,regclass)': { quem: [], volatilidade: 'v', paralela: 'u' },
   };
 
-  it('as funções base existem com search_path vazio, sem security definer e com a volatilidade do modelo', async () => {
+  it('as funções base existem com search_path pg_catalog, pg_temp, sem security definer e com a volatilidade do modelo', async () => {
     await caso(db, postgres, async (s) => {
       const linhas = await s.linhas<{
         funcao: string;
@@ -165,7 +178,7 @@ describe('privilégios das funções', () => {
       for (const l of linhas) {
         const esperado = FUNCOES[l.funcao];
         expect(l.prosecdef, l.funcao).toBe(false);
-        expect(l.config, l.funcao).toEqual(['search_path=""']);
+        expect(l.config, l.funcao).toEqual(['search_path=pg_catalog, pg_temp']);
         expect(l.provolatile, l.funcao).toBe(esperado?.volatilidade);
         expect(l.proparallel, l.funcao).toBe(esperado?.paralela);
       }
@@ -273,6 +286,18 @@ describe('mkt.has_personal_data', () => {
     'fixo (11) 3456-7890',
     '+55 11 98765-4321',
     'whatsapp 5511987654321',
+    // O 0 ou o 55 antes do DDD, e espaço, ponto ou hífen depois do DDD, depois do 9 e entre os blocos.
+    'ligar para (11) 9 8765-4321',
+    'ligar para 11 9 8765-4321',
+    'ligar para +55 (11) 9 8765-4321',
+    'ligar para (11) 9.8765-4321',
+    'ligar para 011 98765-4321',
+    'ligar para (011) 98765-4321',
+    'ligar para 11 98765.4321',
+    'ligar para 11.98765.4321',
+    'ligar para 11-98765-4321',
+    'ligar para (11)9-8765-4321',
+    'whatsapp +5511987654321',
     'cliente 123.456.789-01',
     'cpf 12345678901',
     'CNPJ 12.345.678/0001-90',
@@ -282,14 +307,22 @@ describe('mkt.has_personal_data', () => {
     'Foco em lojistas novos no Meta; verba de R$ 15.000 no mês.',
     'Repostar o reel do @plumene.oficial com o melhor CTR de outubro.',
     'Testar 3 criativos por 7 dias e pausar quem passar de R$ 40 por lead.',
+    'Verba de R$ 1.500.000,00 no ano, de 01/11/2026 a 30/11/2026.',
+    'campanha cs-promo-2026-11-28 e cs-lancamento-act-0012',
+    'criativo meta:120200000000000301',
     'campanha 120200000000000000',
+    // O 55 no meio de um número, seguido de dígitos que parecem DDD e telefone: o \y antes do 55 não deixa casar.
+    'campanha 120202551234567890',
+    'campanha 125511987654321',
+    'conta act_5511987654321',
     'conta act_1234567890',
     'conta act_120200000000000000',
+    'campanha 120200000000000000 na conta act_1234567890',
     '',
     null,
   ];
 
-  it('barra e-mail, telefone com e sem máscara (também com o 55), CPF e CNPJ', async () => {
+  it('barra e-mail, telefone com e sem máscara (também com o 55 ou o 0 e com separador depois do 9), CPF e CNPJ', async () => {
     await caso(db, usuario(USUARIO_A), async (s) => {
       for (const texto of BARRA) {
         expect(await s.valor('select mkt.has_personal_data($1)', [texto]), texto).toBe(true);
@@ -302,6 +335,188 @@ describe('mkt.has_personal_data', () => {
       for (const texto of PASSA) {
         expect(await s.valor('select mkt.has_personal_data($1)', [texto]), String(texto)).toBe(false);
       }
+    });
+  });
+});
+
+describe('a barreira de dado pessoal onde mkt.has_personal_data é usada', () => {
+  // Um formato que o padrão de antes deixava passar: espaço depois do 9 (revisão de 10/11/2026, achado 5).
+  const FONE = '(11) 9 8765-4321';
+  const MES = `(date_trunc('month', mkt.today()) + interval '2 months')::date`;
+  let dados: PGlite;
+
+  beforeAll(async () => {
+    dados = await abrirBanco();
+    for (const f of ['usuarios', 'marketing', 'trafego']) await aplicarFixture(dados, f);
+  });
+
+  afterAll(async () => {
+    await dados.close();
+  });
+
+  it('estratégia: a tela recebe PT422 com o telefone e grava sem ele; a tabela recusa de novo', async () => {
+    await caso(dados, usuario(GESTOR), async (s) => {
+      const salvar = `select body from api.save_strategy('cs', ${MES}, $1, 100000, null, null, null, null)`;
+      expect((await s.erro('PT422', salvar, [`Ligar para o lojista no ${FONE} antes.`])).detail).toBe(
+        'personal_data',
+      );
+      expect(await s.valor(salvar, ['Ligar para o lojista antes.'])).toBe('Ligar para o lojista antes.');
+      await s.como(postgres);
+      await s.erro(
+        '23514',
+        `insert into mkt.traffic_strategies (brand_id, month_on, body, updated_by)
+         select b.id, ${MES} + interval '1 month', $1, $2 from mkt.brands b where b.code = 'cs'`,
+        [`Ligar no ${FONE}.`, DONO],
+      );
+    });
+  });
+
+  it('ação: a proposta da pessoa e a do Claude são recusadas com o telefone no título ou no porquê, e nos parâmetros', async () => {
+    await caso(dados, usuario(GESTOR), async (s) => {
+      const propor = `select id from api.propose_action('cs', 'meta', $1, 'pause', $2, $3, '{"status": "paused"}',
+                                                        'low', 'low', 0)`;
+      for (const [titulo, porque] of [
+        ['Pausar a prospecção', `Ligar no ${FONE} antes de pausar.`],
+        [`Ligar no ${FONE}`, 'O custo por lead subiu na semana.'],
+      ]) {
+        expect((await s.erro('PT422', propor, [CAMPANHA_HUMANO_CS, titulo, porque])).detail).toBe(
+          'personal_data',
+        );
+      }
+      expect(
+        await s.linhas(propor, [
+          CAMPANHA_HUMANO_CS,
+          'Pausar a prospecção',
+          'O custo por lead subiu na semana.',
+        ]),
+      ).toHaveLength(1);
+      const criar = (nome: string) =>
+        s.valor(
+          `select mkt.valid_action_params('create', 'meta', jsonb_build_object('objective', 'OUTCOME_SALES',
+                    'daily_budget_cents', 3000, 'name', $1::text, 'special_ad_categories', '[]'::jsonb))`,
+          [nome],
+        );
+      expect(await criar(`cs-ligar ${FONE}`)).toBe(false);
+      expect(await criar('cs-lancamento')).toBe(true);
+    });
+    await caso(dados, servico('mkt_worker'), async (s) => {
+      const rodada = '00000000-0000-4000-8000-0000000005f1';
+      await s.linhas(
+        `select * from ingest.record_claude_run($1, 'cs', 'running', 'modelo-de-teste', 'teste-1', 'Proponha ações.',
+                                                '{"brand": "cs"}', now())`,
+        [rodada],
+      );
+      const proposta = (item: number, porque: string) =>
+        s.valor<string | null>(
+          `select ingest.add_claude_proposal($1, $2, 'cs', 'meta', $3, 'pause', 'Pausar a prospecção', $4,
+                                             '{"status": "paused"}', 'low', 'low', 0)::text`,
+          [rodada, item, CAMPANHA_HUMANO_CS, porque],
+        );
+      expect(await proposta(1, `Ligar no ${FONE} antes de pausar.`)).toBeNull();
+      expect(await proposta(2, 'O custo por lead subiu na semana.')).not.toBeNull();
+    });
+  });
+
+  it('contexto e prompt do Claude: o telefone no texto recusa a rodada antes da API (CONTEXT_REFUSED)', async () => {
+    await caso(dados, servico('mkt_worker'), async (s) => {
+      const contextos = (texto: string) => [
+        { brand: 'cs', strategy: { body: texto } },
+        { current_month: { campaigns: [{ name: texto }] } },
+        { actions: [{ code: 'ACT-0009', proposed_by: 'claude', title: texto }] },
+      ];
+      for (const ctx of contextos(`Ligar no ${FONE}`)) {
+        expect(await s.valor('select mkt.valid_claude_context($1::jsonb)', [JSON.stringify(ctx)])).toBe(
+          false,
+        );
+      }
+      for (const ctx of contextos('Foco no Sul')) {
+        expect(await s.valor('select mkt.valid_claude_context($1::jsonb)', [JSON.stringify(ctx)])).toBe(true);
+      }
+      const rodar = (id: string, prompt: string, ctx: unknown) =>
+        s.linhas(
+          `select status, error_code, prompt from ingest.record_claude_run($1, 'cs', 'running', 'modelo-de-teste',
+                                                                            'teste-1', $2, $3::jsonb, now())`,
+          [id, prompt, JSON.stringify(ctx)],
+        );
+      expect(
+        await rodar('00000000-0000-4000-8000-0000000005f2', 'Proponha ações.', {
+          brand: 'cs',
+          strategy: { body: `Ligar no ${FONE}` },
+        }),
+      ).toEqual([{ status: 'failed', error_code: 'CONTEXT_REFUSED', prompt: 'Proponha ações.' }]);
+      expect(
+        await rodar('00000000-0000-4000-8000-0000000005f3', `Ligue para ${FONE}.`, { brand: 'cs' }),
+      ).toEqual([{ status: 'failed', error_code: 'CONTEXT_REFUSED', prompt: '' }]);
+      expect(await rodar('00000000-0000-4000-8000-0000000005f4', 'Proponha ações.', { brand: 'cs' })).toEqual(
+        [{ status: 'running', error_code: null, prompt: 'Proponha ações.' }],
+      );
+      await s.como(postgres);
+      await s.erro(
+        '23514',
+        `insert into mkt.claude_runs (status, model, prompt_version, prompt, context, started_at)
+         values ('failed', 'modelo-de-teste', 'teste-1', $1, '{}', now())`,
+        [`Ligue para ${FONE}.`],
+      );
+    });
+  });
+
+  it('trilha: o motivo do descarte, o resultado, a nota da troca de operador e a do acesso tirado recusam o telefone', async () => {
+    await caso(dados, usuario(DONO, 'aal2'), async (s) => {
+      const lido = (tabela: string, id: string) =>
+        s.valor<Date>(`select updated_at from mkt.${tabela} where id = $1`, [id]);
+      const nota = `Combinado com o lojista no ${FONE}.`;
+      expect(
+        (
+          await s.erro('PT422', `select id from api.discard_action($1, 'other', $2, $3)`, [
+            IDEIA_DO_CLAUDE,
+            nota,
+            await lido('traffic_actions', IDEIA_DO_CLAUDE),
+          ])
+        ).detail,
+      ).toBe('note');
+      expect(
+        (
+          await s.erro('PT422', `select id from api.mark_action_done($1, $2, $3)`, [
+            PENDENCIA,
+            nota,
+            await lido('traffic_actions', PENDENCIA),
+          ])
+        ).detail,
+      ).toBe('result');
+      expect(
+        (
+          await s.erro(
+            'PT422',
+            `select id from api.change_campaign_operator($1, 'claude', 'other', $2, $3)`,
+            [CAMPANHA_HUMANO_CS, nota, await lido('campaigns', CAMPANHA_HUMANO_CS)],
+          )
+        ).detail,
+      ).toBe('note');
+      expect(
+        (
+          await s.erro('PT422', `select id from api.revoke_access($1, 'other', $2, $3)`, [
+            GESTOR,
+            nota,
+            await lido('profiles', GESTOR),
+          ])
+        ).detail,
+      ).toBe('note');
+      // Controle: o mesmo descarte, sem o telefone, passa.
+      expect(
+        await s.linhas(`select id from api.discard_action($1, 'other', $2, $3)`, [
+          IDEIA_DO_CLAUDE,
+          'Combinado com o lojista por telefone.',
+          await lido('traffic_actions', IDEIA_DO_CLAUDE),
+        ]),
+      ).toHaveLength(1);
+      await s.como(postgres);
+      await s.erro(
+        '23514',
+        `insert into mkt.campaign_managed_by_history (campaign_id, from_operator, to_operator, reason, note,
+                                                      actor_kind, changed_by)
+         values ($1, 'human', 'claude', 'other', $2, 'user', $3)`,
+        [CAMPANHA_HUMANO_CS, nota, DONO],
+      );
     });
   });
 });

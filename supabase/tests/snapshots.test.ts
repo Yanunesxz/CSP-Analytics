@@ -302,14 +302,14 @@ describe('mkt.valid_activity_details', () => {
     });
   });
 
-  it('regra pura: immutable, sem security definer, search_path vazio; a tela, o worker e o executor executam', async () => {
+  it('regra pura: immutable, sem security definer, search_path pg_catalog, pg_temp; a tela, o worker e o executor executam', async () => {
     await caso(db, postgres, async (s) => {
       expect(
         await s.linhas(
           `select prosecdef, provolatile, proconfig as config
              from pg_proc where oid = 'mkt.valid_activity_details(text, jsonb)'::regprocedure`,
         ),
-      ).toEqual([{ prosecdef: false, provolatile: 'i', config: ['search_path=""'] }]);
+      ).toEqual([{ prosecdef: false, provolatile: 'i', config: ['search_path=pg_catalog, pg_temp'] }]);
       expect(
         await s.linhas(
           `select r.papel from unnest($1::text[]) as r(papel)
