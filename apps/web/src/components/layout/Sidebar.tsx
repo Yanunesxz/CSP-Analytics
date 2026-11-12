@@ -11,6 +11,7 @@ import {
   Check,
   ChevronsUpDown,
   EllipsisVertical,
+  FileText,
   Inbox,
   LayoutGrid,
   LogOut,
@@ -52,7 +53,13 @@ interface Grupo {
 }
 
 export const GRUPOS_DO_MENU: Grupo[] = [
-  { rotulo: null, itens: [{ para: '/', rotulo: 'Visão geral', icone: LayoutGrid, fim: true }] },
+  {
+    rotulo: null,
+    itens: [
+      { para: '/', rotulo: 'Visão geral', icone: LayoutGrid, fim: true },
+      { para: '/resumo', rotulo: 'Resumo simples', icone: FileText },
+    ],
+  },
   {
     rotulo: 'Clientes',
     itens: [

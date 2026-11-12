@@ -154,14 +154,16 @@ Outros exports do store: `useDados(): Dados` (bruto), `store.recomecar()`, `stor
 | `instagram` | `porMarca[{ marca, seguidores, variacaoSeguidores, alcance, impressoes, engajamento, taxaEngajamento, salvos, posts }], serie[], posts[IgMedia]` |
 | `seoGeo` | `seo: { impressoes, cliques, ctr, posicaoMedia, serie[] }`, `geo: { sessoes, leadsPorAssistente, clientesNovosPorAssistente, porFonte[{ fonte, sessoes, leads }], serie[] }` |
 | `acoes` | `lista[TrafficAction], porStatus, filaDeAprovacao[], emExecucao[], pendencias[], resumo{ propostas, aprovadas, executadas, descartadas, tempoMedioAteAprovacaoHoras, custoEstimadoDaFilaCents }, tetos[{ marca, canal, investimento, teto, uso, campanhasAtivas }]` |
+| `resumoSimples` (em `data/queries/resumo-simples.ts`) | `total, anterior: { investimento, interessados, clientesNovos, custoPorClienteNovo, valorDosPrimeirosPedidos, retornoPorReal }` (os números da T1 mais o que voltou, decisão 0028), `todasAsOrigens{ interessados, clientesNovos }, porCanal[] (+ parcelaDoGasto), porMarca[], campanhas[] (só as com movimento), campanhasSemMovimento` |
 | `conectores(dados, agora?)` | `lista[Connector & { minutosDesdeSync, atrasoMinutos, atrasado }], resumo{ ok, late, down, simulated }, ultimaSincronizacao` |
 
 `Metrica = { atual: number | null; anterior: number | null; variacao: number | null }`. Métrica sem base é `null`
 (nunca 0 nem NaN); contagem sobre tabela vazia é `null`, sobre tabela com linhas é 0 ou mais. Utilidades exportadas:
 `filtrarPeriodo(linhas, campo, { inicio, fim })`, `filtrarMarca`, `metrica`, `razao`, `soma`, `contagem`, `ETAPAS`,
 e as regras de lead e de cliente novo: `leadsFiltrados(dados, filtros)`, `chegouAoPedido(lead)` e
-`clientesNovos(leads, janela)` (um por cliente, no dia do 1º pedido). Use essas, nunca uma cópia: nenhuma regra em
-dois lugares. Dinheiro sempre em centavos.
+`clientesNovos(leads, janela)` (um por cliente, no dia do 1º pedido), e os recortes de campanha:
+`campanhasFiltradas(dados, filtros)` e `comCampanha(leads, campanhas)` (atribuição pela UTM). Use essas, nunca uma
+cópia: nenhuma regra em dois lugares. Dinheiro sempre em centavos.
 
 ## 6. Componentes — `src/components/ui` (importe de `'../../components/ui'`)
 

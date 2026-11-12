@@ -21,6 +21,7 @@ Para ver qualquer tela num estado específico, acrescente `?estado=carregando|va
 | Grupo | Módulo | Rota | Pasta | Quem vê |
 |---|---|---|---|---|
 | Início | Visão geral | `/` | `src/modules/visao-geral` | todos |
+| Início | Resumo simples | `/resumo` | `src/modules/resumo-simples` | todos (proposta de 12/11/2026, esperando aprovação) |
 | Clientes | Chegada de clientes | `/chegada` | `src/modules/chegada-de-clientes` | todos |
 | Clientes | Base de clientes | `/base` | `src/modules/base-de-clientes` | todos |
 | Clientes | Leads | `/leads` | `src/modules/leads` | todos (sem dado pessoal) |
@@ -51,6 +52,7 @@ Contagens conferidas no código em 30/10/2026 (revisão de UX da fase 2).
 | T4 | Aprovar uma proposta do Claude | Menu → **Tráfego com IA** → **Aprovar** no cartão da fila de aprovação, o primeiro bloco da aba "Fila e ações" → **Aprovar proposta** na confirmação, que mostra o nome e o custo estimado (3 toques). Na Visão geral em Gestor, **Abrir Tráfego com IA** substitui o menu. Partindo do Visualizador: + **Ver como gestor de tráfego** (4). | 3 a 4 | 4 a 5 |
 | T5 | Ver quem da base antiga parou de comprar e quem voltou | Menu → **Base de clientes**: os indicadores **Inativos**, **Perdidos** e **Reativados** já respondem (1 toque); tocar num deles abre a lista já filtrada e rolada até ela (`/base?recorte=inativos#lista-de-clientes`, 2 toques), o mesmo que o chip da lista. **Abrir no CSP 360** na linha abre a ficha 360 (3). | 1 a 3 | 2 a 4 |
 | T6 | Ver qual conector está atrasado e tentar de novo | Menu → **Conectores**: o cartão atrasado vem em amarelo ("Atrasado") e o caído em vermelho, primeiro na lista, com "atualizado há X min"; **Tentar de novo** é o botão principal do primeiro cartão com problema (2 toques). | 2 | 3 |
+| T7 | Entender, sem conhecer marketing, quanto foi gasto em anúncio, onde, quantos clientes vieram, quanto custou cada um e quanto voltou | Abrir o link do **Resumo simples** (ou menu → **Resumo simples**): as frases de "Em poucas palavras" já respondem; os quatro números, as barras por canal e por marca e "Campanha por campanha" vêm em seguida, só com rolagem. Quem envia: **Copiar link**, no topo. Proposta de 12/11/2026, fora do portão da fase 2: [`resumo-simples.md`](resumo-simples.md). | 0 a 1 | 0 a 2 |
 
 **Portão da fase 2 (T1):** fecha em até 1 toque a partir da Visão geral, no computador e em 375px. Em 375px os
 números por marca e por canal ficam depois dos oito indicadores (rolagem, sem toque): ver "Pendências de desenho".
@@ -102,6 +104,10 @@ bloquear a fase 3. As de número ("Este mês", "Parar tudo", quem aprova) virara
 - **Canal em 375px, visão Gestor:** Humano × Claude (T3) vem depois de 12 indicadores um por linha.
 - **Tráfego com IA no Visualizador:** abrir o módulo mostra só "Esta tela é da visão Gestor de tráfego"; decidir se
   os links para ele ("Ver pendências em Tráfego com IA", em Conectores e SEO e GEO) já levam `?visao=gestor`.
+
+- **Resumo simples (proposta de 12/11/2026):** falta quem vai receber o link fazer a T7 no celular, sem ajuda, e o
+  dono aprovar a tela; falta decidir com que acesso essa pessoa entra quando houver login (papel `owner` ou um papel
+  só de leitura). Entre 641 e cerca de 900px de área as tabelas da tela rolam de lado dentro do bloco.
 
 ## Estados que toda tela precisa mostrar
 
