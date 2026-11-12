@@ -8,6 +8,7 @@
 
 import { rotulo, type Brand, type Platform } from '@csp-mkt/shared';
 import type { NumerosDoResumo, ResumoSimples } from '../../data/queries/resumo-simples';
+import type { EstadoDaInstalacao } from '../../lib/app-instalavel';
 import { VAZIO, data, dinheiro, numero, percentual, plural } from '../../lib/format';
 import type { Intervalo } from '../../lib/periodo';
 import { escreverFiltros, type Filtros } from '../../lib/url-state';
@@ -336,4 +337,33 @@ export function linkDoResumo(
     comparar: filtros.comparar,
   }).toString();
   return `${origem.replace(/\/$/, '')}/resumo?${busca}`;
+}
+
+/* ---------- App no celular ---------- */
+
+/** O que o cartão "Deixe o resumo na tela do celular" diz em cada aparelho. `null` = já instalado: some. */
+export function textoDaInstalacao(
+  estado: EstadoDaInstalacao,
+): { texto: string; botao: string | null } | null {
+  switch (estado) {
+    case 'instalado':
+      return null;
+    case 'pronto':
+      return {
+        texto: 'Instale o CSP MKT como app: ele ganha um ícone na tela e abre direto neste resumo.',
+        botao: 'Instalar o app',
+      };
+    case 'manual-apple':
+      return {
+        texto:
+          'No iPhone, abra este endereço no Safari, toque em Compartilhar (o quadrado com a seta para cima) e depois em Adicionar à Tela de Início.',
+        botao: null,
+      };
+    case 'manual':
+      return {
+        texto:
+          'Abra o menu do navegador (os três pontinhos) e escolha Instalar app ou Adicionar à tela inicial. O ícone abre direto neste resumo.',
+        botao: null,
+      };
+  }
 }

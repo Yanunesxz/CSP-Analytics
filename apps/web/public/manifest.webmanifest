@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "CSP MKT",
+  "short_name": "CSP MKT",
+  "description": "Central de marketing do grupo Corpo Sensual e Plumene: quanto foi gasto em anúncio, onde e quantos clientes novos vieram.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/resumo",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFFFFF",
+  "icons": [
+    { "src": "/icones/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icones/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icones/icone-mascaravel-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Visão geral",
+      "url": "/",
+      "icons": [{ "src": "/icones/icone-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

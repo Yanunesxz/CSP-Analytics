@@ -17,6 +17,7 @@ import { useConsulta } from '../../data/store';
 import { EmPoucasPalavras } from './EmPoucasPalavras';
 import { Numeros } from './Numeros';
 import { OndeFoiGasto } from './OndeFoiGasto';
+import { NoCelular } from './NoCelular';
 import { Palavras } from './Palavras';
 import { Campanhas, PorCanalEMarca } from './Tabelas';
 import { linkDoResumo } from './textos';
@@ -65,6 +66,7 @@ export default function ResumoSimples() {
             <PorCanalEMarca r={r} />
             <Campanhas r={r} semDados={estado === 'sem-dados'} />
             <Palavras />
+            <NoCelular />
           </>
         )}
       </Tela>

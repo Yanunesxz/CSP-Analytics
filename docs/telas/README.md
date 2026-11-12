@@ -106,8 +106,9 @@ bloquear a fase 3. As de número ("Este mês", "Parar tudo", quem aprova) virara
   os links para ele ("Ver pendências em Tráfego com IA", em Conectores e SEO e GEO) já levam `?visao=gestor`.
 
 - **Resumo simples (proposta de 12/11/2026):** falta quem vai receber o link fazer a T7 no celular, sem ajuda, e o
-  dono aprovar a tela; falta decidir com que acesso essa pessoa entra quando houver login (papel `owner` ou um papel
-  só de leitura). Entre 641 e cerca de 900px de área as tabelas da tela rolam de lado dentro do bloco.
+  dono aprovar a tela; falta decidir com que acesso essa pessoa entra quando houver login (papel `owner`, o
+  `traffic_manager` ou um papel só de leitura). Entre 641 e cerca de 900px de área as tabelas da tela rolam de lado
+  dentro do bloco. O app instalável (ícone que abre no resumo) falta ser instalado num celular de verdade.
 
 ## Estados que toda tela precisa mostrar
 

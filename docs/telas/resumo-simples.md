@@ -64,6 +64,23 @@ principal, como na Visão geral em Visualizador.
    não trouxe cliente mostra "Sem cliente novo" no custo.
 7. **O que cada palavra quer dizer** (cartão): gasto, canal, campanha, pessoa interessada (lead), cliente novo,
    custo de cada cliente novo, quanto voltou (ROAS) e "veio de anúncio".
+8. **Deixe o resumo na tela do celular** (cartão): o convite para instalar o CSP MKT como app, como o app dos
+   representantes. Onde o navegador oferece (Chrome, Edge, Samsung Internet), o botão **Instalar o app** abre o
+   convite dele ("App instalado. O ícone do CSP MKT já está na tela."). No iPhone, o texto ensina o caminho pelo
+   Compartilhar do Safari; nos outros navegadores, pelo menu. Aberto pelo ícone, o cartão some.
+
+## O app no celular
+
+- **Como funciona:** `public/manifest.webmanifest` (nome "CSP MKT", ícone "CSP" branco sobre preto) e um service
+  worker mínimo (`public/sw.js`). O ícone abre direto no Resumo simples (`start_url` = `/resumo`); segurar o ícone
+  mostra o atalho "Visão geral".
+- **Nada fica guardado no aparelho:** o service worker só atende a abertura de página. Sem internet, em vez do erro
+  do navegador, aparece "Sem internet" com "Tentar de novo". A versão nova continua avisada pelo `/version.json`.
+- **Só na build:** no `pnpm dev` o service worker não liga (a porta 5173 é de vários projetos).
+- **As cores do manifesto e do `theme-color`** são o branco e o preto da paleta, escritos em hexadecimal: o
+  navegador não lê token ali.
+- **Instalar não dá acesso:** o app é o mesmo site, com o mesmo login. Sem login e sem banco (até a fase 4), o
+  ícone abre o resumo vazio no site da Vercel, como o navegador.
 
 ## Caminho da T7
 
@@ -160,7 +177,10 @@ Toda conta vive em `data/queries/resumo-simples.ts`. A tela não soma linhas.
 ## Fica para depois
 
 - **Quem recebe precisa de acesso.** Hoje o site abre sem login e sem dados. Com o login (fase 4), quem recebe o
-  link precisa de usuário: decidir se é o papel `owner` ou um papel novo, só de leitura desta tela (decisão 0011).
+  link precisa de usuário: decidir se é o papel `owner`, o `traffic_manager` ou um papel novo, só de leitura desta
+  tela (decisão 0011). O usuário só é criado no banco de produção depois do portão da fase 3.
+- **Instalação conferida só em simulação:** no painel de teste o Chrome não dispara o convite; o botão foi conferido
+  com um convite simulado. Falta instalar num celular de verdade (Android e iPhone).
 - **Entre 641 e cerca de 900px de área** (tablet, notebook pequeno) as tabelas rolam de lado dentro do próprio
   bloco, como as da Visão geral; a página não rola de lado.
 - **Rótulo do gráfico em 375px:** "Corpo Sensual" corta no gráfico por marca (dívida do `GraficoBarras`, já no
@@ -171,3 +191,6 @@ Toda conta vive em `data/queries/resumo-simples.ts`. A tela não soma linhas.
 
 `tela.test.ts` desenha a tela no servidor e confere a ordem dos blocos, que o gasto e o custo são os da T1, os
 destinos dos links, o que some com uma marca só e com a comparação desligada, as campanhas recolhidas e os estados.
+`src/lib/app-instalavel.test.ts` confere o que oferecer em cada aparelho e o manifesto: cada ícone existe com o
+tamanho declarado (sem isso o Chrome não oferece a instalação), o `start_url` é uma rota do sistema e o service
+worker não guarda nada.

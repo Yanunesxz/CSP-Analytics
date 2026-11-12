@@ -20,6 +20,7 @@ import {
   periodoDoResumo,
   porReal,
   reais,
+  textoDaInstalacao,
   verOutrasCampanhas,
 } from './textos';
 
@@ -306,5 +307,25 @@ describe('linkDoResumo', () => {
     expect(
       linkDoResumo('https://exemplo.test/', { marca: 'cs', periodo: 'mes-passado', comparar: false }),
     ).toBe('https://exemplo.test/resumo?marca=cs&periodo=mes-passado&comparar=false');
+  });
+});
+
+describe('textoDaInstalacao', () => {
+  it('já instalado neste aparelho: o cartão some', () => {
+    expect(textoDaInstalacao('instalado')).toBeNull();
+  });
+
+  it('com o convite do navegador: um botão que instala', () => {
+    expect(textoDaInstalacao('pronto')).toEqual({
+      texto: 'Instale o CSP MKT como app: ele ganha um ícone na tela e abre direto neste resumo.',
+      botao: 'Instalar o app',
+    });
+  });
+
+  it('iPhone e os outros: o caminho em palavras, sem botão que não faria nada', () => {
+    expect(textoDaInstalacao('manual-apple')).toMatchObject({ botao: null });
+    expect(textoDaInstalacao('manual-apple')!.texto).toContain('Adicionar à Tela de Início');
+    expect(textoDaInstalacao('manual')).toMatchObject({ botao: null });
+    expect(textoDaInstalacao('manual')!.texto).toContain('Instalar app ou Adicionar à tela inicial');
   });
 });

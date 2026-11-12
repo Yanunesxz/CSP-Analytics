@@ -37,7 +37,7 @@ describe('Resumo simples com os dados de exemplo', () => {
   beforeAll(() => store.alterar(() => gerarDadosDeExemplo()));
   afterAll(() => store.alterar(() => ({ ...DADOS_VAZIOS })));
 
-  it('os blocos vêm na ordem: frases, números, onde foi gasto, canais, campanhas e palavras', () => {
+  it('os blocos vêm na ordem: frases, números, onde foi gasto, canais, campanhas, palavras e o app no celular', () => {
     const html = desenhar('/resumo?marca=todas');
     const ordem = [
       'id="resumo-frases"',
@@ -46,6 +46,7 @@ describe('Resumo simples com os dados de exemplo', () => {
       'id="resumo-canais"',
       'id="resumo-campanhas"',
       'id="resumo-palavras"',
+      'id="resumo-no-celular"',
     ].map((trecho) => html.indexOf(trecho));
     expect(ordem.every((i) => i >= 0)).toBe(true);
     expect([...ordem].sort((a, b) => a - b)).toEqual(ordem);
