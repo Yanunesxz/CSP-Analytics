@@ -92,12 +92,14 @@ const pedido = (
   brandId: Order['brandId'],
   createdAt: string,
   totalCents: number,
+  isInvoiced = false,
   status: Order['status'] = 'sent',
 ): Order => ({
   id,
   brandId,
   customerId,
   status,
+  isInvoiced,
   totalCents,
   invoicedTotalCents: null,
   createdAt,
@@ -285,7 +287,7 @@ const dados: Dados = {
   ],
   orders: [
     pedido('o1', 'cli-1', 'cs', iso('2026-10-08'), 100000),
-    pedido('o2', 'cli-2', 'cs', iso('2026-10-04'), 200000, 'invoiced'),
+    pedido('o2', 'cli-2', 'cs', iso('2026-10-04'), 200000, true),
     pedido('o3', 'cli-4', 'plumene', iso('2026-09-20'), 150000),
     pedido('o4', 'cli-old', 'cs', iso('2026-10-20'), 50000),
     pedido('o5', 'cli-inat', 'plumene', iso('2026-10-22'), 80000),
@@ -329,7 +331,7 @@ const dados: Dados = {
   connectors: [
     conector('meta', 'ok', 10, 60),
     conector('tiktok', 'late', 200, 60),
-    conector('ga4', 'simulated', null, 1440),
+    conector('ga4', 'not_connected', null, 1440),
   ],
   geradoEm: agora.toISOString(),
 };
@@ -393,6 +395,21 @@ describe('kpisVisaoGeral', () => {
   it('sem comparar, o anterior e a variação ficam nulos', () => {
     const k = kpisVisaoGeral(dados, f({ comparar: false }), agora);
     expect(k.leads).toEqual({ atual: 5, anterior: null, variacao: null });
+  });
+
+  it('pedido conta só enviado: orçamento e cancelado ficam fora; faturado é o carimbo do enviado', () => {
+    const comOutros = {
+      ...dados,
+      orders: [
+        ...dados.orders,
+        pedido('o8', 'cli-1', 'cs', iso('2026-10-09'), 70000, false, 'quote'),
+        pedido('o9', 'cli-2', 'cs', iso('2026-10-10'), 90000, false, 'cancelled'),
+      ],
+    };
+    const k = kpisVisaoGeral(comOutros, f(), agora);
+    expect(k.pedidos.atual).toBe(4);
+    expect(k.valorPedidos.atual).toBe(430000);
+    expect(k.faturados.atual).toBe(1);
   });
 
   it('conjunto vazio devolve null em tudo, nunca 0 nem NaN', () => {
@@ -581,7 +598,7 @@ describe('acoes e conectores', () => {
       minutosDesdeSync: null,
       atrasoMinutos: null,
     });
-    expect(c.resumo).toEqual({ ok: 1, late: 1, down: 0, simulated: 1 });
+    expect(c.resumo).toEqual({ ok: 1, late: 1, down: 0, not_connected: 1, disabled: 0 });
     expect(conectores({ ...DADOS_VAZIOS }, agora).resumo.ok).toBeNull();
   });
 });

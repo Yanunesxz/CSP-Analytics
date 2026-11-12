@@ -37,3 +37,6 @@ Motivo: é o lead que entra no funil e vira cliente. O da plataforma conta só o
   negócio aberto no funil de leads e manda o formulário de novo não vira lead novo: o CRM anota o envio no negócio que
   existe. O custo por lead conta esse lead uma vez, e "Leads informados pela plataforma" pode ser maior que "Leads".
   Quem já é cliente ativo e manda o formulário abre negócio e conta como lead.
+- Em 11/11/2026 (decisão 0041, item 9): o cliente ativo só abre negócio se não tiver negócio em aberto gravado no
+  funil padrão. O envio anotado num negócio aberto à mão, que não é lead, não conta em lugar nenhum: é um limite,
+  pedido ao time do CRM (`docs/dados/integracoes.md`, seções 3.4 e 19).

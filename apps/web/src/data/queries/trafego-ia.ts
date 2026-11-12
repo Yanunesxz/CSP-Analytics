@@ -50,8 +50,18 @@ import {
 
 export const MARCAS: readonly Brand[] = ['cs', 'plumene'];
 export const CANAIS: readonly Platform[] = ['meta', 'tiktok', 'google'];
-/** Ordem dos chips de status e da lista: o que pede ação primeiro. */
-export const STATUS_DA_LISTA: readonly ActionStatus[] = ['idea', 'approved', 'running', 'done', 'discarded'];
+/**
+ * Ordem dos chips de status e da lista: o que pede ação primeiro (`failed` logo depois de `idea`, porque
+ * também pede decisão). É a ordem do labels.ts e de `mkt.list_rank('action_status', …)`.
+ */
+export const STATUS_DA_LISTA: readonly ActionStatus[] = [
+  'idea',
+  'failed',
+  'approved',
+  'running',
+  'done',
+  'discarded',
+];
 export const NIVEIS: readonly Level[] = ['low', 'medium', 'high'];
 
 /** Quantos registros o diário mostra de cada vez. */
@@ -62,10 +72,11 @@ export const MAXIMO_DA_LISTA = 200;
 const PESO: Record<Level, number> = { low: 1, medium: 2, high: 3 };
 const ORDEM_DO_STATUS: Record<ActionStatus, number> = {
   idea: 0,
-  approved: 1,
-  running: 2,
-  done: 3,
-  discarded: 4,
+  failed: 1,
+  approved: 2,
+  running: 3,
+  done: 4,
+  discarded: 5,
 };
 
 function maisAntigaPrimeiro(a: TrafficAction, b: TrafficAction): number {
@@ -77,7 +88,7 @@ export function ordemDaFila(a: TrafficAction, b: TrafficAction): number {
   return PESO[b.impact] - PESO[a.impact] || PESO[a.effort] - PESO[b.effort] || maisAntigaPrimeiro(a, b);
 }
 
-/** Lista: por status (ideia, aprovada, em execução, feita, descartada), prioridade e a mais nova. */
+/** Lista: por status (ideia, falhou, aprovada, em execução, feita, descartada), prioridade e a mais nova. */
 export function ordemDaLista(a: TrafficAction, b: TrafficAction): number {
   return (
     ORDEM_DO_STATUS[a.status] - ORDEM_DO_STATUS[b.status] ||

@@ -37,6 +37,7 @@ const pedido = (customerId: string, brandId: Order['brandId'], dia: string, tota
     brandId,
     customerId,
     status: 'sent',
+    isInvoiced: false,
     totalCents,
     invoicedTotalCents: null,
     createdAt: iso(dia),

@@ -24,7 +24,7 @@ export const O_QUE_TRAZ: Record<ConnectorId, string> = {
 };
 
 /**
- * O que falta para ligar um conector simulado, um passo por item. Trecho entre crases é nome de
+ * O que falta para ligar um conector a ligar, um passo por item. Trecho entre crases é nome de
  * configuração e aparece em `<code>`. Só o GA4 tem a lista definida hoje (Parte 4 do prompt).
  */
 export const O_QUE_FALTA: Partial<Record<ConnectorId, readonly string[]>> = {
@@ -161,16 +161,18 @@ export function notaDaRodada(
   return vezes ? `O CSP 360 busca os pedidos nos apps ${vezes}.` : 'O CSP 360 busca os pedidos nos apps.';
 }
 
-/** Rótulo da etiqueta: o de `labels.ts`; o simulado ganha "· a ligar"; sem conector, "Sem dados". */
+/** Rótulo da etiqueta: o de `labels.ts` ("A ligar", "Desligado"…); sem conector, "Sem dados". */
 export function rotuloDoEstado(estado: ConnectorStatus | null): string {
   if (estado === null) return SEM_DADOS;
-  const texto = rotulo('connectorStatus', estado);
-  return estado === 'simulated' ? `${texto} · a ligar` : texto;
+  return rotulo('connectorStatus', estado);
 }
 
-/** Tom da etiqueta: funcionando verde, atrasado amarelo, caído vermelho; simulado e sem dados neutros. */
+/**
+ * Tom da etiqueta: funcionando verde, atrasado amarelo, caído vermelho; a ligar, desligado e sem dados
+ * neutros (o tom vem de `labels.ts`).
+ */
 export function tomDoEstado(estado: ConnectorStatus | null): Tom {
-  if (estado === null || estado === 'simulated') return 'muted';
+  if (estado === null) return 'muted';
   return tomDaLista('connectorStatus', estado) ?? 'muted';
 }
 

@@ -59,6 +59,7 @@ const pedido = (id: string, customerId: string, totalCents: number, createdAt: s
   brandId: 'cs',
   customerId,
   status: 'sent',
+  isInvoiced: false,
   totalCents,
   invoicedTotalCents: null,
   createdAt,
@@ -294,6 +295,18 @@ describe('resumoSimples', () => {
     expect(r.total.retornoPorReal).toBeNull();
     // A campanha do Google não depende desse cliente
     expect(r.campanhas.find((c) => c.campanha.id === 'c2')!.retornoPorReal).toBe(2);
+  });
+
+  it('orçamento e pedido cancelado não são o 1º pedido: vale o 1º enviado', () => {
+    const comOrcamento: Dados = {
+      ...dados,
+      orders: [
+        { ...pedido('q1', 'cli-1', 5000000, iso('2026-10-01')), status: 'quote' },
+        { ...pedido('x1', 'cli-1', 3000000, iso('2026-10-02')), status: 'cancelled' },
+        ...dados.orders,
+      ],
+    };
+    expect(resumoSimples(comOrcamento, outubro, agora).total).toEqual(resumoSimples(dados, outubro, agora).total);
   });
 
   it('sem pedidos na base: o que voltou fica sem dados', () => {

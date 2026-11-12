@@ -53,7 +53,8 @@ describe('gerarDadosDeExemplo', () => {
     expect(dados.customers).toHaveLength(400);
     expect(dados.customers.some((c) => c.situation === 'inactive_old')).toBe(true);
     expect(dados.customers.some((c) => c.situation === null)).toBe(true);
-    expect(dados.orders.some((o) => o.status === 'invoiced')).toBe(true);
+    expect(dados.orders.every((o) => o.status === 'sent')).toBe(true);
+    expect(dados.orders.some((o) => o.isInvoiced)).toBe(true);
     expect(dados.orders.every((o) => o.invoicedTotalCents === null)).toBe(true);
     const ids = new Set(dados.customers.map((c) => c.id));
     expect(dados.orders.every((o) => ids.has(o.customerId))).toBe(true);
@@ -70,7 +71,7 @@ describe('gerarDadosDeExemplo', () => {
     expect(doClaude).toBeGreaterThanOrEqual(Math.floor(dados.actions.length / 2) - 2);
     expect(dados.connectors).toHaveLength(7);
     expect(dados.connectors.find((c) => c.id === 'csp360')?.status).toBe('ok');
-    expect(dados.connectors.find((c) => c.id === 'ga4')?.status).toBe('simulated');
+    expect(dados.connectors.find((c) => c.id === 'ga4')?.status).toBe('not_connected');
     expect(dados.connectors.filter((c) => c.status === 'late')).toHaveLength(1);
   });
 

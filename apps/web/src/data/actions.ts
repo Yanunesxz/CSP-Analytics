@@ -94,12 +94,15 @@ export function pararTudo(marca: 'cs' | 'plumene' | 'todas' = 'todas'): number {
   return pausadas;
 }
 
-/** "Tentar de novo" num conector: na demonstração, simula uma sincronização bem-sucedida. */
+/**
+ * "Tentar de novo" num conector: na demonstração, simula uma sincronização bem-sucedida. Só no conector
+ * ligado: o que está a ligar ou desligado fica como está.
+ */
 export function tentarConectorDeNovo(id: Connector['id'], agora: Date = new Date()): void {
   store.alterar((dados) => ({
     ...dados,
     connectors: dados.connectors.map((c) =>
-      c.id === id && c.status !== 'simulated'
+      c.id === id && c.status !== 'not_connected' && c.status !== 'disabled'
         ? { ...c, status: 'ok', lastSyncAt: agora.toISOString(), errors24h: 0 }
         : c,
     ),

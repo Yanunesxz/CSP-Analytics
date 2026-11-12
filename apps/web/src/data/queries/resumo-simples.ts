@@ -9,7 +9,8 @@
  * - o que voltou segue a decisão 0028: valor do 1º pedido dos clientes novos atribuídos às campanhas
  *   do recorte ÷ gasto dessas campanhas. Sem gasto: null. Com gasto e nenhum cliente novo: 0.
  *
- * No protótipo, o 1º pedido é o pedido mais antigo do cliente no conjunto de dados; no banco (fase 4)
+ * No protótipo, o 1º pedido é o pedido enviado mais antigo do cliente no conjunto de dados (orçamento e
+ * cancelado ficam fora, como em toda contagem de pedido); no banco (fase 4)
  * o número sai de `mkt.acquisition`. Métrica sem base é `null` — nunca 0 nem NaN.
  */
 
@@ -23,6 +24,7 @@ import {
   comCampanha,
   contagem,
   custoPorClienteNovo,
+  enviados,
   filtrarPeriodo,
   leadsFiltrados,
   metricasPorCampanha,
@@ -82,10 +84,10 @@ export interface ResumoSimples {
 
 /* ---------- O que voltou (decisão 0028) ---------- */
 
-/** Valor do pedido mais antigo de cada cliente. */
+/** Valor do pedido enviado mais antigo de cada cliente. */
 function primeiroPedidoPorCliente(dados: Dados): Map<string, number> {
   const primeiro = new Map<string, { em: number; valor: number }>();
-  for (const pedido of dados.orders) {
+  for (const pedido of enviados(dados.orders)) {
     const em = Date.parse(pedido.createdAt);
     const atual = primeiro.get(pedido.customerId);
     if (!atual || em < atual.em) primeiro.set(pedido.customerId, { em, valor: pedido.totalCents });

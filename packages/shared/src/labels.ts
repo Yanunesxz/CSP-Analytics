@@ -4,6 +4,10 @@
  * A cor é sempre um token: `var(--color-series-N)` para marca, canal e operador
  * (decisão 0007: só em gráfico, chip e legenda) e `var(--color-<status>)` para status.
  * A tela nunca escreve a cor; pede aqui.
+ *
+ * Cada lista é também um `domain` no banco, com os mesmos códigos (docs/dados/listas.md, decisão 0016): o teste de
+ * paridade de `supabase/tests` (RLS-25) reprova o build quando os dois lados divergem. Mudar uma lista é uma migração
+ * que troca o `check` do domain e este arquivo, no mesmo PR.
  */
 
 import type {
@@ -97,17 +101,20 @@ export const LISTAS = {
     direct: { rotulo: 'Direto', cor: 'var(--color-silver)' },
   } satisfies Tabela<LeadSource>,
 
+  // Da melhor para a pior e `lead` por último: a ordem de mkt.list_rank, que escolhe a melhor em "As duas".
   customerSituation: {
-    lead: status('muted', 'Lead'),
     active: status('success', 'Ativo'),
     inactive_recent: status('warning', 'Inativo recente'),
     inactive_old: status('warning', 'Inativo antigo'),
     lost: status('danger', 'Perdido'),
+    lead: status('muted', 'Lead'),
   } satisfies Tabela<CustomerSituation>,
 
+  // Faturado não é status: a etiqueta "Faturado" (success) sai do carimbo `isInvoiced`.
   orderStatus: {
+    quote: status('muted', 'Orçamento'),
     sent: status('info', 'Enviado'),
-    invoiced: status('success', 'Faturado'),
+    cancelled: status('danger', 'Cancelado'),
   } satisfies Tabela<OrderStatus>,
 
   igMediaType: {
@@ -117,12 +124,15 @@ export const LISTAS = {
     reel: status('muted', 'Reel'),
   } satisfies Tabela<IgMediaType>,
 
+  // No banco a lista se chama ai_source: serve ao GA4 e ao `referrer` do lead.
   geoSource: {
     chatgpt: serie(1, 'ChatGPT'),
     perplexity: serie(5, 'Perplexity'),
     claude: serie(3, 'Claude'),
     gemini: serie(4, 'Gemini'),
     copilot: serie(6, 'Copilot'),
+    // Assistente fora da lista: neutro, como as origens sem série própria (a sessão não some do total).
+    other: { rotulo: 'Outro assistente', cor: 'var(--color-text-muted)' },
   } satisfies Tabela<GeoSource>,
 
   actionKind: {
@@ -134,8 +144,10 @@ export const LISTAS = {
     pending_fix: status('danger', 'Pendência de medição'),
   } satisfies Tabela<ActionKind>,
 
+  // A ordem da lista do Tráfego: `failed` logo depois de `idea`, porque também pede decisão.
   actionStatus: {
     idea: status('muted', 'Ideia'),
+    failed: status('danger', 'Falhou'),
     approved: status('info', 'Aprovada'),
     running: status('warning', 'Em execução'),
     done: status('success', 'Feita'),
@@ -162,8 +174,9 @@ export const LISTAS = {
     ok: status('success', 'Funcionando'),
     late: status('warning', 'Atrasado'),
     down: status('danger', 'Caído'),
-    // Simulado não pede atenção: etiqueta neutra (cor de status só quando pede ação)
-    simulated: status('muted', 'Simulado'),
+    // A ligar e desligado não pedem atenção: etiqueta neutra (cor de status só quando pede ação)
+    not_connected: status('muted', 'A ligar'),
+    disabled: status('muted', 'Desligado'),
   } satisfies Tabela<ConnectorStatus>,
 
   role: {

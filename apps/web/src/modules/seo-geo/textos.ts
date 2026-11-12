@@ -12,9 +12,12 @@ import { atualizadoHa, dataHora, percentual, plural } from '../../lib/format';
  */
 export const URL_SEARCH_CONSOLE = 'https://search.google.com/search-console';
 
-/** "atualizado há 6 h" da fonte; null sem o cartão do conector ou quando ele é simulado (o selo diz). */
+/**
+ * "atualizado há 6 h" da fonte; null sem o cartão do conector ou quando ele está a ligar ou desligado (o
+ * selo diz).
+ */
 export function frescorDaFonte(fonte: FonteDoPainel | null, agora: Date = new Date()): string | null {
-  if (!fonte || fonte.status === 'simulated') return null;
+  if (!fonte || fonte.status === 'not_connected' || fonte.status === 'disabled') return null;
   return atualizadoHa(fonte.lastSyncAt, agora);
 }
 

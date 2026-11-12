@@ -1,13 +1,45 @@
-# Roda em todo PR e na main: tipos, lint, testes, build e checagens do projeto.
+# CI do CSP-MKT: tipos, lint, testes e build em todo PR e na main; as migrações no projeto Supabase de teste, com o
+# teste de RLS pela API (camada 2); as migrações em produção, com aprovação do dono; e o convite do primeiro dono.
+# Fica em docs/ci.yml enquanto o token do push não tem o escopo workflow; volta para .github/workflows/ci.yml quando
+# o dono puder (ESTADO.md). Passos e segredos: docs/dados/plano.md, "Como o CI aplica". Aqui só nomes de segredo.
+#
+# Segredos (Settings → Secrets and variables → Actions):
+#   teste:    SUPABASE_DB_URL_TESTE (a conexão do pooler em modo sessão, porta 5432: o runner do GitHub não tem IPv6),
+#             SUPABASE_URL_TESTE, SUPABASE_ANON_KEY_TESTE, SUPABASE_SERVICE_ROLE_KEY_TESTE, MKT_WORKER_DB_PASSWORD_TESTE,
+#             MKT_EXECUTOR_DB_PASSWORD_TESTE, MKT_SETUP_DB_PASSWORD_TESTE, N8N_NOTIFIER_DB_PASSWORD_TESTE
+#   produção (no ambiente "producao", com aprovação manual do dono): SUPABASE_DB_URL_PRODUCAO, MKT_WORKER_DB_PASSWORD,
+#             MKT_EXECUTOR_DB_PASSWORD, MKT_SETUP_DB_PASSWORD, N8N_NOTIFIER_DB_PASSWORD, SUPABASE_URL,
+#             SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, MKT_SETUP_DATABASE_URL
+# Variável opcional (não é segredo): RLS_MOTIVO=1 mostra, no caso que falhou, a etapa e os códigos HTTP e do banco.
 name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
+  # Só o convite do primeiro dono, uma vez (job "primeiro-dono").
+  workflow_dispatch:
+    inputs:
+      nome:
+        description: Nome do primeiro dono, como aparece no sistema
+        required: true
+        type: string
+      email:
+        description: E-mail do primeiro dono (mascarado no log)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   verificar:
+    name: Tipos, lint, testes, build e migrações
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,12 +57,284 @@ jobs:
         run: |
           if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi
 
-      - name: Tipos, lint, testes e build
+      - name: Tipos, lint, testes (com a camada 1 do teste de RLS, no PGlite) e build
         run: pnpm verify
 
-      - name: Migrações com versão única
+      - name: 'Migrações: versão única, antiga não muda e não toca o cofre'
+        env:
+          EVENTO: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          ANTES: ${{ github.event.before }}
         run: |
-          if [ -d supabase/migrations ]; then
-            dup=$(ls supabase/migrations | grep -oE '^[0-9]{14}' | sort | uniq -d)
-            if [ -n "$dup" ]; then echo "Migrações com a mesma versão: $dup"; exit 1; fi
+          base=""
+          if [ "$EVENTO" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "$BASE_REF" && base=FETCH_HEAD
+          elif [ -n "$ANTES" ] && [ "$ANTES" != "0000000000000000000000000000000000000000" ]; then
+            git fetch --no-tags --depth=1 origin "$ANTES" && base=FETCH_HEAD
           fi
+          node scripts/conferir-migracoes.mjs ${base:+--base "$base"}
+
+      - name: Scripts do teste de RLS (a lista dos casos, sem tocar em projeto nenhum)
+        run: |
+          node --check scripts/senha-dos-papeis.mjs
+          node scripts/testar-rls.mjs
+
+  mudancas:
+    name: O que mudou
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      banco: ${{ steps.filtro.outputs.banco }}
+      migracoes: ${{ steps.filtro.outputs.migracoes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Comparar com a base (supabase/, scripts do teste e o CI)
+        id: filtro
+        env:
+          EVENTO: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          ANTES: ${{ github.event.before }}
+        run: |
+          if [ "$EVENTO" = "pull_request" ]; then base="origin/$BASE_REF"; else base="$ANTES"; fi
+          # Sem base para comparar (branch nova): roda tudo.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            { echo "banco=true"; echo "migracoes=true"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mudou() { if git diff --quiet "$base" HEAD -- "$@"; then echo false; else echo true; fi; }
+          echo "banco=$(mudou supabase scripts/testar-rls.mjs scripts/testar-rls-dados.sql scripts/testar-rls-servicos.sql scripts/senha-dos-papeis.mjs docs/ci.yml .github/workflows)" >> "$GITHUB_OUTPUT"
+          echo "migracoes=$(mudou supabase/migrations)" >> "$GITHUB_OUTPUT"
+
+  rls-teste:
+    name: Migrações e teste de RLS no projeto de teste (camada 2)
+    needs: [verificar, mudancas]
+    # PR de fork não recebe segredo: o teste fica para o PR da própria branch.
+    if: >-
+      github.event_name == 'pull_request' && needs.mudancas.outputs.banco == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Um por vez: o projeto de teste é um só e cada rodada o recria do zero.
+    concurrency:
+      group: supabase-teste
+      cancel-in-progress: false
+    env:
+      CSP_MKT_PROJETO: teste # só este job define: scripts/testar-rls.mjs recusa --executar e --limpar sem ela
+      RLS_ETIQUETA: ${{ github.run_id }}-${{ github.run_attempt }}
+      SUPABASE_DB_URL_TESTE: ${{ secrets.SUPABASE_DB_URL_TESTE }}
+      SUPABASE_URL_TESTE: ${{ secrets.SUPABASE_URL_TESTE }}
+      SUPABASE_ANON_KEY_TESTE: ${{ secrets.SUPABASE_ANON_KEY_TESTE }}
+      SUPABASE_SERVICE_ROLE_KEY_TESTE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY_TESTE }}
+      MKT_WORKER_DB_PASSWORD_TESTE: ${{ secrets.MKT_WORKER_DB_PASSWORD_TESTE }}
+      MKT_EXECUTOR_DB_PASSWORD_TESTE: ${{ secrets.MKT_EXECUTOR_DB_PASSWORD_TESTE }}
+      MKT_SETUP_DB_PASSWORD_TESTE: ${{ secrets.MKT_SETUP_DB_PASSWORD_TESTE }}
+      N8N_NOTIFIER_DB_PASSWORD_TESTE: ${{ secrets.N8N_NOTIFIER_DB_PASSWORD_TESTE }}
+      MOTIVO: ${{ vars.RLS_MOTIVO == '1' && '1' || '' }}
+      # Recria o projeto de teste: tira o gatilho do CSP-MKT em auth.users, apaga os sete esquemas e o histórico de
+      # migrações. Só existe neste job, com a conexão do projeto de teste.
+      SQL_APAGAR_ESQUEMAS: |
+        do $$
+        declare
+          r record;
+        begin
+          for r in select t.tgname
+                     from pg_trigger t
+                     join pg_proc p on p.oid = t.tgfoid
+                     join pg_namespace n on n.oid = p.pronamespace
+                    where t.tgrelid = 'auth.users'::regclass and not t.tgisinternal
+                      and n.nspname in ('mkt', 'api', 'authz', 'ingest', 'notify', 'private', 'setup') loop
+            execute format('drop trigger %I on auth.users', r.tgname);
+          end loop;
+        end $$;
+        drop schema if exists mkt, api, authz, ingest, notify, private, setup cascade;
+        do $$
+        begin
+          if to_regclass('supabase_migrations.schema_migrations') is not null then
+            delete from supabase_migrations.schema_migrations;
+          end if;
+        end $$;
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # A CLI muda pouco no db push; fixe a versão aqui depois da primeira rodada (o passo seguinte mostra qual veio).
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Antes de apagar qualquer coisa: os segredos existem e a conexão do banco é do mesmo projeto que a API de teste
+      # (um endereço de produção colado no segredo errado para aqui).
+      - name: Ferramentas e segredos do projeto de teste
+        run: |
+          supabase --version
+          psql --version
+          for nome in SUPABASE_DB_URL_TESTE SUPABASE_URL_TESTE SUPABASE_ANON_KEY_TESTE SUPABASE_SERVICE_ROLE_KEY_TESTE \
+                      MKT_WORKER_DB_PASSWORD_TESTE MKT_EXECUTOR_DB_PASSWORD_TESTE MKT_SETUP_DB_PASSWORD_TESTE \
+                      N8N_NOTIFIER_DB_PASSWORD_TESTE; do
+            if [ -z "${!nome}" ]; then echo "Falta o segredo $nome."; exit 1; fi
+          done
+          node -e '
+            const api = new URL(process.env.SUPABASE_URL_TESTE).hostname.split(".")[0];
+            const db = new URL(process.env.SUPABASE_DB_URL_TESTE);
+            const usuario = decodeURIComponent(db.username);
+            const ref = usuario.includes(".") ? usuario.split(".").slice(1).join(".") : db.hostname.split(".")[1];
+            if (!/^[a-z0-9]{20}$/.test(api) || ref !== api) {
+              console.error("SUPABASE_DB_URL_TESTE e SUPABASE_URL_TESTE não são do mesmo projeto.");
+              process.exit(1);
+            }'
+
+      - name: Recriar o projeto de teste (apaga os sete esquemas e o histórico de migrações)
+        run: psql "$SUPABASE_DB_URL_TESTE" -X -q -v ON_ERROR_STOP=1 -c "$SQL_APAGAR_ESQUEMAS"
+
+      - name: Apagar logins de teste que sobraram de outra rodada
+        run: node scripts/testar-rls.mjs --limpar
+
+      - name: Aplicar as migrações (supabase db push, do zero)
+        run: |
+          echo y | supabase db push --db-url "$SUPABASE_DB_URL_TESTE"
+          psql "$SUPABASE_DB_URL_TESTE" -X -q -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
+
+      - name: Senha dos papéis de serviço (verificador SCRAM; a senha não aparece)
+        run: |
+          node scripts/senha-dos-papeis.mjs mkt_worker=MKT_WORKER_DB_PASSWORD_TESTE \
+            mkt_executor=MKT_EXECUTOR_DB_PASSWORD_TESTE mkt_setup=MKT_SETUP_DB_PASSWORD_TESTE \
+            n8n_notifier=N8N_NOTIFIER_DB_PASSWORD_TESTE \
+            | psql "$SUPABASE_DB_URL_TESTE" -X -q -v ON_ERROR_STOP=1 -o /dev/null
+
+      # A conexão de cada papel é a do postgres com outro usuário e a senha do papel (pooler: papel.ref_do_projeto).
+      - name: Conexão de cada papel de serviço (mascarada)
+        run: |
+          for papel in mkt_setup mkt_worker mkt_executor n8n_notifier; do
+            nome=$(echo "$papel" | tr '[:lower:]' '[:upper:]')
+            url=$(node -e 'const u = new URL(process.env.SUPABASE_DB_URL_TESTE); const [, ...ref] = decodeURIComponent(u.username).split("."); u.username = encodeURIComponent([process.argv[1], ...ref].join(".")); u.password = encodeURIComponent(process.env[process.argv[2]] ?? ""); process.stdout.write(u.href);' "$papel" "${nome}_DB_PASSWORD_TESTE")
+            echo "::add-mask::$url"
+            echo "URL_${nome}=$url" >> "$GITHUB_ENV"
+          done
+
+      # O convite do primeiro dono vai pelo caminho da produção (setup.create_first_owner_invitation, papel mkt_setup);
+      # o resto são linhas inventadas que a API não cria (conta, campanha, rodada, credenciais de teste).
+      - name: Convite do primeiro dono de teste e dados inventados
+        run: |
+          psql "$URL_MKT_SETUP" -X -q -v ON_ERROR_STOP=1 -o /dev/null -v email="rls-dono-$RLS_ETIQUETA@teste.invalid" <<'SQL'
+          select setup.create_first_owner_invitation(:'email', 'Dono de teste');
+          SQL
+          dados=$(psql "$SUPABASE_DB_URL_TESTE" -X -q -At -v ON_ERROR_STOP=1 -v etiqueta="$RLS_ETIQUETA" -f scripts/testar-rls-dados.sql)
+          echo "RLS_DADOS=$(jq -c . <<<"$dados")" >> "$GITHUB_ENV"
+
+      - name: Teste de RLS pela API (dono com TOTP, gestor, sem perfil e sem login)
+        run: node scripts/testar-rls.mjs --executar ${MOTIVO:+--motivo}
+
+      - name: Casos de RLS na conexão de cada serviço (catálogo, mkt_worker, mkt_executor, n8n_notifier)
+        if: ${{ !cancelled() && env.RLS_DADOS != '' }}
+        run: |
+          leitura=$(jq -r .cred_leitura <<<"$RLS_DADOS")
+          escrita=$(jq -r .cred_escrita <<<"$RLS_DADOS")
+          rodada=$(jq -r .rodada_id <<<"$RLS_DADOS")
+          falhou=0
+          for par in postgres:SUPABASE_DB_URL_TESTE mkt_worker:URL_MKT_WORKER mkt_executor:URL_MKT_EXECUTOR \
+                     n8n_notifier:URL_N8N_NOTIFIER; do
+            papel=${par%%:*}
+            conexao=${par#*:}
+            psql "${!conexao}" -X -q -v ON_ERROR_STOP=1 -v papel="$papel" -v cred_leitura="$leitura" \
+              -v cred_escrita="$escrita" -v rodada_id="$rodada" ${MOTIVO:+-v motivo=1} \
+              -f scripts/testar-rls-servicos.sql || falhou=1
+          done
+          exit $falhou
+
+      - name: Limpar o projeto de teste (sempre, mesmo se um caso falhou)
+        if: always()
+        run: |
+          psql "$SUPABASE_DB_URL_TESTE" -X -q -v ON_ERROR_STOP=1 -c "$SQL_APAGAR_ESQUEMAS"
+          node scripts/testar-rls.mjs --limpar
+
+  producao:
+    name: Migrações em produção
+    needs: [verificar, mudancas]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.mudancas.outputs.migracoes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # O ambiente "producao" pede a aprovação manual do dono antes de rodar (Settings → Environments).
+    environment: producao
+    concurrency:
+      group: supabase-producao
+      cancel-in-progress: false
+    env:
+      SUPABASE_DB_URL_PRODUCAO: ${{ secrets.SUPABASE_DB_URL_PRODUCAO }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Aplicar as migrações (supabase db push)
+        run: |
+          echo y | supabase db push --db-url "$SUPABASE_DB_URL_PRODUCAO"
+          psql "$SUPABASE_DB_URL_PRODUCAO" -X -q -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
+
+      - name: Senha dos papéis de serviço (verificador SCRAM; a senha não aparece)
+        env:
+          MKT_WORKER_DB_PASSWORD: ${{ secrets.MKT_WORKER_DB_PASSWORD }}
+          MKT_EXECUTOR_DB_PASSWORD: ${{ secrets.MKT_EXECUTOR_DB_PASSWORD }}
+          MKT_SETUP_DB_PASSWORD: ${{ secrets.MKT_SETUP_DB_PASSWORD }}
+          N8N_NOTIFIER_DB_PASSWORD: ${{ secrets.N8N_NOTIFIER_DB_PASSWORD }}
+        run: |
+          node scripts/senha-dos-papeis.mjs mkt_worker=MKT_WORKER_DB_PASSWORD mkt_executor=MKT_EXECUTOR_DB_PASSWORD \
+            mkt_setup=MKT_SETUP_DB_PASSWORD n8n_notifier=N8N_NOTIFIER_DB_PASSWORD \
+            | psql "$SUPABASE_DB_URL_PRODUCAO" -X -q -v ON_ERROR_STOP=1 -o /dev/null
+
+      # Em produção, só o que não precisa de usuário: uma chamada sem login a cada esquema e função volta negada.
+      - name: Sem login em produção (RLS-01 a 03)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node scripts/testar-rls.mjs --executar --sem-login
+
+  primeiro-dono:
+    name: Convite do primeiro dono (manual, uma vez)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: producao
+    steps:
+      # O nome e o e-mail vêm do pedido e não passam por expressão nem por env: lidos do evento e mascarados antes de
+      # qualquer saída. O e-mail recebe o link do Supabase Auth; a pessoa define a senha nele e cadastra o segundo
+      # fator no primeiro acesso.
+      - name: Convite no banco (papel mkt_setup) e no Supabase Auth
+        env:
+          MKT_SETUP_DATABASE_URL: ${{ secrets.MKT_SETUP_DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          email=$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          nome=$(jq -r '.inputs.nome // ""' "$GITHUB_EVENT_PATH" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          echo "::add-mask::$email"
+          echo "::add-mask::$nome"
+          if ! [[ "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then echo "E-mail fora do formato."; exit 1; fi
+          if [ "${#nome}" -lt 2 ] || [ "${#nome}" -gt 80 ]; then echo "O nome precisa de 2 a 80 letras."; exit 1; fi
+
+          # 1. O convite no banco: o perfil de dono nasce dele quando a pessoa aceitar o link.
+          psql "$MKT_SETUP_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -o /dev/null -v email="$email" -v nome="$nome" <<'SQL'
+          select setup.create_first_owner_invitation(:'email', :'nome');
+          SQL
+
+          # 2. O convite do Supabase Auth, com a service_role (chave nova sb_… vai só no apikey).
+          corpo=$(jq -cn --arg email "$email" '{email: $email}')
+          cabecalhos=(-H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H 'Content-Type: application/json')
+          case "$SUPABASE_SERVICE_ROLE_KEY" in
+            sb_*) ;;
+            *) cabecalhos+=(-H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY") ;;
+          esac
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$SUPABASE_URL/auth/v1/invite" "${cabecalhos[@]}" --data "$corpo")
+          echo "Convite no Supabase Auth: HTTP $status"
+          [ "$status" = "200" ]

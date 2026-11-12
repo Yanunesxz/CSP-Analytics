@@ -162,7 +162,8 @@ Outros exports do store: `useDados(): Dados` (bruto), `store.recomecar()`, `stor
 `filtrarPeriodo(linhas, campo, { inicio, fim })`, `filtrarMarca`, `metrica`, `razao`, `soma`, `contagem`, `ETAPAS`,
 e as regras de lead e de cliente novo: `leadsFiltrados(dados, filtros)`, `chegouAoPedido(lead)` e
 `clientesNovos(leads, janela)` (um por cliente, no dia do 1º pedido), e os recortes de campanha:
-`campanhasFiltradas(dados, filtros)` e `comCampanha(leads, campanhas)` (atribuição pela UTM). Use essas, nunca uma
+`campanhasFiltradas(dados, filtros)` e `comCampanha(leads, campanhas)` (atribuição pela UTM), e `enviados(pedidos)`
+(só pedido enviado conta: orçamento e cancelado ficam fora). Use essas, nunca uma
 cópia: nenhuma regra em dois lugares. Dinheiro sempre em centavos.
 
 ## 6. Componentes — `src/components/ui` (importe de `'../../components/ui'`)
