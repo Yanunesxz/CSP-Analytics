@@ -1,11 +1,12 @@
 /**
  * Conferências do catálogo para os testes da camada 1.
  *
- *   violacoes(consulta)  o que fere as regras de toda migração, nos sete esquemas (lista vazia = tudo certo):
- *                        tabela sem RLS; anon lendo; PUBLIC, anon ou authenticated gravando direto (RLS-04,
- *                        RLS-29); sequência aberta a eles; função (definer ou invoker) sem search_path =
- *                        pg_catalog, pg_temp; função executável por PUBLIC ou anon; papel de serviço com bypassrls
- *                        (RLS-27)
+ *   violacoes(consulta)  o que fere as regras de toda migração, nos sete esquemas (lista vazia = tudo certo), pelo
+ *                        mesmo arquivo que o dono roda em produção (scripts/conferir-catalogo.sql): esquema ou papel
+ *                        de serviço que falta; dono que não é o postgres; tabela sem RLS; anon lendo; PUBLIC, anon
+ *                        ou authenticated gravando direto (RLS-04, RLS-29); sequência aberta a eles; função (definer
+ *                        ou invoker) sem search_path = pg_catalog, pg_temp; função executável por PUBLIC ou anon;
+ *                        papel de serviço com bypassrls (RLS-27)
  *   retrato(consulta)    o catálogo em forma comparável (esquemas, papéis, privilégios, funções, tabelas,
  *                        colunas, políticas, gatilhos, restrições e quantas linhas cada tabela tem)
  *   domainsDoMkt(consulta)  cada lista fechada (domain de mkt) com os códigos do check; codigosDoDomain(…) só
@@ -13,6 +14,7 @@
  *
  * `consulta` é `consultaDe(db)` fora de um caso, ou `s.linhas` dentro de um caso.
  */
+import { readFileSync } from 'node:fs';
 import type { PGlite } from '@electric-sql/pglite';
 
 /** Os sete esquemas do CSP-MKT (decisão 0013). */
@@ -49,54 +51,12 @@ function acl(coluna: string): string {
               from aclexplode(${coluna}) a) x), '') end`;
 }
 
-// O "case" protege a ordem: o Postgres não garante avaliar o "and" da esquerda para a direita.
-const REGRAS = `
-  with rel as (
-    select c.oid, c.relkind, c.relrowsecurity
-      from pg_class c join pg_namespace n on n.oid = c.relnamespace
-     where n.nspname = any($1)
-  ), fun as (
-    select p.oid, p.proconfig, p.proacl
-      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-     where n.nspname = any($1)
-  ), api(papel) as (values ('public'), ('anon'), ('authenticated'))
-  select 'tabela sem RLS: ' || oid::regclass::text as v
-    from rel where relkind in ('r', 'p') and not relrowsecurity
-  union all
-  select 'anon lê: ' || oid::regclass::text
-    from rel
-   where case when relkind in ('r', 'p', 'v', 'm', 'f') then has_table_privilege('anon', oid, 'select') end
-  union all
-  select 'grava pela API (' || a.papel || '): ' || r.oid::regclass::text
-    from rel r cross join api a
-   where case when r.relkind in ('r', 'p', 'v', 'm', 'f')
-              then has_table_privilege(a.papel, r.oid, 'insert, update, delete, truncate') end
-  union all
-  select 'sequência aberta (' || a.papel || '): ' || r.oid::regclass::text
-    from rel r cross join api a
-   where case when r.relkind = 'S' then has_sequence_privilege(a.papel, r.oid, 'usage, select, update') end
-  union all
-  -- Toda função, definer ou invoker: com o caminho vazio (ou sem pg_temp no fim), o esquema temporário da sessão
-  -- é procurado primeiro para tipos e tabelas, e o pg_temp de quem chama mudaria o que a função usa.
-  select 'função sem search_path=pg_catalog, pg_temp: ' || oid::regprocedure::text
-    from fun where not coalesce('search_path=pg_catalog, pg_temp' = any(proconfig), false)
-  union all
-  select 'executável por PUBLIC: ' || oid::regprocedure::text
-    from fun
-   where proacl is null
-      or exists (select 1 from aclexplode(proacl) a where a.grantee = 0 and a.privilege_type = 'EXECUTE')
-  union all
-  select 'executável por anon: ' || oid::regprocedure::text
-    from fun where has_function_privilege('anon', oid, 'execute')
-  union all
-  select 'papel de serviço com atributo proibido: ' || rolname
-    from pg_roles
-   where rolname in ('mkt_worker', 'mkt_executor', 'mkt_setup', 'n8n_notifier')
-     and (rolsuper or rolbypassrls or rolcreaterole or rolcreatedb or rolreplication)
-  order by 1`;
+/** A conferência do catálogo, o mesmo arquivo que o dono roda no SQL Editor de produção (as regras ficam só lá). */
+export const ARQUIVO_DA_CONFERENCIA = new URL('../../../scripts/conferir-catalogo.sql', import.meta.url);
+const CONFERENCIA = readFileSync(ARQUIVO_DA_CONFERENCIA, 'utf8');
 
 export async function violacoes(consulta: Consulta): Promise<string[]> {
-  return (await consulta<{ v: string }>(REGRAS, [ESQUEMAS])).map((l) => l.v);
+  return (await consulta<{ achado: string }>(CONFERENCIA)).map((l) => l.achado);
 }
 
 const PARTES_DO_RETRATO: Record<string, string> = {

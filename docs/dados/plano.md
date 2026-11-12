@@ -78,6 +78,15 @@ A senha dos papéis de serviço entra por `alter role … with login password` n
 imprime. Nada é colado no SQL Editor (decisão 0006). "Mesclar sem aplicar não é mesclar": PR mesclado com migração
 que não subiu entra em "Quebrado ou arriscado" no `ESTADO.md`.
 
+> **Nota de 12/11/2026:** as migrações chegaram ao Supabase de produção pela integração do GitHub do Supabase, na
+> junção do PR #1, antes de o CI voltar e antes do teste de RLS no projeto de teste. O `supabase db push` do job de
+> produção aplica só as que faltarem no histórico de lá. Como a volta do CI não muda migração, esse job precisa também
+> de um gatilho manual, com a aprovação do dono, para dar a senha aos papéis de serviço. O "Deploy to production" da
+> integração fica desligado, também depois de o CI voltar: em produção, quem aplica é o job de produção, com a
+> aprovação manual do dono (linha "Push na `main`" da tabela acima); religá-lo pede decisão nova. A conferência do
+> catálogo de produção é `scripts/conferir-catalogo.sql` (só leitura; não é migração nem senha). A situação está no
+> `ESTADO.md`.
+
 Isso vale para o banco do CSP-MKT. O CRM não tem CI de migração: a migração de leitura de lá (o papel
 `csp_mkt_reader`, sem login, e as views do esquema `csp_mkt`) é rodada pelo dono no SQL Editor do CRM. O worker não
 tem senha no banco do CRM: lê pela API de dados, com um token do papel, que vai direto para o Railway (decisão 0040).
