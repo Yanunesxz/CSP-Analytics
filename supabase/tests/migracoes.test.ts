@@ -1,6 +1,7 @@
 // Regras de toda migração (docs/dados/plano.md, "Ordem das migrações"): nome com versão única, cabeçalho do padrão,
 // RLS ligada na mesma migração que cria a tabela, toda função com search_path = pg_catalog, pg_temp, nenhuma função
 // aberta a PUBLIC ou anon, rodar de novo sem erro, e o "Como reverter" de cada uma, da última até a 01.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   type Migracao,
@@ -13,7 +14,14 @@ import {
   novoBanco,
   postgres,
 } from './apoio/banco';
-import { type Consulta, consultaDe, retrato, violacoes } from './apoio/catalogo';
+import {
+  ARQUIVO_DA_CONFERENCIA,
+  type Consulta,
+  ESQUEMAS,
+  consultaDe,
+  retrato,
+  violacoes,
+} from './apoio/catalogo';
 
 const migracoes = lerMigracoes();
 
@@ -225,8 +233,12 @@ describe('aplicar as migrações', () => {
           create function api.do_anon() returns int language sql set search_path = pg_catalog, pg_temp as 'select 1';
           grant execute on function api.do_anon() to anon;
           alter role n8n_notifier bypassrls;
+          -- O privilégio de uma coluna só também conta (e não a primeira coluna).
+          grant select (id) on mkt.crm_origin_map to anon;
+          grant update (raw_value) on mkt.crm_origin_map to authenticated;
         `);
         expect(await violacoes(s.linhas)).toEqual([
+          'anon lê: mkt.crm_origin_map',
           'anon lê: mkt.sem_rls',
           'executável por PUBLIC: api.aberta()',
           'executável por anon: api.aberta()',
@@ -236,6 +248,7 @@ describe('aplicar as migrações', () => {
           'função sem search_path=pg_catalog, pg_temp: private.caminho_invertido()',
           'função sem search_path=pg_catalog, pg_temp: private.caminho_vazio()',
           'função sem search_path=pg_catalog, pg_temp: private.sem_caminho()',
+          'grava pela API (authenticated): mkt.crm_origin_map',
           'grava pela API (authenticated): mkt.sem_rls',
           'papel de serviço com atributo proibido: n8n_notifier',
           'sequência aberta (authenticated): mkt.seq_aberta',
@@ -245,6 +258,42 @@ describe('aplicar as migrações', () => {
     } finally {
       await db.close();
     }
+  });
+
+  // A conferência roda também no SQL Editor de produção, onde as migrações podem ter entrado por outro caminho
+  // (ESTADO.md, 12/11/2026): o dono de cada objeto e o que falta contam lá.
+  it('as regras acusam esquema ou papel de serviço que falta e dono que não é o postgres', async () => {
+    const db = await abrirBanco();
+    try {
+      await caso(db, postgres, async (s) => {
+        await s.exec(`
+          create role zz_outro_dono;
+          alter schema notify owner to zz_outro_dono;
+          alter table mkt.crm_origin_map owner to zz_outro_dono;
+          alter view mkt.v_account_month owner to zz_outro_dono;
+          alter function private.set_updated_at() owner to zz_outro_dono;
+          drop schema setup cascade;
+          drop owned by n8n_notifier;
+          drop role n8n_notifier;
+        `);
+        expect(await violacoes(s.linhas)).toEqual([
+          'dono zz_outro_dono no esquema notify',
+          'dono zz_outro_dono: mkt.crm_origin_map',
+          'dono zz_outro_dono: mkt.v_account_month',
+          'dono zz_outro_dono: private.set_updated_at()',
+          'esquema que falta: setup',
+          'papel de serviço que falta: n8n_notifier',
+        ]);
+      });
+    } finally {
+      await db.close();
+    }
+  });
+
+  it('a conferência do catálogo olha os mesmos sete esquemas dos testes', () => {
+    const sql = readFileSync(ARQUIVO_DA_CONFERENCIA, 'utf8');
+    const lista = /select unnest\(array\[([^\]]+)\]\)/.exec(sql)?.[1] ?? '';
+    expect(lista.split(',').map((e) => e.trim().replace(/'/g, ''))).toEqual([...ESQUEMAS]);
   });
 
   it('o retrato percebe a mudança que rodar de novo não pode fazer', async () => {
