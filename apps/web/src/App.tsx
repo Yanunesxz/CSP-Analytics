@@ -12,6 +12,7 @@ import { Shell } from './components/layout/Shell';
 import { Esqueleto } from './components/ui/Esqueleto';
 
 const VisaoGeral = lazy(() => import('./modules/visao-geral'));
+const ResumoSimples = lazy(() => import('./modules/resumo-simples'));
 const ChegadaDeClientes = lazy(() => import('./modules/chegada-de-clientes'));
 const BaseDeClientes = lazy(() => import('./modules/base-de-clientes'));
 const Leads = lazy(() => import('./modules/leads'));
@@ -46,6 +47,14 @@ export function App() {
             element={
               <Pagina caminho="/">
                 <VisaoGeral />
+              </Pagina>
+            }
+          />
+          <Route
+            path="/resumo"
+            element={
+              <Pagina caminho="/resumo">
+                <ResumoSimples />
               </Pagina>
             }
           />

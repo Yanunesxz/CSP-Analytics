@@ -108,12 +108,19 @@ function porId<T extends { id: string }>(lista: readonly T[]): Map<string, T> {
   return new Map(lista.map((item) => [item.id, item]));
 }
 
-/** Só os pedidos enviados: orçamento e cancelado não entram em contagem nem em receita. */
-function enviados(pedidos: readonly Order[]): Order[] {
+/**
+ * Só os pedidos enviados: orçamento e cancelado não entram em contagem nem em receita.
+ * Exportada para o 1º pedido do Resumo simples seguir a mesma regra.
+ */
+export function enviados(pedidos: readonly Order[]): Order[] {
   return pedidos.filter((p) => p.status === 'sent');
 }
 
-function campanhasFiltradas(dados: Dados, filtros: Filtros): Campaign[] {
+/**
+ * Campanhas que respeitam marca, canal, operador e campanha.
+ * Exportada para as consultas de cada tela usarem o mesmo recorte (nenhuma regra em dois lugares).
+ */
+export function campanhasFiltradas(dados: Dados, filtros: Filtros): Campaign[] {
   return filtrarMarca(dados.campaigns, filtros.marca).filter(
     (c) =>
       (!filtros.canal || c.platform === filtros.canal) &&
@@ -166,7 +173,8 @@ export function clientesNovos(leads: readonly Lead[], janela: Janela): Lead[] {
   });
 }
 
-function comCampanha(leads: readonly Lead[], campanhas: readonly Campaign[]): Lead[] {
+/** Leads atribuídos a uma destas campanhas, pela `utmCampaign` (decisão 0009). */
+export function comCampanha(leads: readonly Lead[], campanhas: readonly Campaign[]): Lead[] {
   const utms = new Set(campanhas.map((c) => c.utmCampaign));
   return leads.filter((l) => l.utmCampaign !== null && utms.has(l.utmCampaign));
 }

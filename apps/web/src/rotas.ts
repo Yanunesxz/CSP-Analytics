@@ -1,6 +1,7 @@
 /** Todas as rotas do sistema: o menu, o Diagnóstico e o docs/telas/README.md seguem esta lista. */
 export const ROTAS = [
   '/',
+  '/resumo',
   '/chegada',
   '/base',
   '/leads',
