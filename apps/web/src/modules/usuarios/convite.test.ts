@@ -42,7 +42,7 @@ describe('validarConvite', () => {
   });
 
   it('o convite oferece os dois papéis, com o gestor de tráfego como padrão', () => {
-    expect([...PAPEIS_DO_CONVITE].sort()).toEqual(['owner', 'traffic_manager']);
+    expect([...PAPEIS_DO_CONVITE].sort()).toEqual(['owner', 'summary_viewer', 'traffic_manager']);
     expect(PAPEL_PADRAO_DO_CONVITE).toBe('traffic_manager');
     expect(PAPEIS_DO_CONVITE[0]).toBe(PAPEL_PADRAO_DO_CONVITE);
   });

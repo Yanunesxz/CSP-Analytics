@@ -1,9 +1,12 @@
 /**
  * Barra do topo (.yn-topbar): botão do menu no celular, eyebrow + h1 da página, ação principal,
- * .yn-segmented "Visão" (Visualizador · Gestor de tráfego, ligado a ?visao=) e botão lua/sol.
+ * .yn-segmented "Visão" (Visualizador · Gestor de tráfego, ligado a ?visao=) e botão lua/sol. A "Visão" só muda as
+ * telas de números: some para quem não vê números (o leitor do resumo, decisão 0043).
  */
 
 import { Eye, Menu, Moon, SlidersHorizontal, Sun } from 'lucide-react';
+import { pode } from '@csp-mkt/shared';
+import { useSessao } from '../../lib/auth';
 import { atualizadoHa } from '../../lib/format';
 import { alternarTema } from '../../lib/tema';
 import { useFiltros, type Visao } from '../../lib/url-state';
@@ -22,6 +25,7 @@ const VISOES: Array<{ codigo: Visao; rotulo: string; icone: typeof Eye }> = [
 export function Topbar({ navAberta, aoAbrirMenu }: TopbarProps) {
   const { pagina } = usePagina();
   const { filtros, definir } = useFiltros();
+  const { perfil } = useSessao();
 
   return (
     <header className="yn-topbar">
@@ -43,19 +47,21 @@ export function Topbar({ navAberta, aoAbrirMenu }: TopbarProps) {
         ) : null}
       </div>
       {pagina.acao}
-      <div className="yn-segmented" role="group" aria-label="Visão">
-        {VISOES.map((v) => (
-          <button
-            key={v.codigo}
-            type="button"
-            aria-pressed={filtros.visao === v.codigo}
-            onClick={() => definir({ visao: v.codigo })}
-          >
-            <v.icone strokeWidth={1.75} aria-hidden="true" />
-            {v.rotulo}
-          </button>
-        ))}
-      </div>
+      {pode(perfil?.role, 'ver_numeros') ? (
+        <div className="yn-segmented" role="group" aria-label="Visão">
+          {VISOES.map((v) => (
+            <button
+              key={v.codigo}
+              type="button"
+              aria-pressed={filtros.visao === v.codigo}
+              onClick={() => definir({ visao: v.codigo })}
+            >
+              <v.icone strokeWidth={1.75} aria-hidden="true" />
+              {v.rotulo}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <button
         className="yn-btn yn-btn--ghost yn-btn--icon mkt-topbar__tema"
         type="button"

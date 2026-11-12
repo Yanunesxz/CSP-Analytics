@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { pode, rotulo, rotuloMarca, type Acao } from '@csp-mkt/shared';
+import { pode, rotulo, rotuloMarca, type Acao, type Role } from '@csp-mkt/shared';
 import { iniciais, useSessao } from '../../lib/auth';
 import { alternarTema } from '../../lib/tema';
 import { useFiltros, type Marca } from '../../lib/url-state';
@@ -56,26 +56,26 @@ export const GRUPOS_DO_MENU: Grupo[] = [
   {
     rotulo: null,
     itens: [
-      { para: '/', rotulo: 'Visão geral', icone: LayoutGrid, fim: true },
-      { para: '/resumo', rotulo: 'Resumo simples', icone: FileText },
+      { para: '/', rotulo: 'Visão geral', icone: LayoutGrid, fim: true, acao: 'ver_numeros' },
+      { para: '/resumo', rotulo: 'Resumo simples', icone: FileText, acao: 'ver_resumo' },
     ],
   },
   {
     rotulo: 'Clientes',
     itens: [
-      { para: '/chegada', rotulo: 'Chegada de clientes', icone: Users },
-      { para: '/base', rotulo: 'Base de clientes', icone: UserCheck },
+      { para: '/chegada', rotulo: 'Chegada de clientes', icone: Users, acao: 'ver_numeros' },
+      { para: '/base', rotulo: 'Base de clientes', icone: UserCheck, acao: 'ver_numeros' },
       { para: '/leads', rotulo: 'Leads', icone: Inbox, acao: 'ver_leads' },
     ],
   },
   {
     rotulo: 'Canais',
     itens: [
-      { para: '/canais/meta', rotulo: 'Meta Ads', icone: Megaphone },
-      { para: '/canais/tiktok', rotulo: 'TikTok Ads', icone: Megaphone },
-      { para: '/canais/google', rotulo: 'Google Ads', icone: Megaphone },
-      { para: '/instagram', rotulo: 'Instagram', icone: Camera },
-      { para: '/seo-geo', rotulo: 'SEO e GEO', icone: Search },
+      { para: '/canais/meta', rotulo: 'Meta Ads', icone: Megaphone, acao: 'ver_numeros' },
+      { para: '/canais/tiktok', rotulo: 'TikTok Ads', icone: Megaphone, acao: 'ver_numeros' },
+      { para: '/canais/google', rotulo: 'Google Ads', icone: Megaphone, acao: 'ver_numeros' },
+      { para: '/instagram', rotulo: 'Instagram', icone: Camera, acao: 'ver_numeros' },
+      { para: '/seo-geo', rotulo: 'SEO e GEO', icone: Search, acao: 'ver_numeros' },
     ],
   },
   {
@@ -92,6 +92,17 @@ export const GRUPOS_DO_MENU: Grupo[] = [
     ],
   },
 ];
+
+/**
+ * A primeira tela do menu que o papel abre. Quem não abre a Visão geral (o leitor do resumo, decisão 0043) entra
+ * por ela: a rota "/" leva até lá.
+ */
+export function primeiraTelaDoPapel(role: Role | null | undefined): string | null {
+  for (const grupo of GRUPOS_DO_MENU) {
+    for (const item of grupo.itens) if (!item.acao || pode(role, item.acao)) return item.para;
+  }
+  return null;
+}
 
 /** Grupo (eyebrow) de uma rota, para o PageHeader e o título. */
 export function grupoDaRota(pathname: string): string {

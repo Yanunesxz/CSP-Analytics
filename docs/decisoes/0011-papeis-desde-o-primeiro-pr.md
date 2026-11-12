@@ -19,4 +19,6 @@ Na v1 só o dono entra; o gestor de tráfego humano entra depois. O padrão (`do
 ## Consequências
 
 - O portão da fase 3 testa a RLS com um usuário `owner` e um `traffic_manager` pela API, mesmo sem gestor real.
+- Complementada pela [0043](0043-papel-so-do-resumo.md) (12/11/2026): o terceiro papel, `summary_viewer`, vê só o
+  Resumo simples, e o portão testa também um usuário dele.
 - O módulo Usuários existe na v1 com um usuário.

@@ -2,12 +2,14 @@
  * Sessão e papel.
  *
  * Modo demonstração (sem `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`): entra direto como o
- * dono de exemplo, sem login. Modo Supabase: a estrutura está aqui; o cliente `@supabase/supabase-js`
- * e a tela de login entram na fase 3/4, e `profiles.role` passa a vir do banco (decisão 0011).
+ * dono de exemplo, sem login. Para mostrar a tela de outro papel, `?papel=` no endereço de abertura
+ * (`/resumo?papel=summary_viewer` abre como o leitor do resumo, decisão 0043); só na demonstração.
+ * Modo Supabase: a estrutura está aqui; o cliente `@supabase/supabase-js` e a tela de login entram
+ * na fase 3/4, e `profiles.role` passa a vir do banco (decisão 0011).
  */
 
 import { useSyncExternalStore } from 'react';
-import type { Profile } from '@csp-mkt/shared';
+import { LISTAS, rotulo, type Profile, type Role } from '@csp-mkt/shared';
 
 export type ModoDeAcesso = 'demonstracao' | 'supabase';
 
@@ -18,6 +20,16 @@ export const PERFIL_DEMONSTRACAO: Profile = {
   email: '',
   role: 'owner',
 };
+
+/**
+ * O perfil da demonstração com o papel de `?papel=` (só código da lista fechada; o resto é ignorado). Puro, com teste.
+ */
+export function perfilDaDemonstracao(busca: string): Profile {
+  const papel = new URLSearchParams(busca).get('papel');
+  if (!papel || papel === 'owner' || !Object.hasOwn(LISTAS.role, papel)) return PERFIL_DEMONSTRACAO;
+  const role = papel as Role;
+  return { ...PERFIL_DEMONSTRACAO, id: `demo-${role}`, name: `${rotulo('role', role)} (demonstração)`, role };
+}
 
 export function temSupabase(): boolean {
   return Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
@@ -42,7 +54,10 @@ interface Estado {
 
 let estado: Estado =
   modoDeAcesso() === 'demonstracao'
-    ? { perfil: PERFIL_DEMONSTRACAO, carregando: false }
+    ? {
+        perfil: perfilDaDemonstracao(typeof window === 'undefined' ? '' : window.location.search),
+        carregando: false,
+      }
     : { perfil: null, carregando: true };
 
 const ouvintes = new Set<() => void>();

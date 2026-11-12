@@ -116,6 +116,7 @@ export function ehAssistenteDeIa(referrerHost: string | null | undefined): boole
  */
 export type Acao =
   | 'ver_numeros'
+  | 'ver_resumo'
   | 'ver_leads'
   | 'ver_lead_dado_pessoal'
   | 'ver_trafego_ia'
@@ -131,6 +132,7 @@ export type Acao =
 const PERMISSOES: Record<Role, readonly Acao[]> = {
   owner: [
     'ver_numeros',
+    'ver_resumo',
     'ver_leads',
     'ver_trafego_ia',
     'operar_trafego_ia',
@@ -144,12 +146,15 @@ const PERMISSOES: Record<Role, readonly Acao[]> = {
   ],
   traffic_manager: [
     'ver_numeros',
+    'ver_resumo',
     'ver_leads',
     'ver_trafego_ia',
     'operar_trafego_ia',
     'ver_conectores',
     'editar_configuracoes',
   ],
+  // Decisão 0043: só o Resumo simples e as próprias configurações (tema, marca padrão, meus filtros).
+  summary_viewer: ['ver_resumo', 'editar_configuracoes'],
 };
 
 /** Lista de ações permitidas ao papel. Papel desconhecido não pode nada. */
@@ -167,6 +172,14 @@ export function pode(role: Role | null | undefined, acao: Acao): boolean {
  * É a mesma ação que esconde o item do menu (decisão 0011): o menu e a rota nunca divergem.
  */
 export const ROTAS_PROTEGIDAS: Readonly<Record<string, Acao>> = {
+  // As telas de números: todo papel menos o leitor do resumo (decisão 0043)
+  '/': 'ver_numeros',
+  '/resumo': 'ver_resumo',
+  '/chegada': 'ver_numeros',
+  '/base': 'ver_numeros',
+  '/canais': 'ver_numeros',
+  '/instagram': 'ver_numeros',
+  '/seo-geo': 'ver_numeros',
   '/leads': 'ver_leads',
   '/trafego': 'ver_trafego_ia',
   '/conectores': 'ver_conectores',

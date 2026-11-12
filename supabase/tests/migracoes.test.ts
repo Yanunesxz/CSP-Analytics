@@ -19,8 +19,9 @@ const migracoes = lerMigracoes();
 
 /**
  * Os comandos do "Como reverter" do cabeçalho de uma migração. Um comando começa na linha que abre com drop, alter,
- * select, revoke ou grant e vai até o ";" fora de aspas; a linha de texto fora de um comando (a explicação da 09) fica
- * de fora, e o "-- …" no fim da linha é comentário.
+ * select, revoke, grant ou delete (a 11a tira as linhas de role_permissions antes de voltar a lista) e vai até o ";"
+ * fora de aspas; a linha de texto fora de um comando (a explicação da 09) fica de fora, e o "-- …" no fim da linha é
+ * comentário.
  */
 function comandosDeReverter(m: Migracao): string[] {
   const cabecalho = m.sql.split('\n');
@@ -32,7 +33,7 @@ function comandosDeReverter(m: Migracao): string[] {
   let atual = '';
   for (const bruta of linhas.slice(inicio + 1, conferir < 0 ? linhas.length : conferir)) {
     const linha = bruta.replace(/^--\s?/, '');
-    if (!atual && !/^\s*(drop|alter|select|revoke|grant)\b/i.test(linha)) continue;
+    if (!atual && !/^\s*(drop|alter|select|revoke|grant|delete)\b/i.test(linha)) continue;
     let aspas = false;
     for (let i = 0; i < linha.length; i += 1) {
       const c = linha.charAt(i);

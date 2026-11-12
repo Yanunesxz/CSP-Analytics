@@ -10,14 +10,16 @@
 
 import { Copy } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
+import { pode } from '@csp-mkt/shared';
 import { PageHeader } from '../../components/layout/pagina';
 import { BarraDeFiltros, Tela, useToast } from '../../components/ui';
 import { resumoSimples } from '../../data/queries/resumo-simples';
 import { useConsulta } from '../../data/store';
+import { useSessao } from '../../lib/auth';
 import { EmPoucasPalavras } from './EmPoucasPalavras';
 import { Numeros } from './Numeros';
-import { OndeFoiGasto } from './OndeFoiGasto';
 import { NoCelular } from './NoCelular';
+import { OndeFoiGasto } from './OndeFoiGasto';
 import { Palavras } from './Palavras';
 import { Campanhas, PorCanalEMarca } from './Tabelas';
 import { linkDoResumo } from './textos';
@@ -25,6 +27,8 @@ import { linkDoResumo } from './textos';
 export default function ResumoSimples() {
   const resultado = useConsulta(resumoSimples);
   const { avisar } = useToast();
+  const { perfil } = useSessao();
+  const veConectores = pode(perfil?.role, 'ver_conectores');
   const { marca, periodo, comparar } = resultado.filtros;
 
   const copiarLink = useCallback(async () => {
@@ -52,11 +56,20 @@ export default function ResumoSimples() {
       <BarraDeFiltros campos={[]} />
       <Tela
         resultado={resultado}
-        vazio={{
-          titulo: 'Nenhum número ainda',
-          texto:
-            'O resumo aparece quando os conectores trazem os primeiros dados. Veja o que falta ligar em Conectores.',
-        }}
+        vazio={
+          // Quem não abre Conectores (o leitor do resumo, decisão 0043) não recebe o link para lá
+          veConectores
+            ? {
+                titulo: 'Nenhum número ainda',
+                texto:
+                  'O resumo aparece quando os conectores trazem os primeiros dados. Veja o que falta ligar em Conectores.',
+              }
+            : {
+                titulo: 'Nenhum número ainda',
+                texto: 'O resumo aparece quando os primeiros números de anúncio chegarem. Volte mais tarde.',
+                acao: null,
+              }
+        }
       >
         {(r, estado) => (
           <>

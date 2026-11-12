@@ -1,7 +1,7 @@
 // Fechamento da camada 1 do teste de RLS (docs/dados/papeis-e-rls.md, "Casos"), sobre o que existe até a migração 11
 // adiantada. Cada caso varre o catálogo (toda tabela, view e função dos sete esquemas), para o que a próxima migração
 // criar entrar no caso sozinho; o teste da migração de cada função confere o detalhe dela. Aqui: RLS-01 a 05, 17 a 19,
-// 20 e 21 (o que já existe), 22 a 24, 27 a 30 e 34. RLS-31 e RLS-32 são só da camada 2 (scripts/testar-rls.mjs); o que
+// 20 e 21 (o que já existe), 22 a 24, 27 a 30, 34 e 36 (o leitor do resumo, decisão 0043). RLS-31 e RLS-32 são só da camada 2 (scripts/testar-rls.mjs); o que
 // volta na fase 4 (as api.kpi_* e as views da migração 12, a fila do n8n da migração 13) está em it.todo. Dados
 // inventados de fixtures/usuarios.sql, marketing.sql, trafego.sql e conectores.sql.
 import type { PGlite } from '@electric-sql/pglite';
@@ -13,6 +13,7 @@ import {
   anon,
   aplicarFixture,
   caso,
+  erroDoBanco,
   postgres,
   servico,
   usuario,
@@ -180,6 +181,98 @@ describe('quem lê pela API (RLS-05, 20 e 21)', () => {
   it.todo(
     'RLS-01, 05, 20 e 21 (fase 4): as api.kpi_* da migração 12 para anon, o gestor, o perfil inativo e o login sem perfil',
   );
+});
+
+describe('o leitor do resumo (RLS-36, decisão 0043)', () => {
+  const LEITOR = '00000000-0000-4000-8000-0000000000c1';
+
+  /** O dono convida o leitor; o login do convite ganha o perfil summary_viewer e entra na sessão. */
+  async function comoLeitor<T>(fn: (s: Sessao) => Promise<T>): Promise<T> {
+    return caso(db, postgres, async (s) => {
+      await s.exec(`insert into mkt.invitations (email_normalized, display_name, role, invited_by, expires_at)
+                    values ('leitor.teste@example.com', 'Leitor de teste', 'summary_viewer', '${DONO}',
+                            now() + interval '7 days')`);
+      await s.exec(`insert into auth.users (id, email, invited_at)
+                    values ('${LEITOR}', 'leitor.teste@example.com', now())`);
+      await s.como(usuario(LEITOR, 'aal2'));
+      return fn(s);
+    });
+  }
+
+  it('o convite vira perfil ativo do papel, que pode só ver o resumo e mexer nas próprias configurações', async () => {
+    await comoLeitor(async (s) => {
+      expect(await s.linhas('select role::text, is_active from api.my_profile()')).toEqual([
+        { role: 'summary_viewer', is_active: true },
+      ]);
+      expect(
+        (await s.linhas<{ action: string; is_allowed: boolean }>('select * from api.my_permissions()')).map(
+          (l) => [l.action, l.is_allowed],
+        ),
+      ).toEqual([
+        ['edit_settings', true],
+        ['view_summary', true],
+      ]);
+    });
+  });
+
+  it('RLS-36: não vê linha de tabela nem de view; só o próprio perfil, o quadro de permissões e os feriados', async () => {
+    const [feriados, permissoes] = await caso(db, postgres, async (s) => [
+      await s.valor<number>('select count(*)::int from mkt.holidays'),
+      await s.valor<number>('select count(*)::int from mkt.role_permissions'),
+    ]);
+    const contagem = await comoLeitor(linhasVisiveis);
+    expect(Object.keys(contagem).length).toBeGreaterThanOrEqual(46);
+    expect(
+      Object.entries(contagem)
+        .filter(([, n]) => n > 0)
+        .map(([rel, n]) => `${rel}=${n}`),
+    ).toEqual([`mkt.holidays=${feriados}`, 'mkt.profiles=1', `mkt.role_permissions=${permissoes}`]);
+  });
+
+  it('RLS-36: toda função de api que lê dado da empresa ou grava em nome dela dá PT403; as da própria conta passam', async () => {
+    // Passam da permissão, mas a chamada inerte é recusada pelo que pede: o aviso semanal pede view_numbers
+    // (mkt.notice_default), então o leitor não o assina; e o filtro de id zero não existe.
+    const RECUSA_DEPOIS_DA_PERMISSAO: Readonly<Record<string, string>> = {
+      save_notification_preference: 'PT422',
+      delete_saved_filter: 'PT404',
+    };
+    const PROPRIA_CONTA = [
+      'check_text',
+      'list_role_permissions',
+      'my_notification_preferences',
+      'my_permissions',
+      'my_profile',
+      'save_filter',
+      'save_profile_preferences',
+    ];
+    const resultado = await comoLeitor(async (s) => {
+      const r: Record<string, string> = {};
+      for (const [nome, f] of Object.entries(FUNCOES_DE_API)) {
+        await s.exec('savepoint leitor');
+        try {
+          await s.linhas(f.chamada);
+          r[nome] = 'passou';
+        } catch (e) {
+          r[nome] = erroDoBanco(e).code;
+        }
+        await s.exec('rollback to savepoint leitor; release savepoint leitor');
+      }
+      return r;
+    });
+    for (const [nome, codigo] of Object.entries(resultado)) {
+      const esperado = PROPRIA_CONTA.includes(nome)
+        ? 'passou'
+        : (RECUSA_DEPOIS_DA_PERMISSAO[nome] ?? 'PT403');
+      expect(codigo, nome).toBe(esperado);
+    }
+  });
+
+  it('RLS-36: não grava direto em tabela de mkt nem de private', async () => {
+    const comandos = await caso(db, postgres, (s) => escritasDiretas(s, ['mkt', 'private']));
+    await comoLeitor(async (s) => {
+      for (const sql of comandos) await s.erro('42501', sql);
+    });
+  });
 });
 
 describe('o que só cresce e o que a tela não lê (RLS-17 a 19)', () => {

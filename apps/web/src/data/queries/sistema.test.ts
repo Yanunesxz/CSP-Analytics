@@ -19,14 +19,14 @@ describe('usuarios', () => {
     const u = usuarios(comPerfis([]));
     expect(u.lista).toEqual([]);
     expect(u.total).toBeNull();
-    expect(u.porPapel).toEqual({ owner: null, traffic_manager: null });
+    expect(u.porPapel).toEqual({ owner: null, traffic_manager: null, summary_viewer: null });
   });
 
   it('dados de exemplo: só o dono de demonstração, e 0 gestor de tráfego (contagem com base)', () => {
     const u = usuarios(gerarDadosDeExemplo({ agora: new Date('2026-10-30T15:00:00-03:00') }));
     expect(u.lista).toEqual([PERFIL_DEMONSTRACAO]);
     expect(u.total).toBe(1);
-    expect(u.porPapel).toEqual({ owner: 1, traffic_manager: 0 });
+    expect(u.porPapel).toEqual({ owner: 1, traffic_manager: 0, summary_viewer: 0 });
   });
 
   it('dono primeiro e, dentro do papel, por nome', () => {
@@ -40,7 +40,7 @@ describe('usuarios', () => {
     );
     expect(u.lista.map((p) => p.id)).toEqual(['d1', 'd2', 'g2', 'g1']);
     expect(u.total).toBe(4);
-    expect(u.porPapel).toEqual({ owner: 2, traffic_manager: 2 });
+    expect(u.porPapel).toEqual({ owner: 2, traffic_manager: 2, summary_viewer: 0 });
   });
 
   it('não muda a lista recebida', () => {
@@ -55,10 +55,14 @@ describe('quadroDePermissoes', () => {
   const quadro = quadroDePermissoes();
 
   it('um cartão por papel, na ordem de labels.ts (dono primeiro)', () => {
-    expect(PAPEIS).toEqual(['owner', 'traffic_manager']);
-    expect(quadro.map((p) => p.papel)).toEqual(['owner', 'traffic_manager']);
-    expect(quadro.map((p) => p.rotulo)).toEqual(['Dono', 'Gestor de tráfego']);
-    expect(quadro.map((p) => p.resumo)).toEqual([RESUMO_DO_PAPEL.owner, RESUMO_DO_PAPEL.traffic_manager]);
+    expect(PAPEIS).toEqual(['owner', 'traffic_manager', 'summary_viewer']);
+    expect(quadro.map((p) => p.papel)).toEqual(['owner', 'traffic_manager', 'summary_viewer']);
+    expect(quadro.map((p) => p.rotulo)).toEqual(['Dono', 'Gestor de tráfego', 'Leitor do resumo']);
+    expect(quadro.map((p) => p.resumo)).toEqual([
+      RESUMO_DO_PAPEL.owner,
+      RESUMO_DO_PAPEL.traffic_manager,
+      RESUMO_DO_PAPEL.summary_viewer,
+    ]);
   });
 
   it('o que pode é exatamente permissoes() de packages/shared, e pode + não pode cobre todas as ações', () => {

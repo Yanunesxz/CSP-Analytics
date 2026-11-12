@@ -36,7 +36,8 @@ describe('rotas do sistema', () => {
       const base = `/${item.para.split('/')[1] ?? ''}`;
       expect(ROTAS_PROTEGIDAS[base], item.para).toBe(item.acao);
     }
-    const doMenu = new Set(itensDoMenu.map((i) => i.para));
+    // A chave é a rota do App (/canais vale para /canais/meta, /canais/tiktok e /canais/google)
+    const doMenu = new Set(itensDoMenu.map((i) => `/${i.para.split('/')[1] ?? ''}`));
     expect(Object.keys(ROTAS_PROTEGIDAS).filter((rota) => !doMenu.has(rota))).toEqual([]);
   });
 });

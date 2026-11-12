@@ -3,12 +3,13 @@
  * cada marca trouxe (só em "As duas") e campanha por campanha. No celular viram cartões; o nome da
  * campanha quebra linha, para um nome comprido não empurrar a tabela para fora da tela. Com muitas
  * campanhas, aparecem as que mais gastaram e as outras ficam em "Ver as outras campanhas".
- * O canal leva à tela do canal; a marca, ao resumo só dela; a campanha, à tela do canal já nela.
+ * O canal leva à tela do canal; a marca, ao resumo só dela; a campanha, à tela do canal já nela. Para quem não
+ * abre as telas de canal (o leitor do resumo, decisão 0043), o canal e a campanha ficam como texto.
  */
 
 import { ChartNoAxesColumn } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { cor, rotulo } from '@csp-mkt/shared';
+import { cor, pode, rotulo } from '@csp-mkt/shared';
 import { PontoDeSerie, Tabela, Vazio, type Coluna } from '../../components/ui';
 import type {
   LinhaDaCampanha,
@@ -17,6 +18,7 @@ import type {
   NumerosDoResumo,
   ResumoSimples,
 } from '../../data/queries/resumo-simples';
+import { useSessao } from '../../lib/auth';
 import { numero } from '../../lib/format';
 import { useFiltros } from '../../lib/url-state';
 import {
@@ -51,26 +53,44 @@ function numeros<T extends NumerosDoResumo>(): Coluna<T>[] {
 
 /* ---------- O que cada canal e cada marca trouxe ---------- */
 
+/** Quem abre as telas de canal: o canal e a campanha viram link para elas. */
+function useAbreOsCanais(): boolean {
+  const { perfil } = useSessao();
+  return pode(perfil?.role, 'ver_numeros');
+}
+
 export function PorCanalEMarca({ r }: { r: ResumoSimples }) {
   const { linkCom } = useFiltros();
+  const abreOsCanais = useAbreOsCanais();
   const mostrarMarcas = r.porMarca.length > 1;
 
   const colunaCanal: Coluna<LinhaDoCanal> = {
     chave: 'canal',
     titulo: 'Canal',
-    render: (l) => (
-      <span className="inline-grid gap-1">
-        <Link
-          className="inline-flex items-center gap-2"
-          to={linkCom(`/canais/${l.canal}`)}
-          title={`Ver ${rotulo('platform', l.canal)}`}
-        >
+    render: (l) => {
+      const nome = (
+        <>
           <PontoDeSerie cor={cor('platform', l.canal)} />
           {rotulo('platform', l.canal)}
-        </Link>
-        <span className="yn-muted text-xs font-normal">{ONDE_APARECE[l.canal]}</span>
-      </span>
-    ),
+        </>
+      );
+      return (
+        <span className="inline-grid gap-1">
+          {abreOsCanais ? (
+            <Link
+              className="inline-flex items-center gap-2"
+              to={linkCom(`/canais/${l.canal}`)}
+              title={`Ver ${rotulo('platform', l.canal)}`}
+            >
+              {nome}
+            </Link>
+          ) : (
+            <span className="inline-flex items-center gap-2">{nome}</span>
+          )}
+          <span className="yn-muted text-xs font-normal">{ONDE_APARECE[l.canal]}</span>
+        </span>
+      );
+    },
   };
 
   const colunaMarca: Coluna<LinhaDaMarca> = {
@@ -128,19 +148,24 @@ export function PorCanalEMarca({ r }: { r: ResumoSimples }) {
 
 export function Campanhas({ r, semDados }: { r: ResumoSimples; semDados: boolean }) {
   const { linkCom } = useFiltros();
+  const abreOsCanais = useAbreOsCanais();
 
   const colunaCampanha: Coluna<LinhaDaCampanha> = {
     chave: 'campanha',
     titulo: 'Campanha',
     render: (l) => (
       <span className="inline-grid gap-1">
-        <Link
-          className="whitespace-normal [overflow-wrap:anywhere]"
-          to={linkCom(`/canais/${l.campanha.platform}`, { campanha: l.campanha.id })}
-          title={`Ver a campanha em ${rotulo('platform', l.campanha.platform)}`}
-        >
-          {l.campanha.name}
-        </Link>
+        {abreOsCanais ? (
+          <Link
+            className="whitespace-normal [overflow-wrap:anywhere]"
+            to={linkCom(`/canais/${l.campanha.platform}`, { campanha: l.campanha.id })}
+            title={`Ver a campanha em ${rotulo('platform', l.campanha.platform)}`}
+          >
+            {l.campanha.name}
+          </Link>
+        ) : (
+          <span className="whitespace-normal [overflow-wrap:anywhere]">{l.campanha.name}</span>
+        )}
         <span className="yn-muted inline-flex items-center gap-2 text-xs font-normal">
           <PontoDeSerie cor={cor('platform', l.campanha.platform)} />
           {ondeDaCampanha(l.campanha.platform, l.campanha.brandId)}

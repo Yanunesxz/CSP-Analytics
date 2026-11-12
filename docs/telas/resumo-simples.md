@@ -176,9 +176,10 @@ Toda conta vive em `data/queries/resumo-simples.ts`. A tela não soma linhas.
 
 ## Fica para depois
 
-- **Quem recebe precisa de acesso.** Hoje o site abre sem login e sem dados. Com o login (fase 4), quem recebe o
-  link precisa de usuário: decidir se é o papel `owner`, o `traffic_manager` ou um papel novo, só de leitura desta
-  tela (decisão 0011). O usuário só é criado no banco de produção depois do portão da fase 3.
+- **Quem recebe entra com o papel `summary_viewer`** (decisão 0043, 12/11/2026): vê só esta tela e as próprias
+  Configurações; na entrada ("/") vai direto para cá. Hoje o site abre sem login e sem dados. O dono convida em
+  Usuários quando houver login (fase 4), e o usuário só nasce no banco de produção depois do portão da fase 3. Na
+  demonstração, `/resumo?papel=summary_viewer` mostra a tela como essa pessoa vai ver.
 - **Instalação conferida só em simulação:** no painel de teste o Chrome não dispara o convite; o botão foi conferido
   com um convite simulado. Falta instalar num celular de verdade (Android e iPhone).
 - **Entre 641 e cerca de 900px de área** (tablet, notebook pequeno) as tabelas rolam de lado dentro do próprio

@@ -17,8 +17,11 @@ export interface Convite {
   papel: Role;
 }
 
-/** Ordem das opções na janela: o gestor de tráfego primeiro, porque é quem falta entrar na v1. */
-export const PAPEIS_DO_CONVITE: readonly Role[] = ['traffic_manager', 'owner'];
+/**
+ * Ordem das opções na janela: o gestor de tráfego primeiro, porque é quem falta entrar na v1; depois quem só lê o
+ * resumo (decisão 0043) e o dono.
+ */
+export const PAPEIS_DO_CONVITE: readonly Role[] = ['traffic_manager', 'summary_viewer', 'owner'];
 export const PAPEL_PADRAO_DO_CONVITE: Role = 'traffic_manager';
 
 /** Tempo da resposta simulada na demonstração: dá para ver o botão travado enquanto envia. */

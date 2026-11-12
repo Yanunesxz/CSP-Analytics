@@ -511,7 +511,8 @@ describe('authz.can: o perfil ativo, o papel em role_permissions e o segundo fat
   }
 
   it('cada papel, com e sem o segundo fator, pode exatamente o quadro de listas.md', async () => {
-    expect(acoes).toHaveLength(13);
+    // 13 da migração 02 e o view_summary da 11a (decisão 0043)
+    expect(acoes).toHaveLength(14);
     const casos: Array<[string, Papel, 'aal1' | 'aal2']> = [
       [DONO, 'owner', 'aal1'],
       [DONO, 'owner', 'aal2'],

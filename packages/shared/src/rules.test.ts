@@ -73,6 +73,33 @@ describe('permissoes', () => {
     expect(pode('traffic_manager', 'ver_lead_dado_pessoal')).toBe(false);
   });
 
+  it('summary_viewer (decisão 0043) vê só o Resumo simples e mexe só nas próprias configurações', () => {
+    expect(permissoes('summary_viewer')).toEqual(['ver_resumo', 'editar_configuracoes']);
+    for (const acao of [
+      'ver_numeros',
+      'ver_leads',
+      'ver_trafego_ia',
+      'ver_conectores',
+      'gerir_usuarios',
+    ] as const) {
+      expect(pode('summary_viewer', acao), acao).toBe(false);
+    }
+    // Os outros dois papéis também veem o resumo
+    expect(pode('owner', 'ver_resumo')).toBe(true);
+    expect(pode('traffic_manager', 'ver_resumo')).toBe(true);
+  });
+
+  it('as telas de números pedem ver_numeros; o resumo, ver_resumo', () => {
+    for (const rota of ['/', '/chegada', '/base', '/canais', '/instagram', '/seo-geo']) {
+      expect(ROTAS_PROTEGIDAS[rota], rota).toBe('ver_numeros');
+    }
+    expect(ROTAS_PROTEGIDAS['/resumo']).toBe('ver_resumo');
+    const abertas = Object.entries(ROTAS_PROTEGIDAS)
+      .filter(([, acao]) => pode('summary_viewer', acao))
+      .map(([rota]) => rota);
+    expect(abertas).toEqual(['/resumo']);
+  });
+
   it('ninguém vê lead com dado pessoal; sem papel não pode nada', () => {
     expect(pode('owner', 'ver_lead_dado_pessoal')).toBe(false);
     expect(permissoes(null)).toEqual([]);

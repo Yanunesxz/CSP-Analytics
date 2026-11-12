@@ -375,6 +375,16 @@ const CASOS = [
       ),
     ],
   ],
+  [
+    'RLS-36',
+    [
+      p(
+        'api',
+        'leitor do resumo (decisão 0043): views vazias; funções da empresa PT403; as da própria conta passam',
+      ),
+      p('fase4', 'a função api.* do Resumo simples, com view_summary'),
+    ],
+  ],
 ];
 const SEM_LOGIN = new Set(['RLS-01', 'RLS-02', 'RLS-03']);
 // O acesso do gestor é tirado no RLS-20: ele roda por último.
@@ -780,6 +790,21 @@ async function preparar(ctx) {
     pg.perfil?.role === 'traffic_manager' && pg.perfil?.is_active === true,
     'perfil do gestor nasceu do convite',
     pg.r,
+  );
+
+  // Leitor do resumo (decisão 0043): convidado pelo dono, como a tela faz (RLS-36).
+  const conviteDoLeitor = await rpc(ctx.dono, 'invite_user', {
+    p_email: emailDe('leitor', etiqueta),
+    p_display_name: 'Leitor de teste',
+    p_role: 'summary_viewer',
+  });
+  exigir(ok(conviteDoLeitor), 'dono convida o leitor do resumo (api.invite_user)', conviteDoLeitor);
+  ctx.leitor = await entrar('leitor', await criarPorConvite(emailDe('leitor', etiqueta)));
+  const pl = await meuPerfil(ctx.leitor);
+  exigir(
+    pl.perfil?.role === 'summary_viewer' && pl.perfil?.is_active === true,
+    'perfil do leitor do resumo nasceu do convite',
+    pl.r,
   );
 
   // Convite revogado antes do login (RLS-32).
@@ -1285,6 +1310,41 @@ const RODAR = {
 
   async 'RLS-21'(ctx) {
     await semAcesso(ctx.semPerfil, { inativo: false });
+  },
+
+  // O leitor do resumo não lê nada da empresa: as funções da própria conta passam (ou recusam a chamada inerte pelo
+  // que ela pede, depois da permissão); o resto é PT403.
+  async 'RLS-36'(ctx) {
+    for (const v of VIEWS_DE_API) {
+      const r = await ler(ctx.leitor, v, 'select=*&limit=5');
+      exigir(ok(r) && Array.isArray(r.json) && r.json.length === 0, `leitor lê api.${v}: zero linhas`, r);
+    }
+    const PROPRIA_CONTA = new Set([
+      'check_text',
+      'list_role_permissions',
+      'my_notification_preferences',
+      'my_permissions',
+      'my_profile',
+      'save_filter',
+      'save_profile_preferences',
+    ]);
+    // O aviso semanal pede view_numbers; o filtro de id zero não existe.
+    const RECUSA_DEPOIS_DA_PERMISSAO = { save_notification_preference: 422, delete_saved_filter: 404 };
+    for (const [funcao, args] of Object.entries(FUNCOES)) {
+      const r = await rpc(ctx.leitor, funcao, args);
+      if (PROPRIA_CONTA.has(funcao)) exigir(ok(r), `leitor chama api.${funcao}: aceito`, r);
+      else if (funcao in RECUSA_DEPOIS_DA_PERMISSAO) {
+        const n = RECUSA_DEPOIS_DA_PERMISSAO[funcao];
+        exigir(pt(r, n), `leitor chama api.${funcao}: PT${n}`, r);
+      } else exigir(pt(r, 403), `leitor chama api.${funcao}: PT403`, r);
+    }
+    const permissoes = await rpc(ctx.leitor, 'my_permissions', {});
+    const acoes = Array.isArray(permissoes.json) ? permissoes.json.map((l) => l.action) : [];
+    exigir(
+      ok(permissoes) && acoes.join(',') === 'edit_settings,view_summary',
+      'my_permissions do leitor: edit_settings e view_summary',
+      permissoes,
+    );
   },
 
   async 'RLS-26'(ctx) {

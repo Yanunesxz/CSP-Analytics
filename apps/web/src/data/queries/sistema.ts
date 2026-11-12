@@ -30,6 +30,7 @@ export const PAPEIS: readonly Role[] = opcoes('role').map((o) => o.codigo);
  */
 export const ROTULO_DA_ACAO: Readonly<Record<Acao, string>> = {
   ver_numeros: 'Ver os números de marketing',
+  ver_resumo: 'Ver o Resumo simples',
   ver_leads: 'Ver a lista de leads, sem dado pessoal',
   ver_lead_dado_pessoal: 'Ver nome, telefone e e-mail de lead',
   ver_trafego_ia: 'Abrir o Tráfego com IA',
@@ -55,6 +56,7 @@ const NOTA_DA_ACAO: Partial<Record<Acao, string>> = {
 export const RESUMO_DO_PAPEL: Readonly<Record<Role, string>> = {
   owner: 'Vê e faz tudo: aprova as ações do Claude e cuida dos acessos.',
   traffic_manager: 'Vê os números e opera o Tráfego com IA.',
+  summary_viewer: 'Vê só o Resumo simples: quanto foi gasto, onde e quantos clientes novos vieram.',
 };
 
 export interface PermissaoNoQuadro {

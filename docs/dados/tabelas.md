@@ -1870,7 +1870,7 @@ O id é o do login (`auth.users`). O e-mail fica só no `auth`; a lista de usuá
 |---|---|---|---|---|
 | `id` | `uuid` | não | — | `auth.users.id` |
 | `display_name` | `text` | não | — | Nome mostrado ("por {nome}" no diário) |
-| `role` | `mkt.role` | não | — | `owner` ou `traffic_manager` (decisão 0011) |
+| `role` | `mkt.role` | não | — | `owner`, `traffic_manager` (decisão 0011) ou `summary_viewer` (decisão 0043) |
 | `is_active` | `boolean` | não | `true` | Falso = acesso tirado; a RLS nega na hora |
 | `theme_preference` | `mkt.theme_preference` | não | `'device'` | `device`, `light`, `dark` (o padrão manda guardar também no perfil) |
 | `default_brand` | `mkt.brand_code` | sim | — | Marca padrão; nulo = as duas |

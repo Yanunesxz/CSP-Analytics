@@ -20,14 +20,14 @@ Para ver qualquer tela num estado específico, acrescente `?estado=carregando|va
 
 | Grupo | Módulo | Rota | Pasta | Quem vê |
 |---|---|---|---|---|
-| Início | Visão geral | `/` | `src/modules/visao-geral` | todos |
-| Início | Resumo simples | `/resumo` | `src/modules/resumo-simples` | todos (proposta de 12/11/2026, esperando aprovação) |
-| Clientes | Chegada de clientes | `/chegada` | `src/modules/chegada-de-clientes` | todos |
-| Clientes | Base de clientes | `/base` | `src/modules/base-de-clientes` | todos |
+| Início | Visão geral | `/` | `src/modules/visao-geral` | `owner`, `traffic_manager` (`ver_numeros`) |
+| Início | Resumo simples | `/resumo` | `src/modules/resumo-simples` | todos; o `summary_viewer` vê só ela (decisão 0043). Proposta de 12/11/2026, esperando aprovação |
+| Clientes | Chegada de clientes | `/chegada` | `src/modules/chegada-de-clientes` | `owner`, `traffic_manager` (`ver_numeros`) |
+| Clientes | Base de clientes | `/base` | `src/modules/base-de-clientes` | `owner`, `traffic_manager` (`ver_numeros`) |
 | Clientes | Leads | `/leads` | `src/modules/leads` | todos (sem dado pessoal) |
-| Canais | Meta Ads · TikTok Ads · Google Ads | `/canais/meta` · `/canais/tiktok` · `/canais/google` | `src/modules/canais` (um componente, `:plataforma`) | todos |
-| Canais | Instagram | `/instagram` | `src/modules/instagram` | todos |
-| Canais | SEO e GEO | `/seo-geo` | `src/modules/seo-geo` | todos |
+| Canais | Meta Ads · TikTok Ads · Google Ads | `/canais/meta` · `/canais/tiktok` · `/canais/google` | `src/modules/canais` (um componente, `:plataforma`) | `owner`, `traffic_manager` (`ver_numeros`) |
+| Canais | Instagram | `/instagram` | `src/modules/instagram` | `owner`, `traffic_manager` (`ver_numeros`) |
+| Canais | SEO e GEO | `/seo-geo` | `src/modules/seo-geo` | `owner`, `traffic_manager` (`ver_numeros`) |
 | Tráfego | Tráfego com IA | `/trafego` | `src/modules/trafego-ia` | `owner`, `traffic_manager` |
 | Sistema | Conectores | `/conectores` | `src/modules/conectores` | `owner`, `traffic_manager` |
 | Sistema | Usuários | `/usuarios` | `src/modules/usuarios` | `owner` |
@@ -106,8 +106,8 @@ bloquear a fase 3. As de número ("Este mês", "Parar tudo", quem aprova) virara
   os links para ele ("Ver pendências em Tráfego com IA", em Conectores e SEO e GEO) já levam `?visao=gestor`.
 
 - **Resumo simples (proposta de 12/11/2026):** falta quem vai receber o link fazer a T7 no celular, sem ajuda, e o
-  dono aprovar a tela; falta decidir com que acesso essa pessoa entra quando houver login (papel `owner`, o
-  `traffic_manager` ou um papel só de leitura). Entre 641 e cerca de 900px de área as tabelas da tela rolam de lado
+  dono aprovar a tela. O acesso de quem recebe foi decidido em 12/11/2026: o papel `summary_viewer`, que vê só o
+  resumo (decisão 0043). Entre 641 e cerca de 900px de área as tabelas da tela rolam de lado
   dentro do bloco. O app instalável (ícone que abre no resumo) falta ser instalado num celular de verdade.
 
 ## Estados que toda tela precisa mostrar

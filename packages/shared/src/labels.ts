@@ -182,6 +182,7 @@ export const LISTAS = {
   role: {
     owner: status('info', 'Dono'),
     traffic_manager: status('info', 'Gestor de tráfego'),
+    summary_viewer: status('info', 'Leitor do resumo'),
   } satisfies Tabela<Role>,
 } as const;
 

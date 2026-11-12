@@ -203,7 +203,8 @@ export interface Connector {
 }
 
 /** Papéis em lista fechada desde o primeiro PR (decisão 0011). */
-export type Role = 'owner' | 'traffic_manager';
+/** Decisão 0011; `summary_viewer` (decisão 0043) vê só o Resumo simples. */
+export type Role = 'owner' | 'traffic_manager' | 'summary_viewer';
 
 export interface Profile {
   id: string;

@@ -175,7 +175,7 @@ describe('RLS-25: cada domain igual à lista do labels.ts', () => {
 });
 
 describe('role_permissions: a única lista de permissões', () => {
-  it('é o quadro de listas.md: o dono pode tudo menos ver dado pessoal de lead; o gestor, só ler e operar', async () => {
+  it('é o quadro de listas.md: o dono pode tudo menos ver dado pessoal de lead; o gestor, só ler e operar; o leitor, só o resumo', async () => {
     await caso(db, postgres, async (s) => {
       const linhas = await s.linhas<{ role: string; acoes: string[] }>(
         `select role::text, array_agg(action::text order by action) as acoes
@@ -183,6 +183,7 @@ describe('role_permissions: a única lista de permissões', () => {
       );
       expect(linhas).toEqual([
         { role: 'owner', acoes: ordenada(PODE.owner) },
+        { role: 'summary_viewer', acoes: ordenada(PODE.summary_viewer) },
         { role: 'traffic_manager', acoes: ordenada(PODE.traffic_manager) },
       ]);
       expect(
@@ -257,7 +258,10 @@ describe('quem lê as listas de apoio', () => {
     const leem: Quem[] = [servico('mkt_worker'), usuario(DONO), usuario(GESTOR), usuario(DONO, 'aal2')];
     for (const quem of leem) {
       await caso(db, quem, async (s) => {
-        expect(await s.linhas(contar)).toEqual([{ permissoes: 18, feriados: 20 }]);
+        // Uma linha por papel e ação do quadro (PODE): 13 do dono, 7 do gestor e 2 do leitor do resumo
+        expect(await s.linhas(contar)).toEqual([
+          { permissoes: Object.values(PODE).flat().length, feriados: 20 },
+        ]);
       });
     }
     for (const quem of [usuario(EX_GESTOR, 'aal2'), usuario(SEM_PERFIL, 'aal2')]) {

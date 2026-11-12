@@ -9,6 +9,7 @@
 | `anon` | chamada à API sem login | **Nada.** Sem `usage` em nenhum esquema; a API responde negado |
 | `authenticated` com perfil ativo `owner` | login (Supabase Auth), pela API | Lê tudo o que as telas mostram; grava só pelas funções `api.*`, conforme `role_permissions` |
 | `authenticated` com perfil ativo `traffic_manager` | login, pela API | Lê números, leads (sem dado pessoal, como todos), tráfego e conectores; propõe, salva estratégia e marca como feita; não aprova, não para tudo, não mexe em limite, usuários nem conectores |
+| `authenticated` com perfil ativo `summary_viewer` | login, pela API | Só o Resumo simples (decisão 0043): hoje não lê nenhuma tabela nem view da matriz abaixo, só o próprio perfil, as próprias preferências e filtros, `role_permissions` e `holidays`; na fase 4, a função `api.*` do resumo, que confere `view_summary`. Não chama nenhuma função que grava em nome da empresa |
 | `authenticated` sem perfil, ou com perfil inativo | login de quem não foi convidado ou perdeu o acesso | **Nada**: `authz.can()` devolve falso para toda ação, e toda política depende dela. Só `api.my_profile()` responde, com o próprio perfil inativo |
 | `authenticator` | o PostgREST (a API) | Troca para `anon` ou `authenticated` a cada chamada. É o `session_user` de toda chamada pela API: os gatilhos conferem esse nome para separar a pessoa dos serviços |
 | `mkt_worker` | conexão Postgres própria do worker de leitura (decisão 0017) | Lê as tabelas de `mkt` da lista dele (nunca as de pessoas: perfis, convites, preferências, filtros, auditoria e fila de avisos); grava só pelas funções `ingest.*` dele; lê e troca só credenciais de **leitura** (`private.read_credential`, `private.rotate_credential`). Não chama `api.*` e não escreve nas plataformas |
@@ -171,6 +172,8 @@ que confere a permissão · — = nada. `anon` e "sem perfil ou inativo" ficam c
 | `audit_log` | L | — | — (grava por `ingest`, sem ler) | — | — |
 
 O protótipo esconde o "Tentar de novo" do gestor (`tentar_conector_de_novo` só no dono): a matriz segue o mesmo.
+O `summary_viewer` (decisão 0043) fica com — em todas as linhas, menos `holidays` e `role_permissions` (L) e as
+próprias preferências e filtros, como todo perfil ativo (RLS-36).
 
 ## Políticas
 
@@ -476,7 +479,7 @@ mesma lista e sai o aviso urgente "Parar tudo sem confirmação" (decisão 0022)
 
 ## Teste de RLS (portão da fase 3)
 
-O portão pede: um usuário de cada papel (`owner`, `traffic_manager`) e sem login (`anon`), tentando ler, inserir,
+O portão pede: um usuário de cada papel (`owner`, `traffic_manager`, `summary_viewer`) e sem login (`anon`), tentando ler, inserir,
 alterar, apagar e chamar função, e sendo negado no que não devia. Sem Supabase CLI nem Docker nesta máquina, o teste
 fica em duas camadas.
 
@@ -567,6 +570,7 @@ rollback;
 | RLS-33 | aviso pendente de quem perdeu o acesso ou o papel | `notify.claim_pending` | o aviso não sai (vira `skipped`) |
 | RLS-34 | `mkt_executor` | chamar `ingest.upsert_*`, `ingest.add_claude_proposal`, `api.*` e `private.read_credential` (de qualquer finalidade); ler `crm_leads` | negado |
 | RLS-35 | `owner` sem o segundo fator (`aal1`) | `approve_action`, `set_spend_limit`, `invite_user`, `retry_connector`; controle: `stop_all` | `PT403`; o controle é aceito |
+| RLS-36 | `summary_viewer` (decisão 0043) | ler toda tabela de `mkt` e view de `api`; chamar toda função de `api`; gravar direto em `mkt` e `private`; controle: as funções da própria conta (`my_profile`, `my_permissions`, `list_role_permissions`, `check_text`, `my_notification_preferences`, `save_profile_preferences`, `save_filter`, `delete_saved_filter`) | só o próprio perfil, `role_permissions` e `holidays`; o resto `PT403` ou `42501`; o aviso semanal recusado (`PT422`, pede `view_numbers`); o controle passa |
 
 Os casos 22, 23, 28 (a parte do `n8n_notifier`), 30 e 34 rodam na camada 1 e na conexão de teste de cada serviço; o 27
 só na camada 1; o 31 e a parte de `signUp` do 32, só na camada 2; os outros, nas duas. No portão da fase 3 rodam os

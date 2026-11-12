@@ -56,7 +56,7 @@ alter domain mkt.campaign_status add constraint campaign_status_check
 | `mkt.level` | `low` → Baixo (muted) · `medium` → Médio (warning) · `high` → Alto (danger) | Nada |
 | `mkt.connector_code` | `meta` → Meta Ads · `instagram` → Instagram · `tiktok` → TikTok Ads · `google_ads` → Google Ads · `ga4` → GA4 · `search_console` → Search Console · `csp360` → CSP 360 (todos muted) | Nada; no `labels.ts` a lista se chama `connectorId`. A ordem dos cartões não é esta: é a do menu (`ORDEM_DOS_CONECTORES`, `mkt.list_rank('connector_menu', …)`) |
 | `mkt.connector_status` (saída de `mkt.v_connector_health`) | `ok` → Funcionando (success) · `late` → Atrasado (warning) · `down` → Caído (danger) · `not_connected` → A ligar (muted) · `disabled` → Desligado (muted) | **Muda.** `simulated` → "Simulado" vira `not_connected` → "A ligar": fora do modo demonstração nada é simulado, e o cartão quer dizer "ainda não foi ligado". Entra `disabled` (o padrão pede liga e desliga por canal) |
-| `mkt.role` | `owner` → Dono (info) · `traffic_manager` → Gestor de tráfego (info) | Nada |
+| `mkt.role` | `owner` → Dono (info) · `traffic_manager` → Gestor de tráfego (info) · `summary_viewer` → Leitor do resumo (info) | Entrou o `summary_viewer` (decisão 0043, migração 11a) |
 
 ## Listas novas (vão para o `labels.ts` na fase 4)
 
@@ -123,23 +123,25 @@ As listas do histórico de marketing do CRM (tipo de evento e fonte) ficam para 
 As ações do `rules.ts` estavam em português (`ver_numeros`…). Viram código em inglês no banco. O mapa `PERMISSOES` do
 `rules.ts` sai na fase 4: a tela lê as permissões do usuário em `api.my_permissions()`, e `role_permissions` fica a
 única lista (decisão 0018). O rótulo de `ROTULO_DA_ACAO` vai para o `labels.ts`. Entra uma ação nova,
-`configure_traffic`. As marcadas com ² pedem o segundo fator (TOTP) do login (decisão 0023).
+`configure_traffic`. As marcadas com ² pedem o segundo fator (TOTP) do login (decisão 0023). `view_summary` e o
+`summary_viewer` entraram em 12/11/2026 (decisão 0043, migração 11a), no fim de cada lista.
 
-| Hoje (`rules.ts`) | Código novo | Rótulo | `owner` | `traffic_manager` |
-|---|---|---|---|---|
-| `ver_numeros` | `view_numbers` | Ver os números de marketing | sim | sim |
-| `ver_leads` | `view_leads` | Ver a lista de leads, sem dado pessoal | sim | sim |
-| `ver_lead_dado_pessoal` | `view_lead_personal_data` | Ver nome, telefone e e-mail de lead | **ninguém** | **ninguém** |
-| `ver_trafego_ia` | `view_traffic` | Abrir o Tráfego com IA | sim | sim |
-| `operar_trafego_ia` | `operate_traffic` | Operar o Tráfego com IA (propor, estratégia, marcar como feita) | sim | sim |
-| `aprovar_acao` | `approve_action` ² | Aprovar ou descartar ações | sim | não (decisão 0023) |
-| `parar_tudo` | `stop_all` | Parar e reativar as campanhas do Claude | sim | não |
-| — | `configure_traffic` ² | Mudar limites de gasto e o operador das campanhas | sim | não |
-| `ver_conectores` | `view_connectors` | Ver os conectores | sim | sim |
-| `tentar_conector_de_novo` | `retry_connector` ² | Tentar um conector de novo, ligar e desligar, enviar CSV, confirmar exclusão em massa | sim | não |
-| `gerir_usuarios` | `manage_users` ² | Convidar pessoas, definir papéis e tirar acesso | sim | não |
-| `ver_diagnostico` | `view_diagnostics` | Abrir o Diagnóstico | sim | não |
-| `editar_configuracoes` | `edit_settings` | Mudar tema, marca padrão, avisos e meus filtros | sim | sim |
+| Hoje (`rules.ts`) | Código novo | Rótulo | `owner` | `traffic_manager` | `summary_viewer` |
+|---|---|---|---|---|---|
+| `ver_numeros` | `view_numbers` | Ver os números de marketing | sim | sim | não |
+| `ver_leads` | `view_leads` | Ver a lista de leads, sem dado pessoal | sim | sim | não |
+| `ver_lead_dado_pessoal` | `view_lead_personal_data` | Ver nome, telefone e e-mail de lead | **ninguém** | **ninguém** | **ninguém** |
+| `ver_trafego_ia` | `view_traffic` | Abrir o Tráfego com IA | sim | sim | não |
+| `operar_trafego_ia` | `operate_traffic` | Operar o Tráfego com IA (propor, estratégia, marcar como feita) | sim | sim | não |
+| `aprovar_acao` | `approve_action` ² | Aprovar ou descartar ações | sim | não (decisão 0023) | não |
+| `parar_tudo` | `stop_all` | Parar e reativar as campanhas do Claude | sim | não | não |
+| — | `configure_traffic` ² | Mudar limites de gasto e o operador das campanhas | sim | não | não |
+| `ver_conectores` | `view_connectors` | Ver os conectores | sim | sim | não |
+| `tentar_conector_de_novo` | `retry_connector` ² | Tentar um conector de novo, ligar e desligar, enviar CSV, confirmar exclusão em massa | sim | não | não |
+| `gerir_usuarios` | `manage_users` ² | Convidar pessoas, definir papéis e tirar acesso | sim | não | não |
+| `ver_diagnostico` | `view_diagnostics` | Abrir o Diagnóstico | sim | não | não |
+| `editar_configuracoes` | `edit_settings` | Mudar tema, marca padrão, avisos e meus filtros | sim | sim | sim |
+| — | `view_summary` | Ver o Resumo simples (decisão 0043) | sim | sim | sim |
 
 `configure_traffic` existe porque "Mudar limite" usava `aprovar_acao` sem ação própria (`trafego-ia.md`) e a troca
 de operador (decisão 0008) não tinha dono.
