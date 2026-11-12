@@ -62,8 +62,8 @@ função `security definer` nasce com `revoke` de `public` e `grant` só ao pape
 
 ## Como o CI aplica
 
-O CI de hoje está em `docs/ci.yml` e não roda no GitHub (o token do `push` não tem o escopo `workflow`). Ele precisa
-voltar para `.github/workflows/ci.yml` antes da primeira migração. Proposta de passos novos:
+O CI está em `.github/workflows/ci.yml` desde 12/11/2026 (antes ficava em `docs/ci.yml`, porque o token do `push` não
+tinha o escopo `workflow`). As checagens de segurança do padrão v0.5.2 rodam num job à parte. Passos:
 
 | Quando | Passo | Segredos (nomes) |
 |---|---|---|
