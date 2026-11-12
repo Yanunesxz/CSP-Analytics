@@ -306,7 +306,9 @@ describe('resumoSimples', () => {
         ...dados.orders,
       ],
     };
-    expect(resumoSimples(comOrcamento, outubro, agora).total).toEqual(resumoSimples(dados, outubro, agora).total);
+    expect(resumoSimples(comOrcamento, outubro, agora).total).toEqual(
+      resumoSimples(dados, outubro, agora).total,
+    );
   });
 
   it('sem pedidos na base: o que voltou fica sem dados', () => {
