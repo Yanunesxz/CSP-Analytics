@@ -2,7 +2,7 @@
  * Conectores (/conectores, grupo Sistema): um cartão por integração (CSP 360, Meta Ads, TikTok Ads, Google
  * Ads, Instagram, Search Console e GA4) com o estado, a última sincronização e o "atualizado há X min", o
  * atraso em relação ao esperado, os erros e as linhas gravadas em 24 h. O que pede ação vem primeiro
- * (caído, atrasado); simulado (a ligar) e sem dados vêm por último. Toda conta vem de `painelDeConectores`
+ * (caído, atrasado); a ligar, desligado e sem dados vêm por último. Toda conta vem de `painelDeConectores`
  * (data/queries/conectores.ts); a tela só desenha.
  *
  * - Ação principal: "Tentar de novo" no primeiro cartão caído ou atrasado (os outros "Tentar de novo" são

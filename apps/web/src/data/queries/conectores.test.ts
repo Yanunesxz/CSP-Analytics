@@ -41,7 +41,7 @@ describe('painelDeConectores', () => {
         temProblema: false,
       });
     }
-    expect(p.resumo).toEqual({ ok: null, late: null, down: null, simulated: null });
+    expect(p.resumo).toEqual({ ok: null, late: null, down: null, not_connected: null, disabled: null });
     expect(p.situacao).toBeNull();
     expect(p.comProblema).toEqual([]);
     expect(p.aLigar).toEqual([]);
@@ -61,14 +61,16 @@ describe('painelDeConectores', () => {
     });
   });
 
-  it('o que pede ação vem primeiro: caído, atrasado, funcionando, simulado e sem dados', () => {
+  it('o que pede ação vem primeiro: caído, atrasado, funcionando, a ligar, desligado e sem dados', () => {
     const p = painelDeConectores(
       comConectores([
         conector({ id: 'meta', status: 'ok', lastSyncAt: ha(12) }),
         conector({ id: 'tiktok', status: 'late', lastSyncAt: ha(190), errors24h: 3 }),
         conector({ id: 'google_ads', status: 'down', lastSyncAt: ha(300), errors24h: 12 }),
-        conector({ id: 'ga4', status: 'simulated', lastSyncAt: null, expectedEveryMinutes: 1440 }),
+        conector({ id: 'ga4', status: 'not_connected', lastSyncAt: null, expectedEveryMinutes: 1440 }),
         conector({ id: 'csp360', status: 'ok', lastSyncAt: ha(3), expectedEveryMinutes: 5 }),
+        // Desligado pelo dono: a última sincronização antiga não vira "atrasado" nem pede ação.
+        conector({ id: 'instagram', status: 'disabled', lastSyncAt: ha(9000) }),
       ]),
       f(),
       agora,
@@ -83,10 +85,18 @@ describe('painelDeConectores', () => {
       'instagram',
       'search_console',
     ]);
-    expect(p.cartoes.map((c) => c.estado)).toEqual(['down', 'late', 'ok', 'ok', 'simulated', null, null]);
+    expect(p.cartoes.map((c) => c.estado)).toEqual([
+      'down',
+      'late',
+      'ok',
+      'ok',
+      'not_connected',
+      'disabled',
+      null,
+    ]);
     expect(p.comProblema.map((c) => c.id)).toEqual(['google_ads', 'tiktok']);
     expect(p.aLigar.map((c) => c.id)).toEqual(['ga4']);
-    expect(p.resumo).toEqual({ ok: 2, late: 1, down: 1, simulated: 1 });
+    expect(p.resumo).toEqual({ ok: 2, late: 1, down: 1, not_connected: 1, disabled: 1 });
     expect(p.situacao).toBe('caido');
     expect(p.ultimaSincronizacao).toBe(ha(3));
   });
@@ -121,11 +131,11 @@ describe('painelDeConectores', () => {
     expect(p.situacao).toBe('atrasado');
   });
 
-  it('funcionando que passou do esperado vira atrasado; caído e simulado ficam como vieram', () => {
+  it('funcionando que passou do esperado vira atrasado; caído e a ligar ficam como vieram', () => {
     const p = painelDeConectores(
       comConectores([
         conector({ id: 'meta', status: 'ok', lastSyncAt: ha(75) }),
-        conector({ id: 'ga4', status: 'simulated', lastSyncAt: ha(5000), expectedEveryMinutes: 1440 }),
+        conector({ id: 'ga4', status: 'not_connected', lastSyncAt: ha(5000), expectedEveryMinutes: 1440 }),
         conector({ id: 'instagram', status: 'down', lastSyncAt: ha(5) }),
       ]),
       f(),
@@ -137,7 +147,10 @@ describe('painelDeConectores', () => {
       atrasoMinutos: 15,
       temProblema: true,
     });
-    expect(p.cartoes.find((c) => c.id === 'ga4')).toMatchObject({ estado: 'simulated', temProblema: false });
+    expect(p.cartoes.find((c) => c.id === 'ga4')).toMatchObject({
+      estado: 'not_connected',
+      temProblema: false,
+    });
     expect(p.cartoes.find((c) => c.id === 'instagram')).toMatchObject({
       estado: 'down',
       atrasoMinutos: 0,
@@ -145,11 +158,11 @@ describe('painelDeConectores', () => {
     });
   });
 
-  it('tudo em dia, com um simulado a ligar', () => {
+  it('tudo em dia, com um conector a ligar', () => {
     const p = painelDeConectores(
       comConectores([
         conector({ id: 'meta', status: 'ok', lastSyncAt: ha(12) }),
-        conector({ id: 'ga4', status: 'simulated', lastSyncAt: null }),
+        conector({ id: 'ga4', status: 'not_connected', lastSyncAt: null }),
       ]),
       f(),
       agora,
@@ -157,7 +170,7 @@ describe('painelDeConectores', () => {
 
     expect(p.situacao).toBe('em-dia');
     expect(p.comProblema).toEqual([]);
-    expect(p.resumo).toEqual({ ok: 1, late: 0, down: 0, simulated: 1 });
+    expect(p.resumo).toEqual({ ok: 1, late: 0, down: 0, not_connected: 1, disabled: 0 });
   });
 
   it('conector que nunca sincronizou: sem minutos nem atraso, e os erros continuam contando', () => {
@@ -204,7 +217,7 @@ describe('painelDeConectores', () => {
     expect(p.situacao).toBe('atrasado');
     expect(p.comProblema.map((c) => c.id)).toEqual(['tiktok']);
     expect(p.aLigar.map((c) => c.id)).toEqual(['ga4']);
-    expect(p.resumo).toEqual({ ok: 5, late: 1, down: 0, simulated: 1 });
+    expect(p.resumo).toEqual({ ok: 5, late: 1, down: 0, not_connected: 1, disabled: 0 });
     expect(JSON.stringify(p)).not.toMatch(/NaN|Infinity/);
   });
 });

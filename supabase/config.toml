@@ -1,0 +1,26 @@
+# Configuração da CLI do Supabase. O CI só usa a CLI para aplicar as migrações (supabase db push --db-url) nos
+# projetos de teste e de produção; nada aqui muda um projeto remoto. A configuração de cada projeto é feita no painel
+# (docs/dados/plano.md, "O que o dono providencia"), e os valores abaixo a repetem para quem rodar o Supabase local.
+project_id = "csp-mkt"
+
+[api]
+# Só o esquema api fica exposto (decisão 0013).
+schemas = ["api"]
+max_rows = 1000
+
+[db]
+major_version = 17
+
+[auth]
+# Ninguém se cadastra sozinho: só por convite (decisão 0011).
+enable_signup = false
+enable_anonymous_sign_ins = false
+minimum_password_length = 12
+
+[auth.email]
+enable_signup = false
+
+[auth.mfa.totp]
+# Segundo fator do dono (decisão 0023).
+enroll_enabled = true
+verify_enabled = true

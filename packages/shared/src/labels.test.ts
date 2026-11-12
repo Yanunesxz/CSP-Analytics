@@ -13,12 +13,15 @@ describe('labels', () => {
   });
 
   it('marca, canal e operador usam só --color-series-N', () => {
+    // "Outro assistente" fica neutro, como as origens sem série própria do leadSource (decisão 0007).
     for (const lista of ['brand', 'platform', 'operator', 'geoSource'] as const) {
-      for (const o of opcoes(lista)) {
+      for (const o of opcoes(lista).filter((o) => !(lista === 'geoSource' && o.codigo === 'other'))) {
         expect(o.cor).toMatch(/^var\(--color-series-[1-6]\)$/);
         expect(o.tom).toBeUndefined();
       }
     }
+    expect(cor('geoSource', 'other')).toBe('var(--color-text-muted)');
+    expect(tom('geoSource', 'other')).toBeUndefined();
   });
 
   it('status nunca usa cor de série', () => {
@@ -35,8 +38,40 @@ describe('labels', () => {
     expect(rotulo('operator', 'claude')).toBe('Claude');
     expect(cor('platform', 'meta')).toBe('var(--color-series-4)');
     expect(tom('connectorStatus', 'late')).toBe('warning');
-    expect(tom('connectorStatus', 'simulated')).toBe('muted');
+    expect(tom('connectorStatus', 'not_connected')).toBe('muted');
+    expect(rotulo('connectorStatus', 'not_connected')).toBe('A ligar');
     expect(tom('brand', 'cs')).toBeUndefined();
+  });
+
+  it('as listas que mudaram com o banco (listas.md): pedido sem "faturado", ação com "falhou", conector "a ligar"', () => {
+    expect(opcoes('orderStatus').map((o) => o.codigo)).toEqual(['quote', 'sent', 'cancelled']);
+    expect(opcoes('geoSource').map((o) => o.codigo)).toContain('other');
+    expect(opcoes('connectorStatus').map((o) => o.codigo)).toEqual([
+      'ok',
+      'late',
+      'down',
+      'not_connected',
+      'disabled',
+    ]);
+    expect(tom('actionStatus', 'failed')).toBe('danger');
+  });
+
+  it('a ordem que a conta usa: a ação que pede decisão primeiro; a melhor situação primeiro e lead por último', () => {
+    expect(opcoes('actionStatus').map((o) => o.codigo)).toEqual([
+      'idea',
+      'failed',
+      'approved',
+      'running',
+      'done',
+      'discarded',
+    ]);
+    expect(opcoes('customerSituation').map((o) => o.codigo)).toEqual([
+      'active',
+      'inactive_recent',
+      'inactive_old',
+      'lost',
+      'lead',
+    ]);
   });
 
   it('código desconhecido volta como veio, com cor neutra', () => {

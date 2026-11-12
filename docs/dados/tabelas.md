@@ -44,9 +44,13 @@ begin
   end if;
 end $$;
 
+-- Toda função dos sete esquemas leva set search_path = pg_catalog, pg_temp, com o pg_temp explícito e por último:
+-- sem ele no caminho, o esquema temporário da sessão é procurado primeiro para tipos e tabelas (papeis-e-rls.md,
+-- "Funções de ação"). Nome de fora do pg_catalog vai sempre com o esquema.
+
 -- updated_at por gatilho, em toda tabela (em milissegundos, para a trava otimista)
 create or replace function private.set_updated_at() returns trigger
-language plpgsql set search_path = '' as $$
+language plpgsql set search_path = pg_catalog, pg_temp as $$
 begin
   new.updated_at := date_trunc('milliseconds', now());
   return new;
@@ -55,24 +59,26 @@ end $$;
 -- Dia de São Paulo de um instante. É immutable (o fuso é fixo no nome), então serve em índice.
 -- Fica na migração 01 porque os índices de crm_orders (migração 05) usam.
 create or replace function mkt.sp_day(p timestamptz) returns date
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (p at time zone 'America/Sao_Paulo')::date
 $$;
 
 -- Chave de casamento da UTM com a campanha (decisão 0009): minúsculas, espaços simples, sem espaço nas pontas.
 -- A mesma função normaliza o nome da campanha e a utm_campaign do lead.
 create or replace function mkt.utm_key(p text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select nullif(lower(btrim(regexp_replace(coalesce(p, ''), '\s+', ' ', 'g'))), '')
 $$;
 
--- Barra dado pessoal em texto livre que vai para o Claude ou para a trilha:
--- e-mail, telefone com DDD (com ou sem máscara), CPF e CNPJ. "\y" é o limite de palavra do Postgres (o "\b" da tela):
--- um id de campanha de 18 dígitos ou um "act_…" não parecem telefone nem documento.
+-- Barra dado pessoal em texto livre que vai para o Claude ou para a trilha: e-mail, telefone com DDD, CPF e CNPJ. O
+-- telefone vem com ou sem máscara: o 55 ou o 0 antes do DDD, e espaço, ponto ou hífen depois do DDD, depois do 9 e
+-- entre os blocos ("+55 (11) 9 8765-4321", "011 98765.4321"). "\y" é o limite de palavra do Postgres (o "\b" da
+-- tela): um id de campanha de 18 dígitos ou um "act_…" não parecem telefone nem documento.
 create or replace function mkt.has_personal_data(p text) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select coalesce(p, '') ~ '[[:alnum:]_.+-]+@[[:alnum:]_-]+\.[[:alnum:]_.]+'                 -- e-mail
-      or coalesce(p, '') ~ '\(?\y[0-9]{2}\)?\s?9?[0-9]{4}[-\s]?[0-9]{4}\y'                  -- telefone com DDD
+      or coalesce(p, '')                                                                       -- telefone com DDD
+         ~ '(\y55[\s.-]?\(?|\(?\y)0?[0-9]{2}\)?[\s.-]?(9[\s.-]?)?[0-9]{4}[\s.-]?[0-9]{4}\y'
       or coalesce(p, '') ~ '\y[0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2}\y'                    -- CPF
       or coalesce(p, '') ~ '\y[0-9]{2}\.?[0-9]{3}\.?[0-9]{3}/?[0-9]{4}-?[0-9]{2}\y'          -- CNPJ
 $$;
@@ -82,7 +88,7 @@ create sequence if not exists mkt.lead_code_seq;
 create sequence if not exists mkt.sales_rep_code_seq;
 create sequence if not exists mkt.traffic_action_code_seq;
 create or replace function private.next_code(p_prefix text, p_seq regclass) returns text
-language sql volatile set search_path = '' as $$
+language sql volatile set search_path = pg_catalog, pg_temp as $$
   select p_prefix || '-' || lpad(s.n::text, greatest(4, length(s.n::text)), '0')
     from (select nextval(p_seq) as n) s
 $$;
@@ -94,9 +100,13 @@ sai do TypeScript). Ela vale só para texto livre (título, motivo, nota, estrat
 número longo pareceria telefone. Para `jsonb` valem funções que aceitam só as chaves previstas
 (`mkt.valid_action_params`, `mkt.valid_claude_context`, `mkt.valid_notice_payload`, `mkt.valid_saved_filters`,
 `mkt.valid_activity_details`, `mkt.valid_audit_changes`). Casos de teste da função: recusa e-mail, telefone com e sem
-máscara, CPF e CNPJ; deixa passar um id de campanha de 18 dígitos (`campanha 120200000000000000`) e um id de conta
-`act_…`. Casos de `private.next_code`: 9999 → `LEAD-9999` e 10000 → `LEAD-10000` (o mesmo que o `codigo()` de
-`rules.ts` dá enquanto existir).
+máscara (também `(11) 9 8765-4321`, `+55 (11) 9 8765-4321`, `(11) 9.8765-4321`, `011 98765-4321` e
+`11 98765.4321`), CPF e CNPJ; deixa passar um id de campanha de 18 dígitos (`campanha 120200000000000000`, também com
+55 no meio, `campanha 120202551234567890`) e um id de conta `act_…` (também `act_5511987654321`: o `\y` antes do 55
+não deixa casar no meio do número); e a barreira vale onde a função é usada (estratégia, ação, contexto e prompt do
+Claude, trilha). Casos
+de `private.next_code`: 9999 → `LEAD-9999` e 10000 → `LEAD-10000` (o mesmo que o `codigo()` de `rules.ts` dá
+enquanto existir).
 
 ---
 
@@ -211,15 +221,26 @@ create table if not exists mkt.ad_accounts (
   3.2); `(brand_id, status)`.
 - **Gatilhos:** `campaigns_managed_by_guard` (antes de `update`: `managed_by` só muda dentro de
   `api.change_campaign_operator`, que liga `mkt.allow_operator_change` na transação, com `session_user =
-  'authenticator'` e `authz.can('configure_traffic')`; o worker e o executor nunca mudam o operador por `update`) e
-  `campaigns_managed_by_audit` (depois de `insert` e de `update of managed_by`: grava `campaign_managed_by_history`).
-- **Campanha criada pela central:** nasce `claude` já na inserção, por um de dois caminhos, nunca por `update`: o
-  executor grava a campanha, com `created_by_action_id` e `managed_by = 'claude'`, na mesma transação que confirma a
-  execução (`ingest.update_execution`); ou `ingest.upsert_campaigns`, ao inserir campanha cujo nome termina com o
-  código de uma ação `create` aprovada, com execução `sent` ou `confirmed` na mesma conta, grava `managed_by = 'claude'`
-  e a ação. Fora disso, campanha nova nasce `human`.
+  'authenticator'` e `authz.can('configure_traffic')`; o worker nunca muda o operador por `update`, e o executor só na
+  exceção do item abaixo) e `campaigns_managed_by_audit` (depois de `insert` e de `update of managed_by`: grava
+  `campaign_managed_by_history`).
+- **Campanha criada pela central:** nasce `claude` já na inserção, por um de dois caminhos: o executor grava a
+  campanha, com `created_by_action_id` e `managed_by = 'claude'`, na mesma transação que confirma a execução
+  (`ingest.update_execution`, que na criação só confirma com a campanha relida, da conta da execução: o id de uma
+  campanha de outra conta é recusado, `PT422`, e nada muda); ou `ingest.upsert_campaigns`, ao inserir campanha cujo
+  nome termina com o código de uma ação `create` aprovada, com execução `sent` ou `confirmed` na mesma conta e a ação
+  ainda sem campanha, grava `managed_by = 'claude'` e a ação (uma ação `create`, uma campanha: a que alguém criar
+  depois na plataforma com o mesmo código nasce `human`). Fora disso, campanha nova nasce `human`. A única passagem
+  por `update`: quando a leitura de hora em hora chega antes da confirmação e importa a campanha do humano, sem a ação
+  (a execução ainda na fila, porque o executor mandou e caiu antes de gravar `sent`; ou a ação que falhou e foi
+  aprovada de novo, decisão 0038), a confirmação a passa para `claude`, com a ação. O gatilho aceita esse `update` só
+  do executor, só de `human` para `claude`, com a ação `create` da mesma conta cuja execução a própria transação
+  confirmou, sem mudar a conta nem o nome no mesmo `update`, com o código dela no fim do nome, sem troca de operador
+  anterior por uma pessoa e importada depois da primeira execução de criar da ação (a central só cria a campanha
+  depois disso; a campanha que já existia, mesmo renomeada com o código, continua `human`, e o dono a passa por
+  `api.change_campaign_operator` se quiser); o histórico ganha a linha `created_by_claude`, do Claude.
 - **Grava:** worker (tudo menos `managed_by` depois de criada), executor (o status relido e a campanha criada pela
-  central) e a função de troca de operador.
+  central, sempre na conta da execução) e a função de troca de operador.
 - **RLS:** lê `view_numbers`.
 - **Status:** a tela não muda o status. Pausar, reativar e "Parar tudo" viram execução na plataforma
   (`platform_executions`); o status muda quando a releitura confirmar.
@@ -318,11 +339,11 @@ Dimensão compartilhada (sem marca). O CSP-MKT dá a cada pessoa um código `REP
 
 - **Chaves:** `sales_reps`: única `code`, única `(source, external_id)`. `sales_rep_app_logins`: única
   `(brand_id, app_login_key)`; `sales_rep_id` → `sales_reps`, `on delete cascade`.
-- **Gatilho:** `sales_reps_code` (antes de `insert`, preenche `code` com `private.next_code('REP',
-  'mkt.sales_rep_code_seq')`). O código nunca muda. `ingest.upsert_sales_reps` atualiza primeiro o que existe
-  (`update … from`) e depois insere só o que é novo (`insert … where not exists … on conflict do nothing`): a sequência
-  anda só com linha nova (no `insert … on conflict do update`, o gatilho de `insert` roda também na linha que já existe
-  e gastaria um número a cada releitura).
+- **Gatilho:** `sales_reps_code` (antes de `insert`, preenche `code`): reaproveita o código da linha que já existe com
+  a mesma `(source, external_id)` e só chama `private.next_code('REP', 'mkt.sales_rep_code_seq')` para quem é novo; o
+  código que vier no `insert` é ignorado, e o código nunca muda. `ingest.upsert_sales_reps` grava por `insert … on
+  conflict (source, external_id) do update`: o gatilho de `insert` roda também na linha que já existe, mas fica com o
+  código dela, e a releitura não gasta número.
 - **Grava:** worker. **RLS:** lê `view_numbers`.
 
 ```sql
@@ -443,22 +464,29 @@ Regras de todas as tabelas `crm_*`:
   está em `crm_origin_map`, que é uma fonte de UTM conhecida da classificação (`mkt.is_known_origin_text`, a mesma
   lista de `mkt.classify_lead_origin`) ou que é igual à `utm_source` de primeiro contato do cliente, já replicada e
   limpa (é o que liga o negócio do site à UTM dele, [`metricas.md`](metricas.md), seção 3.2). Outro texto vira nulo e
-  o lead fica com `is_origin_unmapped = true`. Valor novo é conferido no CSP 360 e entra no de-para por migração.
+  o lead fica com `is_origin_unmapped = true`. Valor novo é conferido no CSP 360 e entra no de-para por migração. As
+  origens do negócio aberto à mão estão no de-para marcadas como não lead (`is_lead = false`, decisão 0041, item 9):
+  são gravadas como as outras e não deixam o negócio `is_origin_unmapped`.
 - **O texto já vem limpo do CRM:** a view entrega a origem do negócio e as três UTMs sem espaço nas pontas, cortadas
   em 150 letras e nulas quando vazias ou quando parecem e-mail, telefone, CPF ou CNPJ (na campanha, número solto
   passa, porque é o id da campanha). A origem vem sem o trecho de nome de representante que as listas de reativação
   gravaram, e o nome de funil com dado pessoal vem trocado por um rótulo. O teste daqui continua, como segunda
-  barreira: o que a view já tirou não entra na contagem `PERSONAL_DATA_DROPPED` nem vira origem sem de-para.
+  barreira: o que a view já tirou não entra na contagem `PERSONAL_DATA_DROPPED` nem vira origem sem de-para. No nome
+  do funil, o que tiver `@` ou parecer dado pessoal vira o rótulo `Funil` e os 8 primeiros caracteres do id, nunca o
+  texto, e conta `PERSONAL_DATA_DROPPED`; a linha não é recusada, para o funil de leads não sumir. `crm_funnels.name`
+  leva o mesmo `check` (`mkt.valid_crm_text`).
 - `last_seen_at` = última leitura que viu a linha. A passada completa diária apaga a linha que sumiu do CRM, sem
-  cópia (decisão 0015).
+  cópia (decisão 0015). A exceção é o par cliente × marca que tem a compra do ERP mais antiga já vista: ele perde só o
+  retrato, e a data fica (seção `crm_customer_brands`, decisão 0042).
 - **Grava:** worker, sempre pelas funções `ingest.*` (o de-para `crm_origin_map`, só por migração). **RLS:** lê quem
   tem `view_leads` (leads, funis, de-para), `view_connectors` (`crm_upstream_runs`) ou `view_numbers` (o resto).
   Ninguém grava pela API.
 
 ```sql
--- Última barreira para a UTM que vem do CRM (a função ingest.* já limpou antes). Fica na migração 01.
+-- Última barreira para o texto que vem do CRM: a UTM, a origem do negócio e o nome do funil (a função ingest.* já
+-- limpou antes). Fica na migração 01.
 create or replace function mkt.valid_crm_text(p text, p_is_campaign boolean default false) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select p is null or (length(p) <= 150 and strpos(p, '@') = 0
                        and (p_is_campaign or not mkt.has_personal_data(p)))
 $$;
@@ -469,7 +497,7 @@ $$;
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 |---|---|---|---|---|
 | `source`, `external_id` | `mkt.data_source`, `text` | não | `'csp360'` | `funis_venda.id` |
-| `name` | `text` | não | — | Nome do funil |
+| `name` | `text` | não | — | Nome do funil. Com `@` ou com cara de dado pessoal, o rótulo `Funil` e os 8 primeiros caracteres do id (seção "Regras", acima) |
 | `is_default` | `boolean` | não | `false` | Funil padrão no CRM |
 | `is_lead_funnel` | `boolean` | não | `false` | É funil de leads: o funil padrão do CRM e o funil antigo dos leads do site. Mais de um pode ser verdadeiro (decisão 0041, item 1) |
 | `last_seen_at` | `timestamptz` | sim | — | — |
@@ -478,20 +506,28 @@ $$;
   lead do site nasce no funil padrão desde 05/11/2026; os negócios abertos do funil antigo foram movidos para ele com
   o mesmo id, e os encerrados ficaram no funil antigo. Negócio sem funil no CRM conta como do funil padrão. Não há
   mais trava de um só funil de leads.
-- **Grava:** worker (nome e padrão; no funil padrão, `is_lead_funnel` segue `is_default` na ingestão) e script (uma
-  função `setup.*` marca uma vez, pelo id, o funil antigo dos leads do site, para o histórico encerrado entrar). Quando
-  o funil de leads muda (o CRM troca o funil padrão, ou o funil antigo é marcado), a próxima passada completa refaz
+- **Grava:** worker (nome e padrão; no funil padrão, `is_lead_funnel` segue `is_default` na ingestão: o funil que
+  deixa de ser o padrão deixa de ser de leads, e a leitura nunca desmarca o funil que não era o padrão) e script
+  (`setup.mark_lead_funnel(external_id)` marca uma vez, pelo id, o funil antigo dos leads do site, para o histórico
+  encerrado entrar; recusa o funil que a réplica ainda não leu e o funil padrão). Sem coluna à parte para a marca, o
+  funil marcado que um dia vira o padrão e depois deixa de ser perde a marca, e o script marca de novo. Quando o funil
+  de leads muda (o CRM troca o funil padrão, ou o funil antigo é marcado), a próxima passada completa refaz
   `crm_leads`.
 - **Negócio aberto à mão** (decisão 0041, item 9): o funil padrão é o funil de vendas do time comercial, e nele
   também há negócio aberto à mão. O negócio com a origem "Carteira" ou "Prospecção ativa" entra em `crm_leads` e não
-  conta como lead: fica fora de `mkt.v_leads`, e a origem dele não aparece na pendência de origem sem de-para.
+  conta como lead: fica fora de `mkt.v_leads`, e a origem dele não aparece na pendência de origem sem de-para. Quem
+  diz isso é o de-para: `crm_origin_map` traz `carteira`, `prospecção ativa` e `prospeccao ativa` com `is_lead = false`
+  e sem origem de lead; a ingestão guarda a origem como as outras do de-para, sem `is_origin_unmapped`, e a
+  `mkt.v_leads` deixa de fora o negócio cuja origem o de-para marca como não lead. A regra segue a origem atual, pelo
+  texto (o Editar do CRM troca a origem de qualquer negócio), e o envio do site anotado num negócio aberto à mão não
+  conta como lead: os limites estão em [`integracoes.md`](integracoes.md), seção 3.4.
 
 ```sql
 create table if not exists mkt.crm_funnels (
   id uuid primary key default gen_random_uuid(),
   source mkt.data_source not null default 'csp360',
   external_id text not null,
-  name text not null,
+  name text not null check (mkt.valid_crm_text(name)),
   is_default boolean not null default false,
   is_lead_funnel boolean not null default false,
   last_seen_at timestamptz,
@@ -508,23 +544,29 @@ create table if not exists mkt.crm_funnels (
 tela do CRM, "SDR WhatsApp" na conversão do SDR ou o texto de uma importação antiga. Este de-para leva cada valor para
 a origem do lead (`mkt.lead_origin`); `sdr whatsapp` vai para `sdr` (decisão 0041, item 3). Valor que não está aqui e
 é uma fonte de UTM conhecida segue a regra da função de classificação (`mkt.classify_lead_origin`, em `metricas.md`);
-o resto não é gravado (seção "Regras", acima).
+o resto não é gravado (seção "Regras", acima). A origem do negócio aberto à mão pelo time comercial ("Carteira", o
+padrão do campo na tela do CRM, e "Prospecção ativa") diz que o negócio não é lead (decisão 0041, item 9): está aqui
+com `is_lead = false` e sem origem de lead, e a `mkt.v_leads` deixa esse negócio de fora. O lead do SDR é sempre lead.
 
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 |---|---|---|---|---|
 | `raw_value` | `text` | não | — | Valor normalizado (minúsculas, sem espaço nas pontas) |
-| `origin` | `mkt.lead_origin` | não | — | Origem do lead |
+| `origin` | `mkt.lead_origin` | sim | — | Origem do lead; nula só na origem que não é de lead |
+| `is_lead` | `boolean` | não | `true` | O negócio com esta origem é lead. Falso só em `carteira`, `prospecção ativa` e `prospeccao ativa` (decisão 0041, item 9). Verdadeiro se e só se `origin` não é nula |
 
-- **Grava:** migração. A migração 05 só leva valores genéricos (fonte de UTM, canal, rótulo do ClickUp), revistos antes
-  do commit; texto com nome de pessoa nunca entra no repositório. **RLS:** lê `view_leads`.
+- **Grava:** migração. A migração 05 só leva valores genéricos (fonte de UTM, canal, rótulo do ClickUp, as duas origens
+  do negócio aberto à mão, com e sem acento), revistos antes do commit; texto com nome de pessoa nunca entra no
+  repositório. **RLS:** lê `view_leads`.
 
 ```sql
 create table if not exists mkt.crm_origin_map (
   id uuid primary key default gen_random_uuid(),
   raw_value text not null unique check (raw_value = lower(btrim(raw_value)) and raw_value <> ''),
-  origin mkt.lead_origin not null,
+  origin mkt.lead_origin,
+  is_lead boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default date_trunc('milliseconds', now())
+  updated_at timestamptz not null default date_trunc('milliseconds', now()),
+  check (is_lead = (origin is not null))
 );
 ```
 
@@ -549,8 +591,8 @@ Dimensão compartilhada: a base de clientes do CRM é uma só (decisão 0003).
 - As três UTMs vêm da view `clientes_utm` do CRM, que só traz o cliente com pelo menos uma delas: quem não está na
   view fica com as três nulas. É a UTM de primeiro contato: o primeiro valor não vazio de cada campo, campo a campo,
   então as três podem vir de envios diferentes. Quem já é cliente ativo na hora do envio não recebe UTM no cadastro
-  (fica só a origem do negócio), e o valor pode ser editado à mão no CRM. Só há UTM para quem entrou pelo site, desde
-  09/09/2026. A view já entrega o valor limpo (seção "Regras").
+  (fica só a origem do negócio, quando ele abre um), e o valor pode ser editado à mão no CRM. Só há UTM para quem
+  entrou pelo site, desde 09/09/2026. A view já entrega o valor limpo (seção "Regras").
 
 ```sql
 create table if not exists mkt.crm_customers (
@@ -591,6 +633,14 @@ atraso. Por isso a réplica guarda a compra do ERP mais antiga que já viu (`erp
 compra, quando o CRM a entregar; até lá, a menor última compra lida até hoje. Essa data nunca anda para a frente, e é
 ela que a regra do histórico usa: o cliente não é novo na marca se ela é anterior ao dia do 1º pedido do CRM (decisão
 0042, que também diz o que essa data não resolve).
+
+Por isso a passada completa não apaga o par que tem essa data quando ele some da view: `ingest.delete_missing` anula
+só o que espelha o CRM (`situation`, `is_lost_manual`, `last_purchase_on`, `erp_first_purchase_on`,
+`erp_last_purchase_on`, `erp_total_purchased_cents` e `situation_computed_at`), e a linha e a data ficam. Quando o par
+volta, a data guardada vale se é a menor. O par sem a data sai, como nas outras tabelas. Na trava de 20%, conta só o
+que a chamada muda: o par sem a data e o par que ainda tem retrato; o par que já está só com a data não segura a
+passada. O par sai com o cliente, pela cascata de `crm_customers`: o cliente que some do CRM (também o que o titular
+pediu para apagar, decisão 0015) leva a data junto.
 
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 |---|---|---|---|---|
@@ -656,9 +706,9 @@ create index if not exists crm_customer_reps_rep on mkt.crm_customer_reps (sales
 | `code` | `text` | não | — | `NEG-0001` do CRM; para o SDR, que não tem código, `LEAD-0001` gerado aqui |
 | `brand_id` | `uuid` | **sim** | — | Marca; nulo = "Sem marca" (lead do SDR, negócio sem marca; decisão 0014) |
 | `customer_id` | `uuid` | sim | — | Cliente no CRM; nulo = "A cadastrar" |
-| `crm_funnel_id` | `uuid` | sim | — | Funil do negócio; nulo no SDR. Negócio sem funil no CRM conta como do funil padrão (decisão 0041, item 1) |
-| `crm_origin_raw` | `text` | sim | — | `negocios.origem` normalizado, só quando está no de-para ou é uma fonte de UTM conhecida; outro texto não é gravado (seção "Regras") |
-| `is_origin_unmapped` | `boolean` | não | `false` | O negócio tinha origem no CRM, mas fora do de-para e das fontes conhecidas: a origem fica `referral` e a tela de Leads conta a pendência |
+| `crm_funnel_id` | `uuid` | sim | — | Funil do negócio; nulo no SDR. Negócio sem funil no CRM conta como do funil padrão (decisão 0041, item 1) e grava o id dele quando a réplica tem um só funil padrão; sem como saber qual é (nenhum ou mais de um), fica nulo |
+| `crm_origin_raw` | `text` | sim | — | `negocios.origem` normalizado, só quando está no de-para, é uma fonte de UTM conhecida ou é a `utm_source` de primeiro contato do cliente; outro texto não é gravado (seção "Regras"). A origem que o de-para marca como não lead também é gravada: o negócio fica fora de `mkt.v_leads` (decisão 0041, item 9) |
+| `is_origin_unmapped` | `boolean` | não | `false` | O lead tinha origem no CRM, mas fora do de-para e das fontes conhecidas e diferente da `utm_source` de primeiro contato do cliente: a origem não é gravada, fica `referral`, e a tela de Leads conta a pendência |
 | `utm_source`, `utm_medium`, `utm_campaign` | `text` | sim | — | UTM do próprio lead. Nulas: o CRM não tem UTM por lead, e vale a de primeiro contato do cliente (decisões 0031 e 0041, item 6). Preenche quando o CRM passar a gravar por envio (lacuna 10 do levantamento do CRM); limpa na entrada |
 | `referrer_host` | `text` | sim | — | Domínio de onde a pessoa veio. Nulo: o CRM não tem `referrer` por lead. Preenche quando o CRM passar a gravar (lacuna 9) |
 | `assigned_rep_id` | `uuid` | sim | — | Quem recebeu o lead no CRM (`sales_reps`), pela view `negocios_responsavel`. Nulo quando o CRM não entrega o id ("Sem representante") e no lead do SDR |
@@ -666,22 +716,31 @@ create index if not exists crm_customer_reps_rep on mkt.crm_customer_reps (sales
 | `source_updated_at` | `timestamptz` | sim | — | `atualizado_em` do CRM. Não diz quando o CRM gravou |
 | `last_seen_at` | `timestamptz` | não | — | — |
 
-- **Chaves:** única `(source, kind, external_id)`; única `code`. `customer_id`, `crm_funnel_id` e `assigned_rep_id`
-  com `on delete set null` (o que sai do CRM sai daqui sem travar a exclusão).
-- **Índices:** `(brand_id, source_created_at)`, `(customer_id)`, `(assigned_rep_id)`, `(mkt.utm_key(utm_campaign))`.
-- **Gatilho:** `crm_leads_code` (antes de `insert` com `kind = 'sdr'`, preenche `code` com
-  `private.next_code('LEAD', 'mkt.lead_code_seq')`). `ingest.upsert_crm_leads` atualiza primeiro o que existe e
-  depois insere só o que é novo, como em `sales_reps`: a sequência anda só com linha nova.
+- **Chaves:** única `(source, kind, external_id)`. `code` é único só no lead do SDR (o `LEAD-` daqui, índice único
+  parcial `crm_leads_sdr_code`); o `NEG-` do negócio pode repetir até a passada completa apagar o negócio antigo, porque
+  o CRM reaproveita o código do negócio apagado (decisão 0041, item 2). `customer_id`, `crm_funnel_id` e
+  `assigned_rep_id` com `on delete set null` (o que sai do CRM sai daqui sem travar a exclusão).
+- **Índices:** `(brand_id, source_created_at)`, `(customer_id)`, `(assigned_rep_id)`, `(mkt.utm_key(utm_campaign))`;
+  único `(code) where kind = 'sdr'`.
+- **Gatilho:** `crm_leads_code` (antes de `insert` com `kind = 'sdr'`, preenche `code`): reaproveita o código da linha
+  que já existe com a mesma `(source, kind, external_id)` e só chama `private.next_code('LEAD', 'mkt.lead_code_seq')`
+  para o lead novo; o código do SDR nunca muda. `ingest.upsert_crm_leads` grava por `insert … on conflict (source,
+  kind, external_id) do update`, como em `sales_reps`: o gatilho de `insert` roda também na linha que já existe, mas
+  fica com o código dela, e a releitura não gasta número.
 - **Quais negócios entram:** a leitura traz os negócios de todos os funis; `ingest.upsert_crm_leads` grava o que está
   num funil de leads (`crm_funnels.is_lead_funnel`: o funil padrão do CRM e o funil antigo dos leads do site) ou que
   já existe em `crm_leads`, e ignora o resto ([`integracoes.md`](integracoes.md), seção 3.4). O negócio sem funil no
   CRM conta como do funil padrão e entra: é como nasce o negócio da conversão do SDR (decisão 0041, item 1). O negócio
-  aberto à mão no funil padrão também entra, mas não conta como lead (decisão 0041, item 9).
-- **Lead é o negócio** (decisão 0041, item 2): quem já tem negócio aberto no funil de leads e manda o formulário de
+  aberto à mão no funil padrão também entra, mas não conta como lead (decisão 0041, item 9): a origem dele fica em
+  `crm_origin_raw`, e o de-para (`crm_origin_map.is_lead = false`) o tira de `mkt.v_leads`.
+- **Lead é o negócio** (decisão 0041, item 2): quem já tem negócio em aberto no funil padrão e manda o formulário de
   novo não ganha negócio novo; o CRM anota o envio no que existe. O envio repetido não vira outro lead nem muda
-  `source_created_at`, e por isso "Leads" pode ficar abaixo de "Leads informados pela plataforma". Quem já é cliente
-  ativo e manda o formulário abre negócio no funil de leads: conta como lead e não ganha UTM. A chave do lead é o id
-  do negócio (`external_id`): o código mostrado (`code`) pode ser reaproveitado no CRM depois de uma limpeza.
+  `source_created_at`, e por isso "Leads" pode ficar abaixo de "Leads informados pela plataforma". O negócio sem funil
+  e o encerrado não seguram o envio, que abre negócio novo ([`integracoes.md`](integracoes.md), seção 3.4). Quem já é
+  cliente ativo, sem negócio em aberto no funil padrão, e manda o formulário abre negócio no funil de leads: conta como
+  lead e não ganha UTM. Se o negócio em aberto é um negócio aberto à mão, que não é lead (decisão 0041, item 9), o
+  envio anotado nele não conta em lugar nenhum. A chave do lead é o id do negócio (`external_id`): o código mostrado
+  (`code`) pode ser reaproveitado no CRM depois de uma limpeza.
 - **Responsável:** no CRM o responsável do negócio é o nome, em texto, e o nome nunca sai de lá. A view
   `negocios_responsavel` só devolve o id de `usuarios` quando o nome (sem espaço nas pontas, sem diferença de
   maiúscula) é de exatamente uma pessoa, de qualquer papel, ativa ou não. Nome repetido, desconhecido ou vazio: o
@@ -702,7 +761,7 @@ create table if not exists mkt.crm_leads (
   source mkt.data_source not null default 'csp360',
   kind mkt.lead_kind not null,
   external_id text not null,
-  code text not null unique,
+  code text not null,
   brand_id uuid references mkt.brands(id),
   customer_id uuid references mkt.crm_customers(id) on delete set null,
   crm_funnel_id uuid references mkt.crm_funnels(id) on delete set null,
@@ -728,6 +787,7 @@ create index if not exists crm_leads_brand_created on mkt.crm_leads (brand_id, s
 create index if not exists crm_leads_customer on mkt.crm_leads (customer_id);
 create index if not exists crm_leads_rep on mkt.crm_leads (assigned_rep_id);
 create index if not exists crm_leads_utm on mkt.crm_leads (mkt.utm_key(utm_campaign));
+create unique index if not exists crm_leads_sdr_code on mkt.crm_leads (code) where kind = 'sdr';
 ```
 
 ### `crm_orders` — pedidos
@@ -1677,7 +1737,7 @@ cria uma linha `requested` que o worker pega no minuto seguinte.
 | `requested_at`, `started_at`, `finished_at` | `timestamptz` | sim | — | Andamento |
 | `rows_written`, `rows_deleted`, `rows_refused` | `integer` | não | `0` | Linhas gravadas, apagadas e recusadas pelo banco (moeda, lista, `check`; [`integracoes.md`](integracoes.md), seção 2.3) |
 | `watermark_from_at`, `watermark_to_at` | `timestamptz` | sim | — | Janela lida; o `watermark_to_at` da última rodada boa é o próximo `since`. No CSP 360 a leitura de 5 min não usa a marca d'água: relê a janela de 3 dias (decisão 0041, item 4) |
-| `personal_data_dropped` | `integer` | não | `0` | Valores de texto do CRM que viraram nulo por parecer dado pessoal (`PERSONAL_DATA_DROPPED`) |
+| `personal_data_dropped` | `integer` | não | `0` | Valores de texto do CRM que viraram nulo (ou o rótulo, no nome do funil) por parecer dado pessoal (`PERSONAL_DATA_DROPPED`) |
 | `error_code` | `text` | sim | — | Código do erro (`HTTP_429`, `CURRENCY`, `SCHEMA_DRIFT`, `EMPTY_SOURCE`, `SPEND_MISMATCH`, `MASS_DELETE_BLOCKED`…) |
 | `error_message` | `text` | sim | — | Mensagem curta, até 300 letras, sem dado pessoal |
 | `mass_delete_confirmed_by`, `mass_delete_confirmed_at` | `uuid`, `timestamptz` | sim | — | O dono confirmou a exclusão que a trava de 20% segurou (`api.confirm_mass_delete`); a passada seguinte apaga |
@@ -1796,7 +1856,7 @@ create table if not exists private.connector_credentials (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default date_trunc('milliseconds', now()),
   unique nulls not distinct (connector_id, purpose, account_ref),
-  check (vault_secret_id is not null or purpose = 'write')
+  check ((purpose = 'write') = (vault_secret_id is null))
 );
 alter table private.connector_credentials enable row level security;
 revoke all on private.connector_credentials from public, anon, authenticated;
@@ -1822,11 +1882,16 @@ O id é o do login (`auth.users`). O e-mail fica só no `auth`; a lista de usuá
 | `deactivation_note` | `text` | sim | — | Obrigatória com `other`; 10 a 500 letras, sem dado pessoal |
 
 - **Gatilhos:**
-  - `private.handle_new_user` (`security definer`, `set search_path = ''`, dono `postgres`; depois de `insert` em
-    `auth.users`) cria o perfil só se `new.invited_at` não for nulo e houver um convite com `email_normalized =
-    lower(new.email)`, `accepted_at` nulo, `revoked_at` nulo, `expires_at > now()` e `invited_by` de perfil ativo com
-    `manage_users` (`invited_by` nulo só no convite do primeiro dono). O nome e o papel vêm só do convite, nunca de
-    `raw_user_meta_data` nem de `raw_app_meta_data`. Sem convite válido, não cria, e a pessoa não lê nada.
+  - `private.handle_new_user` (`security definer`, `set search_path = pg_catalog, pg_temp`, dono `postgres`; gatilho
+    `mkt_handle_new_user`, depois de `insert` e de `update of invited_at` em `auth.users`) cria o perfil só se
+    `new.invited_at` não for nulo e houver um convite com `email_normalized = lower(new.email)`, `accepted_at` nulo,
+    `revoked_at` nulo, `expires_at > now()` e `invited_by` de perfil ativo com `manage_users` (`invited_by` nulo só no
+    convite do primeiro dono, e só enquanto não há dono ativo). O nome e o papel vêm só do convite, nunca de
+    `raw_user_meta_data` nem de `raw_app_meta_data`. Sem convite válido, não cria, e a pessoa não lê nada. O
+    `update of invited_at` existe porque o Supabase Auth, no convite (`/auth/v1/invite` e `generate_link` do tipo
+    convite), primeiro insere o login e só depois grava `invited_at`, num `update` da mesma transação: só com o
+    `insert`, o perfil nunca nasceria. Se o login já tem perfil, o gatilho sai sem fazer nada (o convite reenviado
+    regrava `invited_at`, e o papel só muda por `api.change_role`).
   - `profiles_guard` (antes de `update`): `role`, `is_active`, `deactivated_*` e `deactivation_*` só mudam dentro de
     `api.change_role` e `api.revoke_access`, com a chave da transação, `session_user = 'authenticator'` e
     `authz.can('manage_users')`; ninguém muda o próprio papel; o último dono ativo não perde o papel nem o acesso (a
@@ -1897,7 +1962,9 @@ create table if not exists mkt.invitations (
   revoked_at timestamptz,
   revoked_by uuid references mkt.profiles(id),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default date_trunc('milliseconds', now())
+  updated_at timestamptz not null default date_trunc('milliseconds', now()),
+  check ((accepted_at is null) = (accepted_profile_id is null)),
+  check (accepted_at is null or revoked_at is null)
 );
 create unique index if not exists invitations_one_open
   on mkt.invitations (email_normalized) where accepted_at is null and revoked_at is null;

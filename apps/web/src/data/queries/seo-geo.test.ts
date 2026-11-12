@@ -144,7 +144,7 @@ const dados: Dados = {
   ],
   connectors: [
     conector({ id: 'search_console', status: 'ok', lastSyncAt: '2026-10-30T09:00:00-03:00' }),
-    conector({ id: 'ga4', status: 'simulated' }),
+    conector({ id: 'ga4', status: 'not_connected' }),
     conector({
       id: 'csp360',
       status: 'ok',
@@ -388,7 +388,7 @@ describe('montarPainelSeoGeo — sites, pendências e fontes', () => {
   it('dá o selo de cada fonte e o "atualizado há" pela sincronização mais antiga', () => {
     const p = montarPainelSeoGeo(dados, f(), agora, complementos);
     expect(p.fontes.search_console).toMatchObject({ status: 'ok', atrasado: false });
-    expect(p.fontes.ga4).toMatchObject({ status: 'simulated', lastSyncAt: null });
+    expect(p.fontes.ga4).toMatchObject({ status: 'not_connected', lastSyncAt: null });
     expect(p.atualizadoEm).toBe('2026-10-30T09:00:00-03:00');
 
     const semCartoes = montarPainelSeoGeo({ ...dados, connectors: [] }, f(), agora, complementos);

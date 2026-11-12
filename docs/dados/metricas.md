@@ -49,7 +49,9 @@ Regras:
   `variation` vêm nulos. A comparação usa só os dias completos de cada fonte (seção 2.1).
 - Dinheiro em centavos inteiros (custo arredondado no fim; meio centavo arredonda para cima). Taxa e parte como fração
   de 0 a 1, com 4 casas. ROAS com 2 casas. A variação é calculada antes de arredondar.
-- Toda função de tela é `stable`, `security invoker` e `set search_path = ''`. A primeira linha confere **todas** as
+- Toda função de tela é `stable`, `security invoker` e `set search_path = pg_catalog, pg_temp`, como toda função dos
+  sete esquemas: sem o `pg_temp` por último no caminho, o esquema temporário da sessão é procurado primeiro para tipos
+  e tabelas ([`papeis-e-rls.md`](papeis-e-rls.md), "Funções de ação"). A primeira linha confere **todas** as
   permissões das tabelas que a função lê (`authz.can`; seção 5): um papel sem uma delas recebe `KPI-403`, nunca um 0
   que a RLS produziu ao esconder as linhas. Os filtros só são lidos depois disso. A RLS das tabelas vale porque toda
   view, em `api` **e em `mkt`**, nasce com `security_invoker = true`. Filtro inválido: `PT400` / `KPI-400`. Sem
@@ -97,7 +99,7 @@ create type mkt.kpi_filters as (
 );
 
 create or replace function mkt.parse_filters(p jsonb) returns mkt.kpi_filters
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   f mkt.kpi_filters;
   v_none constant uuid := '00000000-0000-0000-0000-000000000000';   -- não casa com nenhuma linha
@@ -174,7 +176,7 @@ end $$;
 ```sql
 -- mkt.now e mkt.today ficam na migração 01 (plano.md): a trava do limite, na 10, já usa.
 create or replace function mkt.now() returns timestamptz
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   v timestamptz;
 begin
@@ -186,7 +188,7 @@ begin
 end $$;
 
 create or replace function mkt.today() returns date
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select (mkt.now() at time zone 'America/Sao_Paulo')::date
 $$;
 
@@ -203,7 +205,7 @@ create type mkt.period_window as (
 create or replace function mkt.period_window(p_period mkt.period_code, p_complete_through date default null,
                                              p_today date default null)
 returns mkt.period_window
-language plpgsql stable set search_path = '' as $$
+language plpgsql stable set search_path = pg_catalog, pg_temp as $$
 declare
   v_today      date := coalesce(p_today, mkt.today());
   v_month      date := date_trunc('month', v_today)::date;
@@ -247,7 +249,7 @@ end $$;
 
 -- Para a tela montar o rótulo ("vs. 1º a 3 de outubro") sem fazer conta de data.
 create or replace function mkt.period_json(w mkt.period_window) returns jsonb
-language sql immutable set search_path = '' as $$
+language sql immutable set search_path = pg_catalog, pg_temp as $$
   select jsonb_build_object(
     'start_on', lower(w.current_window), 'end_on', upper(w.current_window) - 1,
     'compared_through_on', upper(w.comparable_current) - 1,
@@ -303,13 +305,13 @@ Cada `api.kpi_*` devolve também `coverage` (`{"csp360": true, "meta": true, "ti
 
 ```sql
 create or replace function mkt.source_covered(p_code mkt.connector_code) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select coalesce((select c.first_success_at is not null from mkt.connectors c where c.code = p_code), false)
 $$;
 
 -- Gasto: o canal tem base e a conta da marca nele já foi lida. Sem canal: algum canal com base.
 create or replace function mkt.ads_covered(p_brand_id uuid, p_platform mkt.platform) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select exists (
     select 1
       from mkt.ad_accounts a
@@ -322,7 +324,7 @@ $$;
 
 -- Instagram: o conector tem base e o perfil ativo da marca já foi lido.
 create or replace function mkt.ig_covered(p_brand_id uuid) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select mkt.source_covered('instagram')
      and exists (select 1 from mkt.ig_accounts a
                   where a.is_active and a.first_read_at is not null
@@ -331,7 +333,7 @@ $$;
 
 -- Search Console e GA4: o conector tem base e a propriedade ativa da marca daquele tipo já foi lida.
 create or replace function mkt.web_covered(p_brand_id uuid, p_kind mkt.web_property_kind) returns boolean
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select mkt.source_covered((case p_kind when 'ga4_property' then 'ga4' else 'search_console' end)::mkt.connector_code)
      and exists (select 1 from mkt.web_properties w
                   where w.is_active and w.kind = p_kind and w.first_read_at is not null
@@ -380,12 +382,12 @@ Todas leem `connectors`, que a RLS libera com `view_connectors`. Os dois papéis
 
 ```sql
 create or replace function mkt.ratio(p_num numeric, p_den numeric) returns numeric
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case when p_num is null or p_den is null or p_den = 0 then null else p_num / p_den end
 $$;
 
 create or replace function mkt.round_as(p numeric, p_kind text) returns numeric
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case p_kind
            when 'money'    then round(p)       -- centavos inteiros; meio centavo arredonda para cima
            when 'fraction' then round(p, 4)    -- taxa e parte, de 0 a 1
@@ -396,7 +398,7 @@ $$;
 -- O valor mostrado é o de até agora; a variação compara os dias completos dos dois lados (seção 2.1).
 create or replace function mkt.metric(p_current numeric, p_comparable_current numeric, p_comparable_previous numeric,
                                       p_compare boolean, p_kind text default 'count') returns jsonb
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select jsonb_build_object(
     'current',   mkt.round_as(p_current, p_kind),
     'previous',  case when p_compare then mkt.round_as(p_comparable_previous, p_kind) end,
@@ -419,7 +421,7 @@ create domain mkt.not_applicable_reason as text check (value in ('sales_rep', 'o
 create type mkt.cost_scope as (filters mkt.kpi_filters, not_applicable mkt.not_applicable_reason);
 
 create or replace function mkt.cost_scope(f mkt.kpi_filters) returns mkt.cost_scope
-language plpgsql immutable set search_path = '' as $$
+language plpgsql immutable set search_path = pg_catalog, pg_temp as $$
 begin
   if f.sales_rep_id is not null then
     return row(f, 'sales_rep')::mkt.cost_scope;
@@ -457,10 +459,13 @@ A regra de `classificarOrigem` (`packages/shared/src/rules.ts`) passa para SQL, 
    conta como `site`: SG13 a SG16 mostram só o lead cuja fonte de UTM é o buscador ou o assistente (0 quando não há
    nenhum, não "Sem dados"), e SG17 abre o orgânico em "Sem endereço de origem".
 4. Sem UTM e sem `referrer`: o texto `negocios.origem` do CRM passa pelo de-para `crm_origin_map` (rótulos do ClickUp,
-   `site`, `sdr whatsapp`).
-5. Fora do de-para, o texto gravado é uma fonte de UTM conhecida e vai para a mesma classificação. Texto fora do de-para
-   e das fontes conhecidas não é gravado (`is_origin_unmapped`, [`tabelas.md`](tabelas.md), seção 2) e o lead fica
-   `referral`; sem texto nenhum → `direct`. No lead do site, o texto do CRM traz só a fonte: a função de leads dos
+   `site`, `sdr whatsapp`). As origens do negócio aberto à mão (`carteira`, `prospecção ativa`) estão no de-para sem
+   origem de lead (`is_lead = false`): esse negócio não chega aqui, porque a `mkt.v_leads` o deixa de fora (seção
+   3.4).
+5. Fora do de-para, o texto gravado é uma fonte de UTM conhecida, que vai para a mesma classificação, ou a `utm_source`
+   de primeiro contato do cliente (seção 3.2), que fora das fontes conhecidas fica `referral`, sem pendência. Outro
+   texto não é gravado (`is_origin_unmapped`, [`tabelas.md`](tabelas.md), seção 2) e o lead fica `referral`; sem texto
+   nenhum → `direct`. No lead do site, o texto do CRM traz só a fonte: a função de leads dos
    sites grava nele a `utm_source` do envio, como veio, ou `site` quando não veio UTM. A view do CRM já entrega o texto
    limpo: sem espaço nas pontas, sem o nome de representante que as listas de reativação gravaram, cortado em 150
    letras, e nulo quando está vazio ou parece e-mail, telefone, CPF ou CNPJ. O lead cujo texto a view anulou fica
@@ -480,7 +485,7 @@ antes das `ingest.*` que as usam ([`plano.md`](plano.md)).
 -- Host de um endereço: tira protocolo, usuário, porta e caminho; depois www., m., l. e lm. (nessa ordem),
 -- como o host() de rules.ts.
 create or replace function mkt.url_host(p text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select nullif(
     regexp_replace(regexp_replace(regexp_replace(regexp_replace(
       regexp_replace(lower(btrim(coalesce(p, ''))), '^[a-z][a-z0-9+.-]*://(?:[^@/]*@)?([^/:?#]+).*$', '\1'),
@@ -490,7 +495,7 @@ $$;
 
 -- Sufixo terminado em ponto ("google.") vale em qualquer lugar do host; o resto, host igual ou subdomínio.
 create or replace function mkt.host_matches(p_host text, p_patterns text[]) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select coalesce(bool_or(case when right(s, 1) = '.' then strpos(p_host, s) > 0
                                else p_host = s or right(p_host, length(s) + 1) = '.' || s end), false)
     from unnest(p_patterns) s
@@ -499,7 +504,7 @@ $$;
 -- Assistente de IA de uma fonte (utm_source, sessionSource do GA4 ou referrer). A lista mora só aqui.
 -- Criada antes de classify_lead_origin na migração.
 create or replace function mkt.ai_source_of(p_session_source text, p_channel_group text) returns mkt.ai_source
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (case
     when mkt.host_matches(h, '{chatgpt.com,chat.openai.com}') or h in ('chatgpt', 'openai') then 'chatgpt'
     when mkt.host_matches(h, '{perplexity.ai}') or h = 'perplexity' then 'perplexity'
@@ -513,7 +518,7 @@ $$;
 
 -- Família da fonte de UTM. A lista de fontes mora só aqui: a classificação e a gravação da origem usam.
 create or replace function mkt.utm_source_family(p_source text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select case
     when s = '' then null
     when mkt.ai_source_of(s, null) is not null then 'ai_assistant'   -- antes da Meta: "chatgpt.com" é IA
@@ -529,13 +534,13 @@ $$;
 
 -- O texto de negocios.origem pode ser gravado? Só se é uma fonte conhecida (o de-para é conferido à parte).
 create or replace function mkt.is_known_origin_text(p text) returns boolean
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select mkt.utm_source_family(p) is not null
 $$;
 
 create or replace function mkt.classify_lead_origin(p_referrer text, p_utm_source text, p_utm_medium text,
                                                     p_own_hosts text[]) returns mkt.lead_origin
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   with v as (
     select lower(btrim(coalesce(p_utm_source, ''))) as src,
            lower(btrim(coalesce(p_utm_medium, ''))) as med,
@@ -575,9 +580,10 @@ sites, até a versão em TypeScript sair, mais os novos: `utm_source=chatgpt.com
    `utm_source` de primeiro contato. Os outros leads do cliente ficam sem UTM. O CRM não guarda UTM por lead:
    `crm_leads.utm_*` fica nulo (decisão 0041, item 6), e toda UTM é a herdada. Cada campo (fonte, meio, campanha) é o
    primeiro valor não vazio que chegou, campo a campo: os três podem vir de envios diferentes. Quem já tem negócio
-   aberto no funil de leads e manda o formulário de novo não ganha negócio (seção 3.3): a UTM de primeiro contato
-   pode ficar sem negócio com a mesma origem, e então nenhum lead a herda. Quem já era cliente ativo na hora do envio
-   abre negócio, mas o cadastro não recebe UTM: fica só a origem do negócio.
+   em aberto no funil padrão e manda o formulário de novo não ganha negócio (seção 3.3): a UTM de primeiro contato
+   pode ficar sem negócio com a mesma origem, e então nenhum lead a herda. Quem já era cliente ativo na hora do envio,
+   sem negócio em aberto no funil padrão, abre negócio, mas o cadastro não recebe UTM: fica só a origem do negócio.
+   Com negócio em aberto, inclusive o aberto à mão, o envio só é anotado nele e não deixa UTM nem origem (seção 3.3).
 2. **Campanha:** primeiro pelo id. Quando a `utm_campaign` é o id da campanha na plataforma (`{{campaign.id}}` na
    Meta, `__CAMPAIGN_ID__` no TikTok, `{campaignid}` no Google, no sufixo do link), casa com `campaigns.external_id`:
    o id nunca se repete. Sem candidata pelo id, a chave da `utm_campaign` (`mkt.utm_key`: minúsculas, espaços simples)
@@ -618,14 +624,24 @@ select c.*,
 Lead de quem já comprava a marca não converte: a etapa para em `registered`. O negócio que nasce da conversão de um lead
 do SDR conta uma vez, como o lead do SDR, com a marca do negócio quando o SDR não tem (decisão 0041, item 3). A
 conversão grava a origem "SDR WhatsApp" em `negocios.origem` e abre o negócio sem funil e sem marca: no CRM, negócio
-sem funil é do funil padrão, e o lead fica "Sem marca" até o negócio ganhar uma. A ligação entre os dois é o cliente,
-e o de-para leva `sdr whatsapp` para `sdr`: sem essa linha, o mesmo lead contaria duas vezes.
+sem funil é do funil padrão, e o lead fica "Sem marca" até o negócio ganhar uma. A ligação entre os dois é o cliente e
+a origem "SDR WhatsApp" do negócio, que o de-para guarda (leva `sdr whatsapp` para `sdr`): sem essa linha, a origem não
+seria gravada e o mesmo lead contaria duas vezes. Só o negócio da conversão se liga ao lead do SDR: o negócio aberto à
+mão com a origem "WhatsApp" é outro lead e não muda a marca nem a etapa do lead do SDR. A ligação compara o dia, não o
+instante, porque o negócio da tela do CRM vem só com o dia (decisão 0041, item 5): a conversão feita no dia em que o
+lead do SDR chegou também liga. Limite: o negócio da conversão só se liga enquanto tiver a origem "SDR WhatsApp". Se o
+banco do CRM recusar o negócio da conversão e a equipe o abrir à mão com "WhatsApp", ou se alguém trocar a origem dele
+no Editar do CRM (a tela não oferece "SDR WhatsApp" de volta), esse negócio conta à parte; com "Carteira" ou
+"Prospecção ativa", ele sai de Leads, e o lead do SDR fica sem a marca que vinha dele.
 
 Um lead é um negócio do CRM (o card do funil), não um envio de formulário (decisão 0041, item 2). Quem já tem negócio
-aberto no funil de leads e manda o formulário de novo não vira lead novo: o CRM anota o envio no negócio que existe.
-Por isso os leads daqui podem ficar abaixo dos leads informados pela plataforma (`platform_leads`, seção 4.2). Quem já
-é cliente ativo e manda o formulário abre negócio e conta como lead. A chave do lead é o id do negócio: o código
-mostrado pode ser reaproveitado no CRM depois de uma limpeza.
+em aberto no funil padrão e manda o formulário de novo não vira lead novo: o CRM anota o envio no negócio que existe.
+Por isso os leads daqui podem ficar abaixo dos leads informados pela plataforma (`platform_leads`, seção 4.2). A função
+de leads dos sites procura só o negócio em aberto gravado com o id do funil padrão: o negócio sem funil (como o da
+conversão do SDR) e o encerrado não seguram o envio, que abre negócio novo e conta como lead. Quem já é cliente ativo,
+sem negócio em aberto no funil padrão, e manda o formulário também abre negócio e conta como lead. Se o negócio em
+aberto é um negócio aberto à mão, que não é lead (seção 3.4), o envio anotado nele não conta em lugar nenhum. A chave
+do lead é o id do negócio: o código mostrado pode ser reaproveitado no CRM depois de uma limpeza.
 
 ### 3.4 `mkt.v_leads`
 
@@ -634,11 +650,19 @@ Lead é o lead do SDR ou o negócio de um funil de leads (`crm_funnels.is_lead_f
 do site, que guarda o histórico encerrado. Negócio sem funil conta como do funil padrão. O funil padrão é o funil de
 vendas do time comercial: nele também está o negócio que a equipe abre à mão, com a origem "Carteira" ou "Prospecção
 ativa". Esse negócio não conta como lead (decisão 0041, item 9): entra na réplica e fica fora de `mkt.v_leads`, e
-essas duas origens não entram na pendência de origem sem de-para (`unmapped_origin_count`).
+essas duas origens não entram na pendência de origem sem de-para (`unmapped_origin_count`). Quem marca é o de-para:
+as duas origens estão em `crm_origin_map` com `is_lead = false`, a ingestão as guarda em `crm_origin_raw` sem
+`is_origin_unmapped`, e a view deixa de fora o negócio cuja origem o de-para marca como não lead. O lead do SDR é
+sempre lead. A regra é pelo texto da origem atual. O negócio que alguém edita no CRM para "Carteira" ou "Prospecção
+ativa" sai de Leads, também nos dias passados, e volta se perder essa origem. O lead do site cuja `utm_source` for um
+desses textos também fica fora. O envio do site de quem tem negócio em aberto, aberto à mão e gravado no funil padrão
+não conta como lead: a função de leads dos sites só anota o envio nesse negócio (seção 3.3; pedido ao time do CRM,
+`integracoes.md`, seção 19).
 
 O dia do lead (`created_on`) é o dia de São Paulo do instante em que ele chegou. A exceção é o instante exatamente à
-meia-noite UTC (decisão 0041, item 5): a tela do CRM grava só o dia, que chega como 00:00 UTC, e convertido cairia no
-dia anterior. Esse instante é data pura: vale a data como veio. Só o lead do site tem hora de verdade.
+meia-noite UTC (decisão 0041, item 5): a tela do CRM grava o negócio só com o dia, que chega como 00:00 UTC, e
+convertido cairia no dia anterior. Esse instante é data pura: vale a data como veio. O lead do site e o lead do SDR têm
+hora de verdade; o negócio aberto pela tela do CRM, inclusive o da conversão do SDR, vem só com o dia.
 
 ```sql
 create or replace view mkt.v_leads with (security_invoker = true) as
@@ -654,14 +678,18 @@ base as (
          m.origin as mapped_origin
     from mkt.crm_leads l
     left join mkt.crm_origin_map m on m.raw_value = lower(btrim(l.crm_origin_raw))
+   -- O negócio aberto à mão pelo time comercial não é lead: o de-para marca a origem dele (decisão 0041, item 9).
+   where l.kind = 'sdr' or coalesce(m.is_lead, true)
 ),
--- 1. Negócio que continua um lead do SDR: conta uma vez, como o lead do SDR.
+-- 1. O negócio da conversão de um lead do SDR (origem "SDR WhatsApp", decisão 0041, item 3): conta uma vez, como o
+--    lead do SDR. Só ele: o negócio aberto à mão com a origem "WhatsApp" é outro lead. Pelo dia, porque o negócio da
+--    tela do CRM vem só com o dia (item 5).
 sdr_link as (
   select distinct on (d.id) d.id as deal_id, s.id as sdr_id, d.brand_id as deal_brand_id, d.source_created_at
     from base d
     join base s on s.kind = 'sdr' and s.customer_id = d.customer_id
-               and s.source_created_at <= d.source_created_at
-   where d.kind = 'deal' and d.mapped_origin = 'sdr'
+               and s.created_on <= d.created_on
+   where d.kind = 'deal' and d.crm_origin_raw = 'sdr whatsapp'
    order by d.id, s.source_created_at desc, s.code desc
 ),
 leads as (
@@ -871,7 +899,7 @@ select n.*, c.lead_id, c.origin, c.attributed_campaign_id, c.assigned_rep_id, c.
 
 ```sql
 create or replace function mkt.campaigns_in_scope(f mkt.kpi_filters) returns setof mkt.campaigns
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select c.* from mkt.campaigns c
    where (f.brand_id is null or c.brand_id = f.brand_id)
      and (f.platform is null or c.platform = f.platform)
@@ -880,7 +908,7 @@ language sql stable set search_path = '' as $$
 $$;
 
 create or replace function mkt.leads_in_scope(f mkt.kpi_filters) returns setof mkt.v_leads
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select l.* from mkt.v_leads l
     left join mkt.campaigns c on c.id = l.attributed_campaign_id
    where (f.brand_id is null or l.brand_id = f.brand_id or l.brand_id is null)   -- sem marca entra (0014)
@@ -893,7 +921,7 @@ $$;
 
 create or replace function mkt.new_customers(f mkt.kpi_filters, p_window daterange)
 returns setof mkt.v_new_customers
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   select n.* from mkt.v_new_customers n
     left join mkt.campaigns c on c.id = n.attributed_campaign_id
    where n.scope = case when f.brand_id is null then 'group' else 'brand' end   -- decisão 0030
@@ -950,7 +978,7 @@ create or replace function mkt.acquisition_ratios(
   p_investment_cents bigint, p_attributed_leads bigint, p_attributed_new bigint, p_attributed_revenue_cents bigint,
   p_is_utm_ambiguous boolean default false,     -- só a linha de campanha (CA14) passa mkt.v_campaigns.is_utm_ambiguous
   out cost_per_lead_cents numeric, out cost_per_new_customer_cents numeric, out roas numeric)
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select mkt.ratio(p_investment_cents, p_attributed_leads),                        -- decisão 0027
          case when not p_is_utm_ambiguous                                           -- UTM repetida: nulo (0009, 0028)
               then mkt.ratio(p_investment_cents, p_attributed_new) end,           -- decisões 0012 e 0029
@@ -960,7 +988,7 @@ $$;
 
 create or replace function mkt.acquisition(f mkt.kpi_filters, w mkt.period_window)
 returns setof mkt.acquisition_row
-language sql stable set search_path = '' as $$
+language sql stable set search_path = pg_catalog, pg_temp as $$
   with span as (select range_merge(w.previous_window, w.current_window) as r),
   camp as materialized (select c.id from mkt.campaigns_in_scope(f) c),
   l as materialized (
@@ -1047,7 +1075,7 @@ create domain mkt.limit_alert as text check (value in ('near_limit', 'over_limit
 
 create or replace function mkt.pace(p_spent bigint, p_target bigint, p_days_elapsed integer, p_days_in_month integer,
   out projection_cents bigint, out expected_today_cents bigint, out usage numeric, out situation mkt.spend_situation)
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select round(p_spent::numeric / p_days_elapsed * p_days_in_month)::bigint,
          round(p_target::numeric * p_days_elapsed / p_days_in_month)::bigint,
          mkt.ratio(p_spent, p_target),
@@ -1059,7 +1087,7 @@ $$;
 
 -- Recebe o gasto e o limite, não o uso: com limite 0, o uso é nulo, e o alerta precisa dizer "acima", como a situação.
 create or replace function mkt.limit_alert(p_spent bigint, p_limit bigint) returns mkt.limit_alert
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (case when p_spent >= p_limit then 'over_limit'
                when p_spent >= 0.9 * p_limit then 'near_limit' end)::mkt.limit_alert
 $$;
@@ -1249,7 +1277,7 @@ anterior. Reativado = essa compra existe e a distância é de 90 dias ou mais.
 
 ```sql
 create or replace function mkt.ga4_channel_of(p_channel_group text, p_session_source text) returns mkt.ga4_channel
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select (case
     when mkt.ai_source_of(p_session_source, p_channel_group) is not null then 'ai_assistant'
     when p_channel_group = 'Organic Search' then 'organic_search'
@@ -1375,9 +1403,10 @@ select h.code, h.setup_state, h.expected_every_minutes, h.late_tolerance_minutes
 
 ## 5. Funções de tela
 
-Todas: `stable`, `security invoker`, `set search_path = ''`, `revoke all … from public, anon`, `grant execute … to
-authenticated`. As views `api.v_traffic_actions` e `api.v_traffic_log` continuam como base das listas do Tráfego e do
-teste de RLS; o nome de quem fez sai de `authz.display_name` (só o nome, para quem tem `view_traffic`).
+Todas: `stable`, `security invoker`, `set search_path = pg_catalog, pg_temp` (o `pg_temp` por último, seção 1),
+`revoke all … from public, anon`, `grant execute … to authenticated`. As views `api.v_traffic_actions` e
+`api.v_traffic_log` continuam como base das listas do Tráfego e do teste de RLS; o nome de quem fez sai de
+`authz.display_name` (só o nome, para quem tem `view_traffic`).
 
 | Função | Tela | Permissão (todas conferidas na primeira linha) | Devolve |
 |---|---|---|---|
@@ -1405,7 +1434,7 @@ Esboço da Visão geral (as outras seguem o mesmo molde):
 
 ```sql
 create or replace function api.kpi_overview(p_filters jsonb) returns jsonb
-language plpgsql stable security invoker set search_path = '' as $$
+language plpgsql stable security invoker set search_path = pg_catalog, pg_temp as $$
 declare
   f  mkt.kpi_filters;
   w  mkt.period_window;
@@ -1740,7 +1769,7 @@ usa `mkt.list_rank`. O teste de paridade confere cada array com `opcoes()` do `l
 
 ```sql
 create or replace function mkt.list_rank(p_list text, p_code text) returns integer
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select array_position(case p_list
     when 'lead_stage'         then array['lead','prospect','registered','first_order','invoiced']
     when 'lead_origin'        then array['meta','tiktok','google','site','organic','ai_assistant','sdr','referral','direct']
@@ -1763,7 +1792,7 @@ português. No SQL a ordem não depende da collation do banco (a do PGlite e a d
 
 ```sql
 create or replace function mkt.sort_text(p text) returns text
-language sql immutable parallel safe set search_path = '' as $$
+language sql immutable parallel safe set search_path = pg_catalog, pg_temp as $$
   select lower(translate(p, 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇáàâãäéèêëíìîïóòôõöúùûüç',
                             'AAAAAEEEEIIIIOOOOOUUUUCaaaaaeeeeiiiiooooouuuuc'))
 $$;
@@ -1815,7 +1844,7 @@ Vale em CH14, CH15, BA13, BA15, BA16, LE8, LE13, SG7, SG17 e CA14.
 | `[Q]` "conectores com atraso", `[CO]` | `connectors.test.ts` | seção 6.9 |
 | `[RU]` "classificarOrigem" | `lead-origin.test.ts` | paridade TS × SQL até o TS sair; novos: `utm_source=chatgpt.com` → `ai_assistant` e `utm_source=perplexity.ai` → `ai_assistant` |
 | `[SI]` `usuarios` | `users.test.ts` | "dados de exemplo: só o dono…" fica só no modo demonstração |
-| — (novos) | `leads-view.test.ts`, `first-orders.test.ts`, `new-customers.test.ts` | SDR que virou negócio conta uma vez; UTM herdada só no negócio do site; UTM repetida; UTM com o id da campanha casa pelo id; campanha casada decide o canal; a compra do ERP mais antiga já vista marca o cliente antigo (cliente que estreou em setembro e depois comprou só pelo ERP continua novo; cliente antigo que recompra pelo app continua antigo depois de o retrato trazer a compra nova; cliente cuja primeira leitura já traz a data nova conta como novo, o limite da 0042); data pura: lead com instante à meia-noite UTC fica no dia que veio, e os outros instantes, no dia de São Paulo; negócio do funil padrão, do funil antigo dos leads do site e sem funil contam como lead; novo na marca × novo no grupo; primeiro toque; pedido "A vincular" e cancelado fora; cliente sem lead conta como novo e não é atribuído; texto de origem fora do de-para não é gravado e fica `referral` |
+| — (novos) | `leads-view.test.ts`, `first-orders.test.ts`, `new-customers.test.ts` | SDR que virou negócio conta uma vez; UTM herdada só no negócio do site; UTM repetida; UTM com o id da campanha casa pelo id; campanha casada decide o canal; a compra do ERP mais antiga já vista marca o cliente antigo (cliente que estreou em setembro e depois comprou só pelo ERP continua novo; cliente antigo que recompra pelo app continua antigo depois de o retrato trazer a compra nova; cliente cuja primeira leitura já traz a data nova conta como novo, o limite da 0042); data pura: lead com instante à meia-noite UTC fica no dia que veio, e os outros instantes, no dia de São Paulo; negócio do funil padrão, do funil antigo dos leads do site e sem funil contam como lead; negócio aberto à mão (origem `carteira` ou `prospecção ativa`, decisão 0041, item 9) fica fora e não entra em `unmapped_origin_count`, e o lead do SDR com a mesma origem continua lead; o negócio que troca a origem para "Carteira" sai, e volta quando a origem muda de novo; o lead do site com `utm_source` `carteira` fica fora (a regra é pelo texto); o envio do site anotado num negócio em aberto, aberto à mão e gravado no funil padrão não conta, e o negócio sem funil ou encerrado não segura o envio (limite, seção 3.3); o negócio da conversão cuja origem troca de "SDR WhatsApp" para "WhatsApp" conta à parte (limite, seção 3.3); o negócio aberto à mão com a origem "WhatsApp" de quem já foi lead do SDR conta à parte e não muda a marca nem a etapa do lead do SDR, e o lead do site com `utm_source` `whatsapp` também; a conversão feita no dia em que o lead do SDR chegou liga os dois; novo na marca × novo no grupo; primeiro toque; pedido "A vincular" e cancelado fora; cliente sem lead conta como novo e não é atribuído; texto de origem fora do de-para não é gravado e fica `referral` |
 | — (novos) | `coverage.test.ts` | conector sem `first_success_at` → nulo; com base e sem linha → 0; canal sem conta da marca lida → nulo; perfil ou propriedade de uma marca sem leitura → nulo nela e número na outra |
 | — (novos) | `list-rank.test.ts`, `sort.test.ts` | cada array de `mkt.list_rank` igual ao `labels.ts`; `REP-9` antes de `REP-10`; nome com acento na mesma ordem no PGlite e no Supabase |
 | — (novos) | `spend-limits.test.ts` | conta sem limite bloqueia aumento (`no_spend_limit`); orçamento atual nulo usa o anterior dos parâmetros; sem base, a trava barra; reativar conta como aumento; limite 0 sem gasto fica "Passou do limite", como o protótipo, e o alerta da mesma linha diz "Acima do limite" |
@@ -1827,7 +1856,8 @@ Vale em CH14, CH15, BA13, BA15, BA16, LE8, LE13, SG7, SG17 e CA14.
 - **Com o time do CRM** (a lista vigente fica em [`integracoes.md`](integracoes.md), seção 19): a régua da situação do
   cliente em SQL; a primeira compra por marca, que o Control tem e hoje não desce para o app; a UTM e o `referrer` por
   lead; o responsável do negócio por id; as datas de envio e de faturado e a mudança de fase; a chave única nos itens
-  do pedido (item duplicado dobra o total do pedido e o ROAS); a função de leads dos sites na `main` do CRM; ampliar a
+  do pedido (item duplicado dobra o total do pedido e o ROAS); a função de leads dos sites na `main` do CRM, abrindo
+  negócio novo quando o negócio em aberto do cliente no funil padrão foi aberto à mão (seção 3.3); ampliar a
   sincronização dos apps (totais e origem do pedido). Sem eles, as contas funcionam com o que há, com os limites das
   seções 3.5 e 4.7, e melhoram quando as colunas forem preenchidas.
 - **Respondido em 10/11/2026** (conferido no código do CRM; nada foi lido do banco): o papel de leitura e as 12 views
@@ -1840,13 +1870,13 @@ Vale em CH14, CH15, BA13, BA15, BA16, LE8, LE13, SG7, SG17 e CA14.
   para o papel de leitura e emitir o token.
 - **Respondido pelo dono em 11/11/2026** (decisão 0041, item 9): o negócio aberto à mão, com origem "Carteira" ou
   "Prospecção ativa", não conta como lead (seção 3.4).
-- **O dono responde** as decisões 0026 a 0033 (e a 0021, de que depende a régua do limite). Cada uma diz o que muda
-  se a resposta for outra.
+- **Respondido pelo dono em 03/11/2026:** as decisões 0021 a 0033, aceitas como recomendadas. Cada uma diz o que muda
+  se a resposta mudar.
 - **Medir na fase 4:** o tempo de `mkt.v_leads` e de `mkt.v_new_customers` com volume de anos; se passar da meta,
   tabela de fatos refeita pelo worker (decisão nova).
-- **De-para de origem:** a migração 05 só leva valores genéricos (fonte de UTM, canal, rótulo do ClickUp), revistos
-  antes do commit; texto com nome de pessoa nunca entra no repositório. Valor novo aparece em `unmapped_origin_count` e
-  é conferido no CSP 360.
+- **De-para de origem:** a migração 05 só leva valores genéricos (fonte de UTM, canal, rótulo do ClickUp e as duas
+  origens do negócio aberto à mão, com e sem acento, marcadas como não lead), revistos antes do commit; texto com nome
+  de pessoa nunca entra no repositório. Valor novo aparece em `unmapped_origin_count` e é conferido no CSP 360.
 - **Representante do lead:** o CRM guarda o responsável do negócio pelo nome e entrega o id só quando o nome é de
   exatamente uma pessoa. Com nome repetido, desconhecido ou vazio, o lead fica "Sem representante" (decisão 0025). O
   lead do SDR não tem responsável.

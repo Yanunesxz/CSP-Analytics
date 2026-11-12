@@ -61,7 +61,9 @@ o código do CRM foi lido de ponta a ponta (nada foi lido do banco) e o acesso d
 - `docs/dados/integracoes.md` (seções 3.2 a 3.6 e 19), `tabelas.md` (réplica do CRM), `metricas.md` (3.1 a 3.5 e 4.7)
   e `listas.md` descrevem o CRM como ele é.
 - Migrações: sai o índice de um só funil de leads; `is_lost_manual` aceita nulo; a lista `rep_crm_role` muda; o
-  de-para ganha "sdr whatsapp"; a ingestão segue as regras 1 a 8.
+  de-para ganha "sdr whatsapp" e, pelo item 9, a coluna `is_lead`, com "carteira", "prospecção ativa" e "prospeccao
+  ativa" como não lead e sem origem de lead; a ingestão segue as regras 1 a 8, e a `mkt.v_leads` (fase 4) deixa de
+  fora o negócio cuja origem o de-para marca como não lead.
 - Com o time do CRM (lista em `integracoes.md`, seção 19): a régua da situação em SQL, a UTM e o `referrer` por lead, o
   responsável por id, as datas de envio e de faturado, e a chave única nos itens do pedido.
 - Depois de o acesso ser criado no CRM, o dono roda lá a conferência do acesso. Quatro números dela (negócios sem

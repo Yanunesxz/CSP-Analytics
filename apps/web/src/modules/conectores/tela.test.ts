@@ -45,7 +45,7 @@ describe('tela Conectores com os dados de exemplo', () => {
     expect(html).toContain('TikTok Ads está atrasado');
     expect(html).toContain('data-tone="warning">Atrasado</span>');
     expect(quantas(html, 'data-tone="success">Funcionando</span>')).toBe(5);
-    expect(html).toContain('<span class="yn-badge">Simulado · a ligar</span>');
+    expect(html).toContain('<span class="yn-badge">A ligar</span>');
     expect(quantas(html, 'yn-btn--primary')).toBe(1);
     expect(quantas(html, 'Tentar de novo<')).toBe(1);
     expect(html).toContain('<span class="yn-sr-only"> <!-- -->TikTok Ads</span>');

@@ -2,7 +2,7 @@
  * Um cartão por integração (.yn-card): nome, estado (.yn-badge), "atualizado há X min", o que a
  * integração traz e de quanto em quanto tempo sincroniza, a ficha (.yn-dl--rows) com a última
  * sincronização, o atraso, os erros e as linhas gravadas, e "Tentar de novo" quando está caída ou
- * atrasada. O simulado mostra o que falta para ligar; o CSP 360 mostra também o caminho dos pedidos
+ * atrasada. O que está a ligar mostra o que falta para ligar; o CSP 360 mostra também o caminho dos pedidos
  * (a última rodada apps → CSP 360) e que não existe conexão direta com os apps nem com o Control.
  */
 
@@ -82,7 +82,7 @@ export function Cartao({
 
       <p className="yn-muted text-sm">{descricao(cartao)}</p>
 
-      {cartao.estado === 'simulated' ? (
+      {cartao.estado === 'not_connected' ? (
         <OQueFalta id={cartao.id} verTrafego={verTrafego} />
       ) : (
         <Ficha cartao={cartao} agora={agora} />

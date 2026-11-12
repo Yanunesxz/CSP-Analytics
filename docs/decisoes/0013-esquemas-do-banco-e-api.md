@@ -43,3 +43,7 @@ view comum roda com os direitos de quem a criou, pulando a RLS das tabelas.
 - O projeto Supabase precisa de "esquemas expostos = `api`" na configuração da API (está no plano).
 - O teste de RLS confere `security_invoker` em toda view de `api`, que nenhuma tabela de `mkt` responde pela API e,
   no catálogo, quem pode executar cada função (`docs/dados/papeis-e-rls.md`, RLS-27).
+- Em 11/11/2026: o "`search_path` vazio" acima passa a ser `set search_path = pg_catalog, pg_temp`, em toda função dos
+  sete esquemas (definer ou invoker). Com o caminho vazio, o esquema temporário da sessão é procurado primeiro para
+  tipos e tabelas, e um serviço com conexão própria rodava código como o dono das funções (revisão de 10/11/2026). O
+  RLS-27 confere o caminho de cada função e, como cada serviço, que um tipo trocado no `pg_temp` não roda como o dono.

@@ -18,12 +18,13 @@ const fonte = (p: Partial<FonteDoPainel>): FonteDoPainel => ({
 });
 
 describe('textos da tela SEO e GEO', () => {
-  it('frescorDaFonte diz há quanto tempo sincronizou e cala no simulado ou sem cartão', () => {
+  it('frescorDaFonte diz há quanto tempo sincronizou e cala no a ligar, no desligado ou sem cartão', () => {
     expect(frescorDaFonte(fonte({}), agora)).toBe('atualizado há 6 h');
     expect(frescorDaFonte(fonte({ status: 'late', lastSyncAt: '2026-10-28T15:00:00-03:00' }), agora)).toBe(
       'atualizado há 2 dias',
     );
-    expect(frescorDaFonte(fonte({ status: 'simulated', lastSyncAt: null }), agora)).toBeNull();
+    expect(frescorDaFonte(fonte({ status: 'not_connected', lastSyncAt: null }), agora)).toBeNull();
+    expect(frescorDaFonte(fonte({ status: 'disabled' }), agora)).toBeNull();
     expect(frescorDaFonte(null, agora)).toBeNull();
   });
 
