@@ -1,0 +1,10 @@
+{
+  "name": "@csp-mkt/worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Worker de leitura em Python (decisão 0001). Os scripts chamam o Python; o pnpm verify roda os testes e o ruff.",
+  "scripts": {
+    "lint": "python3 -m ruff check . && python3 -m ruff format --check .",
+    "test": "python3 -m pytest -q"
+  }
+}

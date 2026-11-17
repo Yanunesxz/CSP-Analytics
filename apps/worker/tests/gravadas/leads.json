@@ -1,0 +1,14 @@
+{
+  "dimensionHeaders": [
+    {"name": "date"}, {"name": "sessionSource"}, {"name": "sessionMedium"}, {"name": "sessionDefaultChannelGroup"}
+  ],
+  "metricHeaders": [{"name": "eventCount", "type": "TYPE_INTEGER"}],
+  "rows": [
+    {"dimensionValues": [{"value": "20261115"}, {"value": "google"}, {"value": "organic"}, {"value": "Organic Search"}],
+     "metricValues": [{"value": "2"}]},
+    {"dimensionValues": [{"value": "20261116"}, {"value": "chatgpt.com"}, {"value": "referral"}, {"value": "AI Assistant"}],
+     "metricValues": [{"value": "1"}]}
+  ],
+  "rowCount": 2,
+  "kind": "analyticsData#runReport"
+}
