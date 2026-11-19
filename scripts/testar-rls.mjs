@@ -1401,7 +1401,7 @@ function listar() {
       'parte na fase 4.',
   );
   console.log(
-    'Rodar: --executar no job do projeto de teste (docs/ci.yml); --executar --sem-login depois da produção.',
+    'Rodar: --executar no job do projeto de teste (.github/workflows/ci.yml); --executar --sem-login depois da produção.',
   );
 }
 
