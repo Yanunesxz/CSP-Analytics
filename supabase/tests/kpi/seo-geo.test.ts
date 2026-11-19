@@ -76,6 +76,7 @@ describe('api.kpi_seo_geo: GA4', () => {
         days: 7,
       });
       expect(r.sources.ga4.complete_through_on).toBe('2026-11-17');
+      expect(r.sources.ga4.status).toBe('ok');
       expect(r.geo.ai_sessions).toEqual({ current: 9, previous: 5, variation: 0.8 });
       expect(r.geo.sessions).toEqual({ current: 79, previous: 85, variation: -0.3059 });
       // 9 ÷ 79 agora; 9 ÷ 59 contra 5 ÷ 85 nos dias completos.
@@ -146,6 +147,7 @@ describe('api.kpi_seo_geo: GA4', () => {
       expect(r.has_data).toBe(false);
       expect(r.geo.sessions.current).toBeNull();
       expect(r.sources.ga4.last_success_at).toBeNull();
+      expect(r.sources.ga4.status).toBe('not_connected');
     });
   });
 

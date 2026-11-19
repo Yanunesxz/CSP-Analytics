@@ -382,7 +382,7 @@ describe('os serviços (RLS-22, 23, 28, 30 e 34)', () => {
         [ZERO],
       );
       for (const f of [...Object.values(FUNCOES_DE_API), ...Object.values(FUNCOES_DE_TELA)])
-          await s.erro('42501', f.chamada);
+        await s.erro('42501', f.chamada);
       for (const credencial of [CREDENCIAL_DE_LEITURA, CREDENCIAL_DE_ESCRITA]) {
         await s.erro('42501', 'select private.read_credential($1)', [credencial]);
       }

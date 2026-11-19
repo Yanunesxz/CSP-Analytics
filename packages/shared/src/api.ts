@@ -3,7 +3,7 @@
  * como o banco devolve; a tela traduz pelo `labels.ts`. Número sem base vem `null` ("Sem dados"), nunca 0.
  */
 
-import type { Brand, GeoSource } from './types';
+import type { Brand, ConnectorStatus, GeoSource } from './types';
 
 /** Número com comparação: o valor de até agora e a variação só com os dias completos da fonte. */
 export interface ApiMetric {
@@ -38,6 +38,7 @@ export interface ApiSourceStatus {
   last_success_at: string | null;
   complete_through_on: string | null;
   covered: boolean;
+  status: ConnectorStatus;
 }
 
 /** `api.kpi_seo_geo`: por enquanto, só a parte do GA4 (SG8 a SG12). */

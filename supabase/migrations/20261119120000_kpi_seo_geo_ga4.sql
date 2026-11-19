@@ -371,9 +371,17 @@ begin
     'has_data', v_covered,
     'geo', v_geo,
     'sources', jsonb_build_object('ga4', (
+      -- A situação do cartão, simplificada até mkt.v_connector_health (metricas.md, seção 4.9): desligado, a ligar
+      -- (nunca leu), atrasado (passou da frequência mais a folga) ou em dia.
       select jsonb_build_object('last_success_at', c.last_success_at,
                                 'complete_through_on', mkt.complete_through('ga4'),
-                                'covered', v_covered)
+                                'covered', v_covered,
+                                'status', case
+                                  when c.setup_state = 'disabled' then 'disabled'
+                                  when c.last_success_at is null then 'not_connected'
+                                  when c.last_success_at < mkt.now() - make_interval(
+                                         mins => c.expected_every_minutes + c.late_tolerance_minutes) then 'late'
+                                  else 'ok' end)
         from mkt.connectors c where c.code = 'ga4')));
 end $$;
 

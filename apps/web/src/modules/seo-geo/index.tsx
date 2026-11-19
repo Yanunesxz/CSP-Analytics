@@ -8,7 +8,8 @@
  *   origem, por buscador e por assistente;
  * - Checagem dos sites: robots.txt, llms.txt e JSON-LD de cada site.
  *
- * Toda conta vem de `painelSeoGeo` (data/queries/seo-geo.ts); a tela só desenha. Marca no menu, período
+ * Toda conta vem do banco (`api.kpi_seo_geo`, modo Supabase) ou de `painelSeoGeo` (data/queries/seo-geo.ts, modo
+ * demonstração); a tela só desenha. Marca no menu, período
  * na barra de filtros, visão no topo; tudo na URL. `?estado=` é honrado por useConsulta + Tela.
  * Ação principal: abrir o Search Console, onde se lê uma vez por mês o relatório de IA generativa.
  * Visão Gestor de tráfego: acrescenta as pendências que travam a medição (SEO e GEO não têm operador).
@@ -17,8 +18,12 @@
 import { ExternalLink, Search } from 'lucide-react';
 import { PageHeader } from '../../components/layout/pagina';
 import { BarraDeFiltros, Tela } from '../../components/ui';
+import type { ApiKpiSeoGeo } from '@csp-mkt/shared';
+import { useConsultaDaApi, type ConsultaDaApi } from '../../data/api';
 import { painelSeoGeo, type PainelSeoGeo } from '../../data/queries/seo-geo';
+import { painelSeoGeoDaApi } from '../../data/queries/seo-geo-api';
 import { useConsulta } from '../../data/store';
+import { modoDeAcesso } from '../../lib/auth';
 import type { Filtros } from '../../lib/url-state';
 import { AssistentesDeIa } from './AssistentesDeIa';
 import { AvisoDoGestor } from './Avisos';
@@ -48,8 +53,24 @@ const VAZIO = {
   texto: 'Os números chegam do Search Console e do GA4 uma vez por dia, depois que os conectores ligarem.',
 };
 
+const ultimaLeitura = (r: ApiKpiSeoGeo) => r.sources.ga4.last_success_at;
+
+/** Modo Supabase: o painel vem de api.kpi_seo_geo. */
+function useDoBanco(): ConsultaDaApi<PainelSeoGeo> {
+  return useConsultaDaApi('kpi_seo_geo', painelSeoGeoDaApi, ultimaLeitura);
+}
+
+/** Modo demonstração: a consulta pura sobre o store. */
+function useDaDemonstracao(): ConsultaDaApi<PainelSeoGeo> {
+  return { resultado: useConsulta(painelSeoGeo), recarregar: () => undefined };
+}
+
+// O modo não muda com a página aberta: a escolha é feita uma vez, fora do componente.
+const usePainel = modoDeAcesso() === 'supabase' ? useDoBanco : useDaDemonstracao;
+
 export default function SeoGeo() {
-  const r = useConsulta(painelSeoGeo);
+  const { resultado: r, recarregar } = usePainel();
+  const doBanco = modoDeAcesso() === 'supabase';
 
   return (
     <>
@@ -61,7 +82,11 @@ export default function SeoGeo() {
       />
       {/* SEO e GEO se filtram por marca (menu) e período: canal, campanha e operador não existem aqui. */}
       <BarraDeFiltros campos={[]} />
-      <Tela resultado={r} vazio={VAZIO}>
+      <Tela
+        resultado={r}
+        vazio={VAZIO}
+        aoTentarDeNovo={doBanco && !r.filtros.estado ? recarregar : undefined}
+      >
         {(painel, estado) => <Painel painel={painel} semDados={estado === 'sem-dados'} filtros={r.filtros} />}
       </Tela>
     </>
