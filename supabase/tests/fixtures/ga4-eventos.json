@@ -1,0 +1,74 @@
+{
+  "2026-11-15": [
+    {
+      "kind": "ga4_traffic_daily",
+      "source": "ga4",
+      "brand": "cs",
+      "key": {
+        "property_external_id": "900000001",
+        "metric_on": "2026-11-15",
+        "session_source": "(direct)",
+        "session_medium": "(none)",
+        "channel_group_raw": "Direct"
+      },
+      "values": {
+        "sessions": 17,
+        "lead_events": 0
+      },
+      "fetched_at": "2026-11-17T17:00:00Z"
+    },
+    {
+      "kind": "ga4_traffic_daily",
+      "source": "ga4",
+      "brand": "cs",
+      "key": {
+        "property_external_id": "900000001",
+        "metric_on": "2026-11-15",
+        "session_source": "google",
+        "session_medium": "organic",
+        "channel_group_raw": "Organic Search"
+      },
+      "values": {
+        "sessions": 42,
+        "lead_events": 2
+      },
+      "fetched_at": "2026-11-17T17:00:00Z"
+    }
+  ],
+  "2026-11-16": [
+    {
+      "kind": "ga4_traffic_daily",
+      "source": "ga4",
+      "brand": "cs",
+      "key": {
+        "property_external_id": "900000001",
+        "metric_on": "2026-11-16",
+        "session_source": "chatgpt.com",
+        "session_medium": "referral",
+        "channel_group_raw": "AI Assistant"
+      },
+      "values": {
+        "sessions": 3,
+        "lead_events": 1
+      },
+      "fetched_at": "2026-11-17T17:00:00Z"
+    },
+    {
+      "kind": "ga4_traffic_daily",
+      "source": "ga4",
+      "brand": "cs",
+      "key": {
+        "property_external_id": "900000001",
+        "metric_on": "2026-11-16",
+        "session_source": "instagram",
+        "session_medium": "social",
+        "channel_group_raw": "Organic Social"
+      },
+      "values": {
+        "sessions": 9,
+        "lead_events": 0
+      },
+      "fetched_at": "2026-11-17T17:00:00Z"
+    }
+  ]
+}
