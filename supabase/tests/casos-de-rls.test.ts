@@ -18,7 +18,7 @@ import {
   usuario,
 } from './apoio/banco';
 import { ESQUEMAS, violacoes } from './apoio/catalogo';
-import { ANTIGO, FUNCOES_DE_API, ZERO } from './apoio/acoes';
+import { ANTIGO, FUNCOES_DE_API, FUNCOES_DE_TELA, ZERO } from './apoio/acoes';
 import { abrirRodada, gravar } from './apoio/ingestao';
 import { CAMPANHA_HUMANO_CS } from './apoio/marketing';
 import { PAPEIS_DO_CATALOGO, UPSERTS_COM_RODADA, quemExecuta } from './apoio/permissoes';
@@ -381,7 +381,8 @@ describe('os serviços (RLS-22, 23, 28, 30 e 34)', () => {
         `select * from ingest.record_claude_run($1, 'cs', 'running', 'm', 'v', 'p', '{}', now())`,
         [ZERO],
       );
-      for (const f of Object.values(FUNCOES_DE_API)) await s.erro('42501', f.chamada);
+      for (const f of [...Object.values(FUNCOES_DE_API), ...Object.values(FUNCOES_DE_TELA)])
+        await s.erro('42501', f.chamada);
       for (const credencial of [CREDENCIAL_DE_LEITURA, CREDENCIAL_DE_ESCRITA]) {
         await s.erro('42501', 'select private.read_credential($1)', [credencial]);
       }
@@ -403,6 +404,8 @@ describe('o catálogo (RLS-24, 27 e 29)', () => {
         'api.v_traffic_actions',
         'api.v_traffic_log',
         'mkt.v_account_month',
+        'mkt.v_ga4_ai_daily',
+        'mkt.v_ga4_channel_daily',
       ]);
       for (const v of views) expect(v.opcoes ?? [], v.view).toContain('security_invoker=true');
     });
