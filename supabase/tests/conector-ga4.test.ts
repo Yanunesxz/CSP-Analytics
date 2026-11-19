@@ -47,7 +47,7 @@ describe('conector do GA4: o que o worker gera, o banco grava', () => {
       expect(
         await s.linhas(
           `select metric_on::text as dia, session_source, channel_group_raw, sessions::int, lead_events::int
-             from mkt.ga4_traffic_daily where web_property_id = $1 and metric_on >= '2026-11-15'
+             from mkt.ga4_traffic_daily where web_property_id = $1 and metric_on between '2026-11-15' and '2026-11-16'
             order by 1, 2`,
           [GA4_CS],
         ),
