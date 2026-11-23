@@ -17,16 +17,24 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Só o convite do primeiro dono, uma vez (job "primeiro-dono").
+  # Manual: aplicar as migrações e as senhas em produção sem migração nova (job "producao") ou o convite do primeiro
+  # dono, uma vez (job "primeiro-dono"). Os dois pedem a aprovação do dono no ambiente "producao".
   workflow_dispatch:
     inputs:
-      nome:
-        description: Nome do primeiro dono, como aparece no sistema
+      acao:
+        description: O que rodar
         required: true
+        type: choice
+        options:
+          - migracoes
+          - primeiro-dono
+      nome:
+        description: 'Só no primeiro-dono: nome do primeiro dono, como aparece no sistema'
+        required: false
         type: string
       email:
-        description: E-mail do primeiro dono (mascarado no log)
-        required: true
+        description: 'Só no primeiro-dono: e-mail do primeiro dono (mascarado no log)'
+        required: false
         type: string
 
 permissions:
@@ -207,7 +215,7 @@ jobs:
 
       - name: Aplicar as migrações (supabase db push, do zero)
         run: |
-          echo y | supabase db push --db-url "$SUPABASE_DB_URL_TESTE"
+          supabase db push --yes --db-url "$SUPABASE_DB_URL_TESTE"
           psql "$SUPABASE_DB_URL_TESTE" -X -q -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
 
       - name: Senha dos papéis de serviço (verificador SCRAM; a senha não aparece)
@@ -266,7 +274,14 @@ jobs:
   producao:
     name: Migrações em produção
     needs: [verificar, mudancas]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.mudancas.outputs.migracoes == 'true'
+    # No push, só depois do verificar e com migração nova; no manual (acao = migracoes), sem os dois (eles não rodam
+    # no workflow_dispatch). O manual serve para reaplicar o que faltou e regravar as senhas dos papéis.
+    if: >-
+      always() && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+         needs.verificar.result == 'success' && needs.mudancas.outputs.migracoes == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.acao == 'migracoes')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # O ambiente "producao" pede a aprovação manual do dono antes de rodar (Settings → Environments).
@@ -289,7 +304,7 @@ jobs:
 
       - name: Aplicar as migrações (supabase db push)
         run: |
-          echo y | supabase db push --db-url "$SUPABASE_DB_URL_PRODUCAO"
+          supabase db push --yes --db-url "$SUPABASE_DB_URL_PRODUCAO"
           psql "$SUPABASE_DB_URL_PRODUCAO" -X -q -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
 
       - name: Senha dos papéis de serviço (verificador SCRAM; a senha não aparece)
@@ -312,7 +327,7 @@ jobs:
 
   primeiro-dono:
     name: Convite do primeiro dono (manual, uma vez)
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.acao == 'primeiro-dono'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: producao
