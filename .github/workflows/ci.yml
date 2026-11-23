@@ -1,7 +1,7 @@
 # CI do CSP-MKT: tipos, lint, testes e build em todo PR e na main; as migrações no projeto Supabase de teste, com o
 # teste de RLS pela API (camada 2); as migrações em produção, com aprovação do dono; e o convite do primeiro dono.
-# Fica em docs/ci.yml enquanto o token do push não tem o escopo workflow; volta para .github/workflows/ci.yml quando
-# o dono puder (ESTADO.md). Passos e segredos: docs/dados/plano.md, "Como o CI aplica". Aqui só nomes de segredo.
+# Antes de juntar este arquivo à main: o ambiente "producao" criado no GitHub com o dono como revisor obrigatório (um
+# job que cita um ambiente que não existe faz o GitHub criá-lo sem regra nenhuma) e os segredos abaixo. Passos e segredos: docs/dados/plano.md, "Como o CI aplica". Aqui só nomes de segredo.
 #
 # Segredos (Settings → Secrets and variables → Actions):
 #   teste:    SUPABASE_DB_URL_TESTE (a conexão do pooler em modo sessão, porta 5432: o runner do GitHub não tem IPv6),
@@ -17,16 +17,24 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Só o convite do primeiro dono, uma vez (job "primeiro-dono").
+  # Manual: aplicar as migrações e as senhas em produção sem migração nova (job "producao") ou o convite do primeiro
+  # dono, uma vez (job "primeiro-dono"). Os dois pedem a aprovação do dono no ambiente "producao".
   workflow_dispatch:
     inputs:
-      nome:
-        description: Nome do primeiro dono, como aparece no sistema
+      acao:
+        description: O que rodar
         required: true
+        type: choice
+        options:
+          - migracoes
+          - primeiro-dono
+      nome:
+        description: 'Só no primeiro-dono: nome do primeiro dono, como aparece no sistema'
+        required: false
         type: string
       email:
-        description: E-mail do primeiro dono (mascarado no log)
-        required: true
+        description: 'Só no primeiro-dono: e-mail do primeiro dono (mascarado no log)'
+        required: false
         type: string
 
 permissions:
@@ -44,9 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A versão do pnpm vem do packageManager do package.json.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
@@ -56,6 +63,14 @@ jobs:
       - name: Dependências
         run: |
           if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi
+
+      # O worker em Python (apps/worker): o pnpm verify roda o ruff e o pytest dele.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Dependências do worker
+        run: python3 -m pip install -e 'apps/worker[dev]'
 
       - name: Tipos, lint, testes (com a camada 1 do teste de RLS, no PGlite) e build
         run: pnpm verify
@@ -105,14 +120,17 @@ jobs:
             exit 0
           fi
           mudou() { if git diff --quiet "$base" HEAD -- "$@"; then echo false; else echo true; fi; }
-          echo "banco=$(mudou supabase scripts/testar-rls.mjs scripts/testar-rls-dados.sql scripts/testar-rls-servicos.sql scripts/senha-dos-papeis.mjs docs/ci.yml .github/workflows)" >> "$GITHUB_OUTPUT"
+          echo "banco=$(mudou supabase scripts/testar-rls.mjs scripts/testar-rls-dados.sql scripts/testar-rls-servicos.sql scripts/senha-dos-papeis.mjs .github/workflows)" >> "$GITHUB_OUTPUT"
           echo "migracoes=$(mudou supabase/migrations)" >> "$GITHUB_OUTPUT"
 
   rls-teste:
     name: Migrações e teste de RLS no projeto de teste (camada 2)
     needs: [verificar, mudancas]
+    # Desligado pela decisão 0043 (o dono abriu mão do projeto de teste em 2026-11-23). Para religar: criar o projeto de
+    # teste, os 8 segredos *_TESTE e a variável do repositório RLS_TESTE = ligado.
     # PR de fork não recebe segredo: o teste fica para o PR da própria branch.
     if: >-
+      vars.RLS_TESTE == 'ligado' &&
       github.event_name == 'pull_request' && needs.mudancas.outputs.banco == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -197,7 +215,7 @@ jobs:
 
       - name: Aplicar as migrações (supabase db push, do zero)
         run: |
-          echo y | supabase db push --db-url "$SUPABASE_DB_URL_TESTE"
+          supabase db push --yes --db-url "$SUPABASE_DB_URL_TESTE"
           psql "$SUPABASE_DB_URL_TESTE" -X -q -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
 
       - name: Senha dos papéis de serviço (verificador SCRAM; a senha não aparece)
@@ -256,7 +274,14 @@ jobs:
   producao:
     name: Migrações em produção
     needs: [verificar, mudancas]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.mudancas.outputs.migracoes == 'true'
+    # No push, só depois do verificar e com migração nova; no manual (acao = migracoes), sem os dois (eles não rodam
+    # no workflow_dispatch). O manual serve para reaplicar o que faltou e regravar as senhas dos papéis.
+    if: >-
+      always() && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+         needs.verificar.result == 'success' && needs.mudancas.outputs.migracoes == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.acao == 'migracoes')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # O ambiente "producao" pede a aprovação manual do dono antes de rodar (Settings → Environments).
@@ -279,7 +304,7 @@ jobs:
 
       - name: Aplicar as migrações (supabase db push)
         run: |
-          echo y | supabase db push --db-url "$SUPABASE_DB_URL_PRODUCAO"
+          supabase db push --yes --db-url "$SUPABASE_DB_URL_PRODUCAO"
           psql "$SUPABASE_DB_URL_PRODUCAO" -X -q -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
 
       - name: Senha dos papéis de serviço (verificador SCRAM; a senha não aparece)
@@ -302,7 +327,7 @@ jobs:
 
   primeiro-dono:
     name: Convite do primeiro dono (manual, uma vez)
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.acao == 'primeiro-dono'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: producao

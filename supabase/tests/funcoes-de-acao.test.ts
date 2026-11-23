@@ -7,7 +7,7 @@ import type { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Quem, abrirBanco, anon, aplicarFixture, caso, postgres, servico, usuario } from './apoio/banco';
 import { domainsDoMkt } from './apoio/catalogo';
-import { FUNCOES_DE_API, FUNCOES_PRIVADAS, REGRAS_DE_MKT } from './apoio/acoes';
+import { FUNCOES_DE_API, FUNCOES_DE_TELA, FUNCOES_PRIVADAS, REGRAS_DE_MKT } from './apoio/acoes';
 import { DONO, EX_GESTOR, SEM_PERFIL } from './apoio/usuarios';
 
 let db: PGlite;
@@ -47,7 +47,7 @@ describe('as funções de api da migração 09', () => {
     await caso(db, postgres, async (s) => {
       const linhas = await s.linhas<{ funcao: string; prosecdef: boolean; config: string[] | null }>(
         `select p.oid::regprocedure::text as funcao, p.prosecdef, p.proconfig as config
-           from pg_proc p where p.pronamespace = 'api'::regnamespace order by 1`,
+           from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname !~ '^kpi_' order by 1`,
       );
       expect(linhas.map((l) => l.funcao)).toEqual(
         Object.values(FUNCOES_DE_API)
@@ -158,7 +158,8 @@ describe('fora da API: anon e os serviços', () => {
     ];
     for (const quem of servicos) {
       await caso(db, quem, async (s) => {
-        for (const f of Object.values(FUNCOES_DE_API)) await s.erro('42501', f.chamada);
+        for (const f of [...Object.values(FUNCOES_DE_API), ...Object.values(FUNCOES_DE_TELA)])
+          await s.erro('42501', f.chamada);
       });
     }
   });

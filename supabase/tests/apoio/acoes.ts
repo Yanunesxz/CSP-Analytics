@@ -131,6 +131,14 @@ export const FUNCOES_DE_API: Readonly<Record<string, FuncaoDeApi>> = {
 };
 
 /**
+ * As funções de tela (metricas.md, seção 5): security invoker, só leitura, conferem as permissões na primeira linha.
+ * A chamada inerte é a de filtros vazios.
+ */
+export const FUNCOES_DE_TELA: Readonly<Record<string, FuncaoDeApi>> = {
+  kpi_seo_geo: { assinatura: 'api.kpi_seo_geo(jsonb)', chamada: `select api.kpi_seo_geo('{}')` },
+};
+
+/**
  * As de private desta migração: ninguém executa (só as funções do dono, pelo dono). As filas e a conferência da ação
  * são as que a migração 10 também usa.
  */

@@ -58,7 +58,8 @@ export type Ga4Channel =
   | 'paid_search'
   | 'paid_social'
   | 'organic_social'
-  | 'referral';
+  | 'referral'
+  | 'other';
 
 /** Uma consulta num dia, como o Search Console devolve no relatório "Web" (dimensão `query`). */
 export interface SeoQueryDaily {
@@ -114,6 +115,7 @@ export const ROTULO_CANAL_GA4: Readonly<Record<Ga4Channel, string>> = {
   paid_social: 'Social pago',
   organic_social: 'Social orgânico',
   referral: 'Indicação',
+  other: 'Outros canais',
 };
 
 export const ITENS_DA_CHECAGEM: readonly SiteCheckItem[] = ['robots_txt', 'llms_txt', 'json_ld'];

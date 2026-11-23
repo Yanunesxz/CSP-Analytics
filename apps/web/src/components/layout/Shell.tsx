@@ -14,7 +14,7 @@ import { useSessao } from '../../lib/auth';
 import { recarregar, useVersaoNova } from '../../lib/versao';
 import { Esqueleto } from '../ui/Esqueleto';
 import { ToastProvider, useToast } from '../ui/ToastRegion';
-import { Vazio } from '../ui/Vazio';
+import { Entrar, PerfilComFalha, SemAcesso } from './Entrar';
 import { PaginaProvider } from './pagina';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
@@ -68,7 +68,7 @@ function FaixaVersaoNova() {
 }
 
 function Casca() {
-  const { perfil, carregando, modo } = useSessao();
+  const { perfil, carregando, modo, semAcesso, erro } = useSessao();
   const location = useLocation();
   const [navAberta, setNavAberta] = useState(false);
   const [menuRecolhido, setMenuRecolhido] = useState(lerRecolhido);
@@ -110,12 +110,7 @@ function Casca() {
   let conteudo: ReactNode;
   if (carregando) conteudo = <Esqueleto variante="tela" />;
   else if (!perfil && modo === 'supabase')
-    conteudo = (
-      <Vazio
-        titulo="Entre para continuar"
-        texto="O login com Supabase Auth entra na fase 3. Até lá, abra sem as variáveis do Supabase para usar o modo demonstração."
-      />
-    );
+    conteudo = erro ? <PerfilComFalha codigo={erro} /> : semAcesso ? <SemAcesso /> : <Entrar />;
   else conteudo = <Outlet />;
 
   return (

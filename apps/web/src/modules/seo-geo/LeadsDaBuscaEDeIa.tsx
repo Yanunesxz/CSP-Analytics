@@ -84,7 +84,7 @@ export function LeadsDaBuscaEDeIa({ painel, semDados, deltaTexto }: LeadsDaBusca
           paraFiltros={{ origem: 'ai_assistant' }}
         />
       </div>
-      <PorFonte linhas={leads.porFonte} semDados={semDados} />
+      <PorFonte linhas={leads.porFonte} semDados={semDados || leads.buscaOrganica.atual === null} />
     </Secao>
   );
 }
