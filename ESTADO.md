@@ -1,12 +1,12 @@
 # Estado do projeto — CSP-MKT
 
-> **Atualizado em:** 2026-11-16 · **por:** sessão de IA (Claude Code), branch `docs/estado-integracao`
+> **Atualizado em:** 2026-11-23 · **por:** sessão de IA (Claude Code), branch `ci/ligar-workflow`
 > Atualize este arquivo em **todo PR**. Ele é o que a próxima pessoa ou IA lê primeiro.
 > Nada de senha, token ou dado pessoal aqui.
 
 ## Fase do processo
 
-- Fase atual: **3. Modelar** — modelo de dados aprovado pelo dono em 2026-11-03 ("Aprovar tudo": o modelo de `docs/dados/`, as decisões 0013 a 0038 e as de produto 0021 a 0033 como recomendadas); falta a parte 2 do portão: as migrações 01 a 11 estão na `main` desde 2026-11-12, e falta o teste de RLS pela API no projeto de teste
+- Fase atual: **3. Modelar** — modelo de dados aprovado pelo dono em 2026-11-03 ("Aprovar tudo": o modelo de `docs/dados/`, as decisões 0013 a 0038 e as de produto 0021 a 0033 como recomendadas); a parte 2 do portão (teste de RLS pela API no projeto de teste) foi dispensada pelo dono em 2026-11-23 ([0043](docs/decisoes/0043-sem-teste-de-rls-no-projeto-de-teste.md)): o portão fecha com a camada 1 no PGlite e os casos sem login em produção, quando o PR do CI for juntado
 - Fases fechadas: 1. Entender em 2026-10-30 (resumo aprovado por escrito pelo dono — "ok, segue"); 2. Desenhar em 2026-11-03 (o dono fez a T1 no protótipo e aprovou — "Aprovado, seguir"; o protótipo segue como está e as pendências de desenho de tela viram melhoria, sem bloquear)
 - Portão da fase 3: RLS testada com um usuário de cada papel (`owner`, `traffic_manager`) e sem login, tentando ler, alterar e chamar o que não devia, e sendo negado. Fecha em duas partes: o dono aprova o modelo e responde as decisões de produto (feito em 2026-11-03); depois as migrações rodam no projeto Supabase de teste e o teste de RLS passa pela API (`docs/dados/plano.md`). Em 2026-11-12 as migrações chegaram antes ao Supabase de produção, pela integração do GitHub ("Quebrado ou arriscado")
 - Número de sucesso: custo por cliente novo por marca e canal — hoje desconhecido → conhecido toda semana para as duas marcas (meta de valor depois de 4 semanas medidas); relatório semanal de marketing — hoje não existe → 5 min numa tela. Última medição: nenhuma (nada mede ainda; GA4 dos sites sem ID)
@@ -142,7 +142,7 @@ O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquema
    - no GitHub, cria os segredos de produção no ambiente `producao` e apaga os do repositório (item 2).
 
    Até o portão fechar, produção não recebe o primeiro dono, a senha dos papéis de serviço nem tela ligada. O resultado entra aqui. Desde a `main`, mudança nas migrações 01 a 11 vira migração nova: `scripts/conferir-migracoes.mjs --base origin/main` barra a edição, no CI quando ele rodar o passo das migrações e, até lá, à mão antes do push.
-2. **Portão da fase 3, parte 2:** o CI aplica as migrações no projeto Supabase de teste e roda o teste de RLS pela API (camada 2) com `owner`, `traffic_manager` e sem login. O projeto de teste existe desde 04/11/2026; os segredos do GitHub, só no repositório antigo. Falta:
+2. **Portão da fase 3, parte 2 (dispensada em 2026-11-23, decisão 0043; o job `rls-teste` só roda com a variável `RLS_TESTE = ligado`; o que segue fica como referência para religar):** o CI aplica as migrações no projeto Supabase de teste e roda o teste de RLS pela API (camada 2) com `owner`, `traffic_manager` e sem login. O projeto de teste existe desde 04/11/2026; os segredos do GitHub, só no repositório antigo. Falta:
    - o CI de volta em `.github/workflows/ci.yml` com os jobs do portão: feito na branch `ci/ligar-workflow` (PR em rascunho, junta depois do ambiente `producao` e dos segredos); falta juntar ao CI do PR do padrão (`claude/padrao-v0.5.2`) o que só existe no `docs/ci.yml` da `main`, ou seja, os jobs `mudancas`, `rls-teste`, `producao` e `primeiro-dono`, o gatilho `workflow_dispatch` e os passos de `scripts/conferir-migracoes.mjs` e `scripts/testar-rls.mjs`;
    - o job `producao` acha as migrações 01 a 11 no histórico de produção e aplica só as que faltarem. Ele só roda no push que muda `supabase/migrations`, e a volta do CI não muda nenhuma: ganha um gatilho manual, com a aprovação do ambiente `producao`, para dar a senha aos papéis de serviço sem migração nova, e roda `scripts/conferir-catalogo.sql` depois de aplicar. Antes de aplicar, roda `supabase db push --dry-run` e falha se a migração do commit já estiver no histórico de produção: isso acusa outro caminho de escrita;
    - a conferência do catálogo (`scripts/conferir-catalogo.sql`, com o teste dela) passa a acusar o `usage` de `anon` e de `PUBLIC` nos sete esquemas: hoje ela não vê o que o "Harden Data API" da tela da Data API dá;

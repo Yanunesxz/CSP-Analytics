@@ -110,8 +110,11 @@ jobs:
   rls-teste:
     name: Migrações e teste de RLS no projeto de teste (camada 2)
     needs: [verificar, mudancas]
+    # Desligado pela decisão 0043 (o dono abriu mão do projeto de teste em 2026-11-23). Para religar: criar o projeto de
+    # teste, os 8 segredos *_TESTE e a variável do repositório RLS_TESTE = ligado.
     # PR de fork não recebe segredo: o teste fica para o PR da própria branch.
     if: >-
+      vars.RLS_TESTE == 'ligado' &&
       github.event_name == 'pull_request' && needs.mudancas.outputs.banco == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
