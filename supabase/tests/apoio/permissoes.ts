@@ -4,7 +4,7 @@
  * has_function_privilege: função nova sem linha aqui, linha sem função ou um grant a mais fazem o teste falhar.
  * notify ainda não tem função (as da fila do n8n entram na migração 13, na fase 4).
  */
-import { FUNCOES_DE_API } from './acoes';
+import { FUNCOES_DE_API, FUNCOES_DE_TELA } from './acoes';
 
 /** Os papéis que o caso RLS-27 confere (service_role e authenticator ficam de fora: o Supabase cuida deles). */
 export const PAPEIS_DO_CATALOGO = [
@@ -53,6 +53,8 @@ export const UPSERTS_COM_RODADA: readonly string[] = [
 const GRUPOS: ReadonlyArray<[readonly PapelDoCatalogo[], readonly string[]]> = [
   // api: só a tela, uma a uma, na migração que cria cada uma (09).
   [TELA, Object.values(FUNCOES_DE_API).map((f) => f.assinatura)],
+  // api: as funções de tela (security invoker, metricas.md, seção 5), só a tela.
+  [TELA, Object.values(FUNCOES_DE_TELA).map((f) => f.assinatura)],
   // authz: as que as políticas chamam.
   [
     TELA,
@@ -72,6 +74,15 @@ const GRUPOS: ReadonlyArray<[readonly PapelDoCatalogo[], readonly string[]]> = [
       'mkt.action_extra_spend_cents(uuid)',
       'mkt.ads_covered(uuid,mkt.platform)',
       'mkt.ai_source_of(text,text)',
+      'mkt.complete_through(mkt.connector_code)',
+      'mkt.ga4_channel_of(text,text)',
+      'mkt.list_rank(text,text)',
+      'mkt.metric(numeric,numeric,numeric,boolean,text)',
+      'mkt.parse_filters(jsonb)',
+      'mkt.period_json(mkt.period_window)',
+      'mkt.period_window(mkt.period_code,date,date)',
+      'mkt.round_as(numeric,text)',
+      'mkt.web_covered(uuid,mkt.web_property_kind)',
       'mkt.csv_header_has_personal_data(text)',
       'mkt.execution_extra_spend_cents(uuid)',
       'mkt.execution_may_increase_spend(uuid)',

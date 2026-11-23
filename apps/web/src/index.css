@@ -182,3 +182,24 @@
     flex: 1 1 200px;
   }
 }
+
+/* Login do modo Supabase: um cartão estreito no meio da área de conteúdo. */
+.mkt-entrar {
+  display: grid;
+  gap: var(--space-3);
+  justify-self: center;
+  width: 100%;
+  max-width: 400px;
+  margin-top: var(--space-8);
+}
+
+.mkt-entrar p {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.mkt-entrar__form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
