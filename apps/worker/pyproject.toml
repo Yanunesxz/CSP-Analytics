@@ -1,0 +1,23 @@
+[project]
+name = "csp-worker"
+version = "0.1.0"
+description = "Worker de leitura do CSP-MKT: lê as fontes e grava pelas funções ingest.* (docs/dados/integracoes.md, seção 2)."
+requires-python = ">=3.12"
+dependencies = [
+  "google-auth==2.40.3",
+  "requests==2.32.5",
+  "psycopg[binary]==3.2.10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.2", "ruff==0.13.3"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
