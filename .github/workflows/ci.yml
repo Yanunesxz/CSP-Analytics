@@ -56,6 +56,14 @@ jobs:
         run: |
           if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; else pnpm install; fi
 
+      # O worker em Python (apps/worker): o pnpm verify roda o ruff e o pytest dele.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Dependências do worker
+        run: python3 -m pip install -e 'apps/worker[dev]'
+
       - name: Tipos, lint, testes (com a camada 1 do teste de RLS, no PGlite) e build
         run: pnpm verify
 
