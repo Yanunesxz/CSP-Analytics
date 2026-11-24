@@ -16,7 +16,7 @@ python3 -m csp_worker ga4     # uma rodada do ga4_daily (precisa das variáveis 
 | Variável | O que é | Onde fica |
 |---|---|---|
 | `WORKER_DATABASE_URL` | conexão do papel `mkt_worker` (Session pooler, porta 5432) | Railway |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | a chave JSON inteira da conta de serviço `csp-mkt-google-leitura` | Railway |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | a chave JSON inteira da conta de serviço (Leitor no GA4) | Railway |
 
 No Railway: serviço com raiz `apps/worker`, comando `python -m csp_worker ga4` e Cron Schedule `0 17 * * *`
 (14:00 de São Paulo, em UTC).
