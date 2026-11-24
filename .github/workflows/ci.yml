@@ -323,7 +323,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: node scripts/testar-rls.mjs --executar --sem-login
+        # --motivo: no caso que falha, a etapa e os códigos HTTP e do banco (nunca chave, mensagem ou dado).
+        run: node scripts/testar-rls.mjs --executar --sem-login --motivo
 
   primeiro-dono:
     name: Convite do primeiro dono (manual, uma vez)
