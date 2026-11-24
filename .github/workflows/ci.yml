@@ -181,10 +181,11 @@ jobs:
         with:
           node-version: 22
 
-      # A CLI muda pouco no db push; fixe a versão aqui depois da primeira rodada (o passo seguinte mostra qual veio).
+      # Versão fixa: com "latest" a action consulta a API do GitHub e falha quando o limite de chamadas estoura
+      # (24/11/2026). A 3.3.0 é a que pede --yes no db push. Para atualizar, troque aqui e nos dois jobs.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.3.0
 
       # Antes de apagar qualquer coisa: os segredos existem e a conexão do banco é do mesmo projeto que a API de teste
       # (um endereço de produção colado no segredo errado para aqui).
@@ -300,7 +301,7 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.3.0
 
       - name: Aplicar as migrações (supabase db push)
         run: |
