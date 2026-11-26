@@ -82,7 +82,7 @@ def _rodar(argv: list[str] | None) -> int:
     LOG.info("credencial do Google lida; conectando no banco")
 
     try:
-        conexao = psycopg.connect(url, application_name="csp-worker")
+        conexao = psycopg.connect(url, application_name="csp-worker", connect_timeout=20)
     except psycopg.ProgrammingError:
         # A mensagem do psycopg repete pedaços da conexão (e da senha): não vai para o log.
         LOG.error("WORKER_DATABASE_URL não pôde ser lida como conexão do Postgres; confira o formato da URL.")
