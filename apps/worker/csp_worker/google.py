@@ -37,9 +37,17 @@ def chamada_http(sessao) -> Any:
     def chamar(url: str, corpo: dict[str, Any]) -> dict[str, Any]:
         resposta = sessao.post(url, json=corpo, timeout=TEMPO_LIMITE_S)
         if resposta.status_code in (401, 403):
+            motivo = motivo_do_google(resposta)
+            if motivo in ("SERVICE_DISABLED", "ACCESS_TOKEN_SCOPE_INSUFFICIENT"):
+                raise ErroDoGa4(
+                    "PERMISSION",
+                    f"o Google recusou a chamada ({motivo}): ligue a Google Analytics Data API no projeto da conta "
+                    "de serviço",
+                )
             raise ErroDoGa4(
                 "PERMISSION",
-                "o GA4 recusou a conta de serviço: confira se ela é Leitor na propriedade",
+                f"o GA4 recusou a conta de serviço ({motivo or resposta.status_code}): confira se ela é Leitor na "
+                "propriedade cadastrada",
             )
         if resposta.status_code == 404:
             raise ErroDoGa4("NOT_FOUND", "propriedade do GA4 não encontrada: confira o ID numérico cadastrado")
@@ -50,3 +58,15 @@ def chamada_http(sessao) -> Any:
         return resposta.json()
 
     return chamar
+
+
+def motivo_do_google(resposta) -> str | None:
+    """O código curto do erro do Google (ex.: SERVICE_DISABLED, PERMISSION_DENIED), sem a mensagem nem os ids."""
+    try:
+        erro = resposta.json().get("error", {})
+    except ValueError:
+        return None
+    for detalhe in erro.get("details") or []:
+        if isinstance(detalhe, dict) and detalhe.get("reason"):
+            return str(detalhe["reason"])
+    return str(erro["status"]) if erro.get("status") else None

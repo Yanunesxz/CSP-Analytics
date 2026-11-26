@@ -35,3 +35,41 @@ def test_url_errada_sai_sem_mostrar_o_valor(url, monkeypatch, caplog, capsys):
 )
 def test_url_certa_passa(url):
     assert entrada.url_de_banco_valida(url)
+
+
+class _Resposta:
+    def __init__(self, status, corpo):
+        self.status_code = status
+        self._corpo = corpo
+
+    def json(self):
+        if self._corpo is None:
+            raise ValueError("sem json")
+        return self._corpo
+
+
+@pytest.mark.parametrize(
+    ("corpo", "motivo"),
+    [
+        ({"error": {"status": "PERMISSION_DENIED", "details": [{"reason": "SERVICE_DISABLED"}]}}, "SERVICE_DISABLED"),
+        ({"error": {"status": "PERMISSION_DENIED", "message": "x"}}, "PERMISSION_DENIED"),
+        (None, None),
+    ],
+)
+def test_motivo_do_google(corpo, motivo):
+    from csp_worker.google import motivo_do_google
+
+    assert motivo_do_google(_Resposta(403, corpo)) == motivo
+
+
+def test_api_desligada_diz_o_que_fazer():
+    from csp_worker.ga4 import ErroDoGa4
+    from csp_worker.google import chamada_http
+
+    class Sessao:
+        def post(self, *a, **k):
+            return _Resposta(403, {"error": {"details": [{"reason": "SERVICE_DISABLED"}]}})
+
+    with pytest.raises(ErroDoGa4) as erro:
+        chamada_http(Sessao())("https://x", {})
+    assert "Data API" in str(erro.value)
