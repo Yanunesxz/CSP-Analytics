@@ -1,6 +1,11 @@
-"""`python -m csp_worker ga4`: roda o trabalho `ga4_daily` uma vez e sai (o agendador do Railway chama às 14:00).
+"""`python -m csp_worker <trabalho>`: roda um trabalho uma vez e sai (o agendador do Railway chama).
 
-Variáveis (nomes no .env.example): WORKER_DATABASE_URL (papel mkt_worker) e GOOGLE_SERVICE_ACCOUNT_JSON.
+- `ga4`: o `ga4_daily` (às 14:00), últimos 14 dias completos.
+- `meta`: o `ads_backfill` da Meta (às 04:00), últimos 28 dias; `--desde AAAA-MM-DD` faz a primeira carga.
+- `meta-hora`: o `ads_hourly` da Meta (de hora em hora), hoje e ontem.
+
+Variáveis (nomes no .env.example): WORKER_DATABASE_URL (papel mkt_worker), GOOGLE_SERVICE_ACCOUNT_JSON (ga4),
+META_ACCESS_TOKEN_READ e META_APP_SECRET (meta).
 """
 
 from __future__ import annotations
@@ -10,7 +15,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .ga4 import DIAS_DE_RELEITURA, ErroDoGa4
@@ -51,9 +56,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def _rodar(argv: list[str] | None) -> int:
     parser = argparse.ArgumentParser(prog="csp_worker")
-    parser.add_argument("trabalho", choices=["ga4"])
-    parser.add_argument("--dias", type=int, default=DIAS_DE_RELEITURA, help="dias completos a reler (padrão 14)")
+    parser.add_argument("trabalho", choices=["ga4", "meta", "meta-hora"])
+    parser.add_argument("--dias", type=int, default=None, help="dias a reler (ga4: 14; meta: 28)")
+    parser.add_argument("--desde", type=date.fromisoformat, default=None, help="meta: primeira carga desde a data")
     args = parser.parse_args(argv)
+    if args.dias is None:
+        args.dias = {"ga4": DIAS_DE_RELEITURA, "meta": 28, "meta-hora": 2}[args.trabalho]
     LOG.info("começando o %s (%d dias)", args.trabalho, args.dias)
 
     url = (os.environ.get("WORKER_DATABASE_URL") or "").strip()
@@ -67,6 +75,9 @@ def _rodar(argv: list[str] | None) -> int:
             "postgresql://mkt_worker.<ref>:<senha>@<host>:5432/postgres"
         )
         return 2
+
+    if args.trabalho != "ga4":
+        return _rodar_meta(url, args)
 
     import psycopg
 
@@ -97,6 +108,60 @@ def _rodar(argv: list[str] | None) -> int:
         f", falhas {', '.join(r.falhas)}" if r.falhas else "",
     )
     return 1 if r.status == "failed" else 0
+
+
+def _conectar(url: str):
+    import psycopg
+
+    try:
+        return psycopg.connect(url, application_name="csp-worker", connect_timeout=20)
+    except psycopg.ProgrammingError:
+        # A mensagem do psycopg repete pedaços da conexão (e da senha): não vai para o log.
+        LOG.error("WORKER_DATABASE_URL não pôde ser lida como conexão do Postgres; confira o formato da URL.")
+        return None
+
+
+def _rodar_meta(url: str, args) -> int:
+    from .banco import Banco
+    from .meta import ErroDaMeta, Janela, janela_de_releitura
+    from .meta_http import chamada_da_meta
+    from .rodada_meta import rodar
+
+    try:
+        chamar = chamada_da_meta(os.environ.get("META_ACCESS_TOKEN_READ"), os.environ.get("META_APP_SECRET"))
+    except ErroDaMeta as erro:
+        LOG.error("%s", erro)
+        return 2
+    hoje = datetime.now(FUSO).date()
+    if args.desde is not None:
+        janela = Janela(inicio=args.desde, fim=hoje)
+    else:
+        janela = janela_de_releitura(hoje, args.dias)
+    trabalho = "ads_hourly" if args.trabalho == "meta-hora" else "ads_backfill"
+    LOG.info("token da Meta lido; lendo de %s a %s", janela.inicio, janela.fim)
+
+    conexao = _conectar(url)
+    if conexao is None:
+        return 2
+    resultados = []
+    with conexao:
+        banco = Banco(conexao)
+        # A primeira carga vai em blocos de 30 dias: a Meta recusa consulta grande demais numa chamada.
+        inicio = janela.inicio
+        while inicio <= janela.fim:
+            fim = min(inicio + timedelta(days=29), janela.fim)
+            resultados.append(rodar(banco, chamar, Janela(inicio=inicio, fim=fim), trabalho))
+            inicio = fim + timedelta(days=1)
+    for r in resultados:
+        LOG.info(
+            "%s: %s, %d linhas, %d recusadas%s",
+            trabalho,
+            r.status,
+            r.linhas,
+            r.recusadas,
+            f", falhas {', '.join(r.falhas)}" if r.falhas else "",
+        )
+    return 1 if any(r.status == "failed" for r in resultados) else 0
 
 
 if __name__ == "__main__":

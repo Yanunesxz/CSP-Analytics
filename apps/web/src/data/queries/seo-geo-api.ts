@@ -6,7 +6,7 @@
  * pendências chegam vazios ("Sem dados" em cada bloco) até a função de tela trazer essas fontes.
  */
 
-import type { ApiKpiSeoGeo, ApiMetric, Brand } from '@csp-mkt/shared';
+import type { ApiKpiSeoGeo, ApiMetric, ApiPeriod, Brand } from '@csp-mkt/shared';
 import { partesDoDia } from '../../lib/datas';
 import { intervaloDoPeriodo, type Intervalo } from '../../lib/periodo';
 import type { Filtros } from '../../lib/url-state';
@@ -26,7 +26,7 @@ function diaMes(dia: string): string {
 }
 
 /** O período da resposta; a comparação diz as datas de verdade, só com os dias completos da fonte. */
-export function intervaloDaApi(r: ApiKpiSeoGeo, filtros: Filtros, agora: Date): Intervalo {
+export function intervaloDaApi(r: { period: ApiPeriod }, filtros: Filtros, agora: Date): Intervalo {
   const base = intervaloDoPeriodo(filtros.periodo, agora);
   const p = r.period;
   return {
@@ -81,6 +81,7 @@ export function painelSeoGeoDaApi(r: ApiKpiSeoGeo, filtros: Filtros, agora: Date
     },
     geo: {
       sessoes: metricaDaApi(r.geo.ai_sessions),
+      sessoesDoSite: metricaDaApi(r.geo.sessions),
       parcelaDasSessoes: metricaDaApi(r.geo.ai_share),
       porAssistente: r.geo.by_ai_source.map((a) => ({
         fonte: a.ai_source,

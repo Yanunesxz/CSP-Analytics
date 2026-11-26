@@ -16,6 +16,12 @@ class Propriedade:
     marca: str
 
 
+@dataclass(frozen=True)
+class ContaDeAnuncio:
+    external_id: str
+    marca: str
+
+
 class Banco:
     def __init__(self, conexao):
         self.conexao = conexao
@@ -31,10 +37,41 @@ class Banco:
             )
             return [Propriedade(external_id=e, marca=m) for e, m in cur.fetchall()]
 
-    def abrir_rodada(self) -> str:
+    def contas_meta(self) -> list[ContaDeAnuncio]:
         with self.conexao.cursor() as cur:
-            cur.execute("select ingest.start_run('ga4', 'ga4_daily', 'schedule')")
+            cur.execute(
+                """select a.external_id, b.code::text
+                     from mkt.ad_accounts a join mkt.brands b on b.id = a.brand_id
+                    where a.source = 'meta_ads'
+                    order by b.code, a.external_id"""
+            )
+            return [ContaDeAnuncio(external_id=e, marca=m) for e, m in cur.fetchall()]
+
+    def abrir_rodada(self, conector: str = "ga4", trabalho: str = "ga4_daily", gatilho: str = "schedule") -> str:
+        with self.conexao.cursor() as cur:
+            cur.execute("select ingest.start_run(%s, %s, %s)", (conector, trabalho, gatilho))
             return str(cur.fetchone()[0])
+
+    def gravar(self, rodada: str, funcao: str, linhas: list[dict[str, Any]]) -> list[str]:
+        """Grava um lote por `ingest.upsert_<tabela>`. Devolve os códigos das linhas recusadas."""
+        if funcao not in ("upsert_ad_accounts", "upsert_campaigns"):
+            raise ValueError("função de gravação fora da lista")
+        if not linhas:
+            return []
+        with self.conexao.transaction(), self.conexao.cursor() as cur:
+            cur.execute(
+                f"select code from ingest.{funcao}(%s, %s::jsonb) where is_refused",
+                (rodada, json.dumps(linhas)),
+            )
+            return [codigo for (codigo,) in cur.fetchall()]
+
+    def trocar_dia_de_anuncio(self, rodada: str, conta: str, dia: str, linhas: list[dict[str, Any]]) -> list[str]:
+        with self.conexao.transaction(), self.conexao.cursor() as cur:
+            cur.execute(
+                "select code from ingest.replace_day(%s, 'ad_campaign_daily', %s, %s, %s::jsonb) where is_refused",
+                (rodada, conta, dia, json.dumps(linhas)),
+            )
+            return [codigo for (codigo,) in cur.fetchall()]
 
     def trocar_dia(self, rodada: str, propriedade: str, dia: str, linhas: list[dict[str, Any]]) -> list[str]:
         """Grava as linhas do dia numa transação e apaga as que não vieram. Devolve os códigos das recusadas."""

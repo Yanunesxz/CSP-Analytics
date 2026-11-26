@@ -185,7 +185,7 @@ describe('as funções de tela', () => {
         `select p.oid::regprocedure::text as funcao, p.prosecdef, p.proconfig as config
            from pg_proc p where p.pronamespace = 'api'::regnamespace and p.proname ~ '^kpi_' order by 1`,
       );
-      expect(linhas.map((l) => l.funcao)).toEqual(['api.kpi_seo_geo(jsonb)']);
+      expect(linhas.map((l) => l.funcao)).toEqual(['api.kpi_overview(jsonb)', 'api.kpi_seo_geo(jsonb)']);
       for (const l of linhas) {
         expect(l.prosecdef, l.funcao).toBe(false);
         expect(l.config, l.funcao).toEqual(['search_path=pg_catalog, pg_temp']);

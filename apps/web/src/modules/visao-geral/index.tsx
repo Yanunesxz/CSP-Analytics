@@ -13,17 +13,20 @@
 import { Sparkles } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { opcoes, pode } from '@csp-mkt/shared';
+import { opcoes, pode, type ApiKpiOverview } from '@csp-mkt/shared';
 import { PageHeader } from '../../components/layout/pagina';
 import { BarraDeFiltros, Tela, type FiltroRapido } from '../../components/ui';
-import { visaoGeral } from '../../data/queries/visao-geral';
+import { useConsultaDaApi, type ConsultaDaApi } from '../../data/api';
+import { visaoGeral, type VisaoGeral as Painel } from '../../data/queries/visao-geral';
+import { visaoGeralDaApi } from '../../data/queries/visao-geral-api';
 import { useConsulta } from '../../data/store';
-import { useSessao } from '../../lib/auth';
+import { modoDeAcesso, useSessao } from '../../lib/auth';
 import { plural } from '../../lib/format';
 import { useFiltros } from '../../lib/url-state';
 import { CustoPorMarcaECanal } from './CustoPorMarcaECanal';
 import { Graficos } from './Graficos';
 import { HumanoXClaude } from './HumanoXClaude';
+import { JaChega } from './JaChega';
 import { Numeros } from './Numeros';
 import { VerbaELimite } from './VerbaELimite';
 
@@ -43,8 +46,22 @@ const RAPIDOS_DE_OPERADOR: FiltroRapido[] = opcoes('operator').map((o) => ({
 
 const RAPIDOS_DO_GESTOR = [...RAPIDOS_DE_CANAL, ...RAPIDOS_DE_OPERADOR];
 
+/** Modo Supabase: o painel vem de api.kpi_overview (por enquanto, só a mídia). */
+function useDoBanco(): ConsultaDaApi<Painel> {
+  return useConsultaDaApi('kpi_overview', visaoGeralDaApi, (r: ApiKpiOverview) => r.updated_at);
+}
+
+/** Modo demonstração: a consulta pura sobre o store. */
+function useDaDemonstracao(): ConsultaDaApi<Painel> {
+  return { resultado: useConsulta(visaoGeral), recarregar: () => undefined };
+}
+
+// O modo não muda com a página aberta: a escolha é feita uma vez, fora do componente.
+const DO_BANCO = modoDeAcesso() === 'supabase';
+const usePainel = DO_BANCO ? useDoBanco : useDaDemonstracao;
+
 export default function VisaoGeral() {
-  const resultado = useConsulta(visaoGeral);
+  const { resultado, recarregar } = usePainel();
   const { filtros, linkCom } = useFiltros();
   const { perfil } = useSessao();
   const gestor = filtros.visao === 'gestor';
@@ -54,6 +71,8 @@ export default function VisaoGeral() {
       ? linkCom('/trafego', { canal: filtros.canal, operador: filtros.operador })
       : null;
   const naFila = resultado.dados?.gestor?.propostasNaFila ?? null;
+  // No banco, enquanto nada de mídia nem do CSP 360 chega, a tela mostra o que já chega (o site) e o que falta.
+  const soOSite = DO_BANCO && resultado.estado === 'vazio' && !filtros.estado;
 
   const acao = useMemo(
     () =>
@@ -83,34 +102,40 @@ export default function VisaoGeral() {
         rapidos={gestor ? RAPIDOS_DO_GESTOR : RAPIDOS_DE_CANAL}
         campos={['canal', 'operador']}
       />
-      <Tela
-        resultado={resultado}
-        vazio={{
-          titulo: 'Nenhum número ainda',
-          texto:
-            'Os números aparecem quando os conectores trazem os primeiros dados. Veja o que falta ligar em Conectores.',
-        }}
-      >
-        {(v, estado) => (
-          <>
-            <Numeros v={v} filtros={resultado.filtros} />
-            {/* T1 (custo por marca e por canal) logo depois dos números, nas duas visões */}
-            <CustoPorMarcaECanal
-              porMarca={v.porMarca}
-              porCanal={v.porCanal}
-              intervalo={v.intervalo}
-              filtros={resultado.filtros}
-            />
-            {v.gestor ? (
-              <>
-                <HumanoXClaude linhas={v.gestor.humanoClaude} />
-                <VerbaELimite contas={v.gestor.contas} />
-              </>
-            ) : null}
-            <Graficos v={v} filtros={resultado.filtros} semDados={estado === 'sem-dados'} />
-          </>
-        )}
-      </Tela>
+      {soOSite ? (
+        <JaChega comMidia={false} />
+      ) : (
+        <Tela
+          resultado={resultado}
+          aoTentarDeNovo={DO_BANCO && !filtros.estado ? recarregar : undefined}
+          vazio={{
+            titulo: 'Nenhum número ainda',
+            texto:
+              'Os números aparecem quando os conectores trazem os primeiros dados. Veja o que falta ligar em Conectores.',
+          }}
+        >
+          {(v, estado) => (
+            <>
+              <Numeros v={v} filtros={resultado.filtros} />
+              {/* T1 (custo por marca e por canal) logo depois dos números, nas duas visões */}
+              <CustoPorMarcaECanal
+                porMarca={v.porMarca}
+                porCanal={v.porCanal}
+                intervalo={v.intervalo}
+                filtros={resultado.filtros}
+              />
+              {v.gestor ? (
+                <>
+                  <HumanoXClaude linhas={v.gestor.humanoClaude} />
+                  <VerbaELimite contas={v.gestor.contas} />
+                </>
+              ) : null}
+              <Graficos v={v} filtros={resultado.filtros} semDados={estado === 'sem-dados'} />
+              {DO_BANCO ? <JaChega comMidia /> : null}
+            </>
+          )}
+        </Tela>
+      )}
     </>
   );
 }

@@ -48,6 +48,7 @@ describe('painelSeoGeoDaApi', () => {
 
   it('só troca os nomes: os números são os do banco', () => {
     expect(painel.geo.sessoes).toEqual({ atual: 9, anterior: 5, variacao: 0.8 });
+    expect(painel.geo.sessoesDoSite).toEqual({ atual: 79, anterior: 85, variacao: -0.3059 });
     expect(painel.geo.parcelaDasSessoes).toEqual({ atual: 0.1139, anterior: 0.0588, variacao: 1.5932 });
     expect(painel.geo.porAssistente).toEqual([
       { fonte: 'chatgpt', sessoes: { atual: 6, anterior: 5, variacao: 0.2 }, parcela: 0.6667 },
