@@ -290,6 +290,8 @@ export interface PainelSeoGeo {
   };
   geo: {
     sessoes: Metrica;
+    /** Sessões do site em todos os canais do GA4. */
+    sessoesDoSite: Metrica;
     /** Sessões de IA ÷ sessões de todos os canais do GA4. */
     parcelaDasSessoes: Metrica;
     porAssistente: LinhaAssistente[];
@@ -572,6 +574,7 @@ export function montarPainelSeoGeo(
     },
     geo: {
       sessoes: base.geo.sessoes,
+      sessoesDoSite: metrica(canaisAgora.total, canaisAntes.total, c),
       parcelaDasSessoes: metrica(
         razao(canaisAgora.ia, canaisAgora.total),
         razao(canaisAntes.ia, canaisAntes.total),

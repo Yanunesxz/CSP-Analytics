@@ -108,3 +108,18 @@ export function verbaDaConta(c: ContaDeAnuncio): string | null {
   if (c.verbaDiaria === null) return null;
   return `Verba diária ${dinheiro(c.verbaDiaria)} · ${plural(c.campanhasAtivas, 'campanha ativa', 'campanhas ativas')}`;
 }
+
+/* ---------- O que ainda não chega (modo Supabase, antes da função de tela) ---------- */
+
+/** As fontes que a Visão geral espera, em palavras do negócio, na ordem do que mais muda o número. */
+export const AINDA_NAO_CHEGA: readonly { nome: string; traz: string }[] = [
+  { nome: 'CSP 360', traz: 'Leads e clientes novos de cada marca: sem ele não há custo por cliente novo.' },
+  { nome: 'Meta Ads', traz: 'Quanto foi gasto no Facebook e no Instagram, por campanha e por marca.' },
+  { nome: 'Google Ads', traz: 'Quanto foi gasto no Google, por campanha e por marca.' },
+  { nome: 'TikTok Ads', traz: 'Quanto foi gasto no TikTok, por campanha e por marca.' },
+  {
+    nome: 'Search Console',
+    traz: 'Como os sites aparecem na busca do Google: impressões, cliques e posição.',
+  },
+  { nome: 'Instagram', traz: 'Visualizações, alcance e interações dos perfis.' },
+];

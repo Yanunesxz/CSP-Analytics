@@ -18,12 +18,13 @@ import { PageHeader } from '../../components/layout/pagina';
 import { BarraDeFiltros, Tela, type FiltroRapido } from '../../components/ui';
 import { visaoGeral } from '../../data/queries/visao-geral';
 import { useConsulta } from '../../data/store';
-import { useSessao } from '../../lib/auth';
+import { modoDeAcesso, useSessao } from '../../lib/auth';
 import { plural } from '../../lib/format';
 import { useFiltros } from '../../lib/url-state';
 import { CustoPorMarcaECanal } from './CustoPorMarcaECanal';
 import { Graficos } from './Graficos';
 import { HumanoXClaude } from './HumanoXClaude';
+import { JaChega } from './JaChega';
 import { Numeros } from './Numeros';
 import { VerbaELimite } from './VerbaELimite';
 
@@ -54,6 +55,8 @@ export default function VisaoGeral() {
       ? linkCom('/trafego', { canal: filtros.canal, operador: filtros.operador })
       : null;
   const naFila = resultado.dados?.gestor?.propostasNaFila ?? null;
+  // No banco, enquanto nada de mídia nem do CSP 360 chega, a tela mostra o que já chega (o site) e o que falta.
+  const soOSite = modoDeAcesso() === 'supabase' && resultado.estado === 'vazio' && !filtros.estado;
 
   const acao = useMemo(
     () =>
@@ -83,34 +86,38 @@ export default function VisaoGeral() {
         rapidos={gestor ? RAPIDOS_DO_GESTOR : RAPIDOS_DE_CANAL}
         campos={['canal', 'operador']}
       />
-      <Tela
-        resultado={resultado}
-        vazio={{
-          titulo: 'Nenhum número ainda',
-          texto:
-            'Os números aparecem quando os conectores trazem os primeiros dados. Veja o que falta ligar em Conectores.',
-        }}
-      >
-        {(v, estado) => (
-          <>
-            <Numeros v={v} filtros={resultado.filtros} />
-            {/* T1 (custo por marca e por canal) logo depois dos números, nas duas visões */}
-            <CustoPorMarcaECanal
-              porMarca={v.porMarca}
-              porCanal={v.porCanal}
-              intervalo={v.intervalo}
-              filtros={resultado.filtros}
-            />
-            {v.gestor ? (
-              <>
-                <HumanoXClaude linhas={v.gestor.humanoClaude} />
-                <VerbaELimite contas={v.gestor.contas} />
-              </>
-            ) : null}
-            <Graficos v={v} filtros={resultado.filtros} semDados={estado === 'sem-dados'} />
-          </>
-        )}
-      </Tela>
+      {soOSite ? (
+        <JaChega />
+      ) : (
+        <Tela
+          resultado={resultado}
+          vazio={{
+            titulo: 'Nenhum número ainda',
+            texto:
+              'Os números aparecem quando os conectores trazem os primeiros dados. Veja o que falta ligar em Conectores.',
+          }}
+        >
+          {(v, estado) => (
+            <>
+              <Numeros v={v} filtros={resultado.filtros} />
+              {/* T1 (custo por marca e por canal) logo depois dos números, nas duas visões */}
+              <CustoPorMarcaECanal
+                porMarca={v.porMarca}
+                porCanal={v.porCanal}
+                intervalo={v.intervalo}
+                filtros={resultado.filtros}
+              />
+              {v.gestor ? (
+                <>
+                  <HumanoXClaude linhas={v.gestor.humanoClaude} />
+                  <VerbaELimite contas={v.gestor.contas} />
+                </>
+              ) : null}
+              <Graficos v={v} filtros={resultado.filtros} semDados={estado === 'sem-dados'} />
+            </>
+          )}
+        </Tela>
+      )}
     </>
   );
 }

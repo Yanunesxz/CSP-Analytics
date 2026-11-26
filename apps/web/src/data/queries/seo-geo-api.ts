@@ -81,6 +81,7 @@ export function painelSeoGeoDaApi(r: ApiKpiSeoGeo, filtros: Filtros, agora: Date
     },
     geo: {
       sessoes: metricaDaApi(r.geo.ai_sessions),
+      sessoesDoSite: metricaDaApi(r.geo.sessions),
       parcelaDasSessoes: metricaDaApi(r.geo.ai_share),
       porAssistente: r.geo.by_ai_source.map((a) => ({
         fonte: a.ai_source,
