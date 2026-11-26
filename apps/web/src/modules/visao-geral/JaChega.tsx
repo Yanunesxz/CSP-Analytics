@@ -21,7 +21,12 @@ import { AINDA_NAO_CHEGA } from './textos';
 
 const ultimaLeitura = (r: ApiKpiSeoGeo) => r.sources.ga4.last_success_at;
 
-export function JaChega() {
+export interface JaChegaProps {
+  /** A mídia já chega (a Visão geral tem números): o aviso e a lista mudam. */
+  comMidia: boolean;
+}
+
+export function JaChega({ comMidia }: JaChegaProps) {
   const { resultado: r, recarregar } = useConsultaDaApi('kpi_seo_geo', painelSeoGeoDaApi, ultimaLeitura);
   const { linkCom } = useFiltros();
 
@@ -30,9 +35,12 @@ export function JaChega() {
       <div className="yn-alert" data-tone="info" role="status">
         <CircleDashed strokeWidth={1.75} aria-hidden="true" />
         <div>
-          <strong className="yn-alert__title">Por enquanto, só o site chega</strong>
-          Custo por cliente novo, gasto e leads aparecem aqui quando os anúncios e o CSP 360 forem ligados.
-          Abaixo, o que já dá para ver e o que falta.
+          <strong className="yn-alert__title">
+            {comMidia ? 'Ainda sem leads e clientes novos' : 'Por enquanto, só o site chega'}
+          </strong>
+          {comMidia
+            ? 'O gasto já chega. Leads, clientes novos e o custo de cada cliente novo aparecem quando o CSP 360 for ligado.'
+            : 'Custo por cliente novo, gasto e leads aparecem aqui quando os anúncios e o CSP 360 forem ligados. Abaixo, o que já dá para ver e o que falta.'}
         </div>
       </div>
       <Tela
@@ -59,7 +67,7 @@ export function JaChega() {
         descricao="O que falta ligar para a Visão geral mostrar o custo de cada cliente novo."
       >
         <ul className="mkt-stack" aria-label="Fontes que ainda não chegam">
-          {AINDA_NAO_CHEGA.map((f) => (
+          {AINDA_NAO_CHEGA.filter((f) => !(comMidia && f.nome === 'Meta Ads')).map((f) => (
             <li key={f.nome} className="grid gap-1">
               <span className="text-sm font-semibold">{f.nome}</span>
               <span className="yn-muted text-sm">{f.traz}</span>

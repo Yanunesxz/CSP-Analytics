@@ -135,6 +135,7 @@ export const FUNCOES_DE_API: Readonly<Record<string, FuncaoDeApi>> = {
  * A chamada inerte é a de filtros vazios.
  */
 export const FUNCOES_DE_TELA: Readonly<Record<string, FuncaoDeApi>> = {
+  kpi_overview: { assinatura: 'api.kpi_overview(jsonb)', chamada: `select api.kpi_overview('{}')` },
   kpi_seo_geo: { assinatura: 'api.kpi_seo_geo(jsonb)', chamada: `select api.kpi_seo_geo('{}')` },
 };
 
