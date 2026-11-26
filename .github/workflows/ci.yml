@@ -28,12 +28,13 @@ on:
         options:
           - migracoes
           - primeiro-dono
+          - convidar-dono
       nome:
-        description: 'Só no primeiro-dono: nome do primeiro dono, como aparece no sistema'
+        description: 'Só no primeiro-dono e no convidar-dono: nome da pessoa, como aparece no sistema'
         required: false
         type: string
       email:
-        description: 'Só no primeiro-dono: e-mail do primeiro dono (mascarado no log)'
+        description: 'Só no primeiro-dono e no convidar-dono: e-mail da pessoa (mascarado no log)'
         required: false
         type: string
 
@@ -353,6 +354,45 @@ jobs:
           # 1. O convite no banco: o perfil de dono nasce dele quando a pessoa aceitar o link.
           psql "$MKT_SETUP_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -o /dev/null -v email="$email" -v nome="$nome" <<'SQL'
           select setup.create_first_owner_invitation(:'email', :'nome');
+          SQL
+
+          # 2. O convite do Supabase Auth, com a service_role (chave nova sb_… vai só no apikey).
+          corpo=$(jq -cn --arg email "$email" '{email: $email}')
+          cabecalhos=(-H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H 'Content-Type: application/json')
+          case "$SUPABASE_SERVICE_ROLE_KEY" in
+            sb_*) ;;
+            *) cabecalhos+=(-H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY") ;;
+          esac
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$SUPABASE_URL/auth/v1/invite" "${cabecalhos[@]}" --data "$corpo")
+          echo "Convite no Supabase Auth: HTTP $status"
+          [ "$status" = "200" ]
+
+  convidar-dono:
+    name: Convite de outro dono (manual; decisão 0044)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.acao == 'convidar-dono'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: producao
+    steps:
+      # O nome e o e-mail vêm do pedido e não passam por expressão nem por env: lidos do evento e mascarados antes de
+      # qualquer saída. O e-mail recebe o link do Supabase Auth; a pessoa define a senha nele e cadastra o segundo
+      # fator no primeiro acesso.
+      - name: Convite no banco (papel mkt_setup) e no Supabase Auth
+        env:
+          MKT_SETUP_DATABASE_URL: ${{ secrets.MKT_SETUP_DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          email=$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          nome=$(jq -r '.inputs.nome // ""' "$GITHUB_EVENT_PATH" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          echo "::add-mask::$email"
+          echo "::add-mask::$nome"
+          if ! [[ "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; then echo "E-mail fora do formato."; exit 1; fi
+          if [ "${#nome}" -lt 2 ] || [ "${#nome}" -gt 80 ]; then echo "O nome precisa de 2 a 80 letras."; exit 1; fi
+
+          # 1. O convite no banco, em nome do dono ativo: o perfil de dono nasce dele quando a pessoa aceitar o link.
+          psql "$MKT_SETUP_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -o /dev/null -v email="$email" -v nome="$nome" <<'SQL'
+          select setup.create_owner_invitation(:'email', :'nome');
           SQL
 
           # 2. O convite do Supabase Auth, com a service_role (chave nova sb_… vai só no apikey).

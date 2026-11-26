@@ -90,6 +90,7 @@ O modelo de dados aprovado começa por `docs/dados/README.md`: camadas e esquema
 
 ## Quebrado ou arriscado
 
+- **Segundo dono (26/11/2026):** sem tela de usuários nem Edge Function `convidar`, o convite de outro dono sai pelo job manual `convidar-dono` do CI (decisão 0044, migração `20261126170000_convite_de_dono_pelo_ci.sql`), depois do `primeiro-dono`. Para e-mail de fora da organização no Supabase, o SMTP próprio precisa estar configurado antes.
 - **Tela preta no site (26/11/2026):** o `vercel.json` mandava toda rota, inclusive `/assets/` que não existe, para o `index.html`, e o cabeçalho de `/assets/` guarda por um ano. Um navegador que pediu um arquivo antes de ele existir ficou com o HTML no lugar do script e abria a tela preta. Corrigido: `/assets/` fica fora da reescrita e responde 404. Quem viu a tela preta antes da correção recarrega com Ctrl+Shift+R.
 - Nada em uso em produção: o site mostra as telas vazias, e o banco de produção tem só a estrutura, sem dado (abaixo). Riscos conhecidos: a aprovação da Meta para o Claude executar (Full Access) é o item mais longo: o app e o usuário de leitura existem desde 04/11/2026, mas as 500 chamadas em 15 dias que o App Review pede só começam com o worker lendo, e a verificação do negócio está a confirmar; os sites não medem nada (`NEXT_PUBLIC_GA_ID` vazio em produção); a `sincronizar-apps` do CRM não traz `orders.total`, `invoiced_total` nem `source`; a função de leads dos sites está fora da `main` do CRM.
 - **Repositório novo e o Supabase de produção (12/11/2026):**

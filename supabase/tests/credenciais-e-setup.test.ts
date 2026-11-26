@@ -380,6 +380,7 @@ describe('os scripts de configuração: setup.*', () => {
             'create_first_owner_invitation',
             `select setup.create_first_owner_invitation('a@exemplo.com', 'Pessoa')`,
           ],
+          ['create_owner_invitation', `select setup.create_owner_invitation('a@exemplo.com', 'Pessoa')`],
           ['mark_lead_funnel', `select setup.mark_lead_funnel('funil-teste-0001')`],
         ];
         for (const [funcao, sql] of chamadas) {
@@ -395,6 +396,46 @@ describe('os scripts de configuração: setup.*', () => {
         (await s.erro('PT422', `select setup.create_first_owner_invitation('novo@exemplo.com', 'Novo dono')`))
           .detail,
       ).toBe('owner_exists');
+    });
+  });
+});
+
+describe('o convite de outro dono pelo CI (decisão 0044)', () => {
+  it('em nome do dono ativo: o login aceito vira dono; rodar de novo devolve o mesmo; e-mail com perfil barra', async () => {
+    await caso(db, servico('mkt_setup'), async (s) => {
+      const convidar = () =>
+        s.valor<string>(`select setup.create_owner_invitation(' Socio@Exemplo.com ', 'Sócio')::text`);
+      const convite = await convidar();
+      expect(await convidar()).toBe(convite);
+      expect(
+        (await s.erro('PT422', `select setup.create_owner_invitation('sem-arroba', 'Sócio')`)).detail,
+      ).toBe('email');
+      await s.como(postgres);
+      expect(
+        await s.linhas(
+          `select i.role, p.role as quem_convidou, expires_at - i.created_at = interval '7 days' as sete_dias
+             from mkt.invitations i join mkt.profiles p on p.id = i.invited_by where i.id = $1`,
+          [convite],
+        ),
+      ).toEqual([{ role: 'owner', quem_convidou: 'owner', sete_dias: true }]);
+      expect(
+        await s.linhas(`select actor_kind, event, changes from mkt.audit_log where target_id = $1`, [
+          convite,
+        ]),
+      ).toEqual([
+        { actor_kind: 'system', event: 'invite_sent', changes: { invitation_id: convite, role: 'owner' } },
+      ]);
+      await s.exec(`insert into auth.users (id, email, invited_at)
+                    values ('00000000-0000-4000-8000-0000000000b7', 'socio@exemplo.com', now())`);
+      expect(
+        await s.linhas(
+          `select role, is_active from mkt.profiles where id = '00000000-0000-4000-8000-0000000000b7'`,
+        ),
+      ).toEqual([{ role: 'owner', is_active: true }]);
+      await s.como(servico('mkt_setup'));
+      expect(
+        (await s.erro('PT422', `select setup.create_owner_invitation('socio@exemplo.com', 'Sócio')`)).detail,
+      ).toBe('has_profile');
     });
   });
 });
@@ -491,6 +532,13 @@ describe('o convite do primeiro dono, num banco sem ninguém', () => {
         { event: 'invite_revoked' },
       ]);
       expect(novo).toMatch(/^[0-9a-f-]{36}$/);
+    });
+  });
+  it('o convite de outro dono sem nenhum dono ativo é recusado (o caminho é o primeiro-dono)', async () => {
+    await caso(vazio, servico('mkt_setup'), async (s) => {
+      expect(
+        (await s.erro('PT422', `select setup.create_owner_invitation('a@exemplo.com', 'Pessoa')`)).detail,
+      ).toBe('no_owner');
     });
   });
 });
