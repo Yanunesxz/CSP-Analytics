@@ -22,6 +22,14 @@ LOG = logging.getLogger("csp_worker")
 ESPERA_NO_FIM = float(os.environ.get("WORKER_ESPERA_NO_FIM", "3"))
 
 
+def url_de_banco_valida(url: str) -> bool:
+    """A conexão do worker é sempre uma URL postgresql:// com usuário e host (nunca só a senha)."""
+    if not url.startswith(("postgresql://", "postgres://")):
+        return False
+    resto = url.split("://", 1)[1]
+    return "@" in resto and bool(resto.rsplit("@", 1)[1].strip("/"))
+
+
 def main(argv: list[str] | None = None) -> int:
     # Tudo no stdout, sem buffer: cada linha sai na hora, mesmo se o processo morrer logo depois.
     logging.basicConfig(
@@ -48,9 +56,16 @@ def _rodar(argv: list[str] | None) -> int:
     args = parser.parse_args(argv)
     LOG.info("começando o %s (%d dias)", args.trabalho, args.dias)
 
-    url = os.environ.get("WORKER_DATABASE_URL")
+    url = (os.environ.get("WORKER_DATABASE_URL") or "").strip()
     if not url:
         LOG.error("WORKER_DATABASE_URL vazio: o worker entra no banco com o papel mkt_worker.")
+        return 2
+    if not url_de_banco_valida(url):
+        # Nunca o valor: um engano comum é colar só a senha aqui, e ela iria para o log.
+        LOG.error(
+            "WORKER_DATABASE_URL fora do formato: use a URL inteira do Session pooler, "
+            "postgresql://mkt_worker.<ref>:<senha>@<host>:5432/postgres"
+        )
         return 2
 
     import psycopg
@@ -66,7 +81,13 @@ def _rodar(argv: list[str] | None) -> int:
         return 2
     LOG.info("credencial do Google lida; conectando no banco")
 
-    with psycopg.connect(url, application_name="csp-worker") as conexao:
+    try:
+        conexao = psycopg.connect(url, application_name="csp-worker")
+    except psycopg.ProgrammingError:
+        # A mensagem do psycopg repete pedaços da conexão (e da senha): não vai para o log.
+        LOG.error("WORKER_DATABASE_URL não pôde ser lida como conexão do Postgres; confira o formato da URL.")
+        return 2
+    with conexao:
         r = rodar(Banco(conexao), chamar, datetime.now(FUSO).date(), args.dias)
     LOG.info(
         "ga4_daily: %s, %d linhas, %d recusadas%s",
