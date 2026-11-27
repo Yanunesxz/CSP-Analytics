@@ -10,6 +10,7 @@ Nada aqui fala com o banco nem guarda o token: quem chama passa a `Chamada` já 
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -18,6 +19,7 @@ from typing import Any
 
 VERSAO = "v26.0"
 URL_BASE = f"https://graph.facebook.com/{VERSAO}"
+log = logging.getLogger("csp_worker.meta")
 DIAS_DE_RELEITURA = 28  # depois de 28 dias a Meta não muda o número
 TAMANHO_DA_PAGINA = 500
 STATUS_LIDOS = ["ACTIVE", "PAUSED", "DELETED", "ARCHIVED", "IN_PROCESS", "WITH_ISSUES"]
@@ -137,11 +139,24 @@ def ler_conta(chamar: Chamada, external_id: str, marca: str) -> dict:
     }
 
 
+def _com_e_sem_filtro(chamar: Chamada, caminho: str, parametros: dict[str, Any], filtro: str) -> list[dict]:
+    """Lê com o filtro de status (para trazer apagadas e arquivadas); se a Meta recusar o pedido (BAD_REQUEST), lê de
+    novo sem ele. Sem o filtro vêm só as que não foram apagadas nem arquivadas; o gasto das outras ainda entra, porque a
+    rodada cria a campanha que aparece no gasto e não veio na lista (`campanhas_que_faltam`)."""
+    try:
+        return list(_paginas(chamar, caminho, parametros))
+    except ErroDaMeta as erro:
+        if erro.codigo != "BAD_REQUEST":
+            raise
+        log.warning("Meta recusou o filtro %s (%s); lendo sem ele", filtro, erro)
+        return list(_paginas(chamar, caminho, {k: v for k, v in parametros.items() if k != filtro}))
+
+
 def ler_campanhas(chamar: Chamada, external_id: str, marca: str) -> list[dict]:
     conta = id_da_conta(external_id)
     eventos = []
     agora = _agora()
-    for c in _paginas(
+    for c in _com_e_sem_filtro(
         chamar,
         f"/{conta}/campaigns",
         {
@@ -149,6 +164,7 @@ def ler_campanhas(chamar: Chamada, external_id: str, marca: str) -> list[dict]:
             "effective_status": str(STATUS_LIDOS).replace("'", '"'),
             "limit": TAMANHO_DA_PAGINA,
         },
+        "effective_status",
     ):
         status = STATUS_DA_CAMPANHA.get(str(c.get("effective_status")), "paused")
         valores: dict[str, Any] = {
@@ -174,13 +190,16 @@ def ler_campanhas(chamar: Chamada, external_id: str, marca: str) -> list[dict]:
     return eventos
 
 
-def ler_gasto(chamar: Chamada, external_id: str, marca: str, janela: Janela) -> dict[str, list[dict]]:
-    """O gasto por campanha e dia, agrupado por dia. Todo dia da janela aparece (vazio = sem gasto no dia)."""
+def ler_gasto(
+    chamar: Chamada, external_id: str, marca: str, janela: Janela, nomes: dict[str, str] | None = None
+) -> dict[str, list[dict]]:
+    """O gasto por campanha e dia, agrupado por dia. Todo dia da janela aparece (vazio = sem gasto no dia).
+    Em `nomes`, se vier, guarda o nome de cada campanha que teve linha, para a rodada criar a que faltar."""
     conta = id_da_conta(external_id)
     por_dia: dict[str, list[dict]] = {d.isoformat(): [] for d in janela.dias()}
     agora = _agora()
     filtro = [{"field": "campaign.effective_status", "operator": "IN", "value": STATUS_LIDOS}]
-    for linha in _paginas(
+    for linha in _com_e_sem_filtro(
         chamar,
         f"/{conta}/insights",
         {
@@ -189,10 +208,13 @@ def ler_gasto(chamar: Chamada, external_id: str, marca: str, janela: Janela) -> 
             "time_range": f'{{"since":"{janela.inicio.isoformat()}","until":"{janela.fim.isoformat()}"}}',
             "filtering": str(filtro).replace("'", '"'),
             "use_unified_attribution_setting": "true",
-            "fields": "campaign_id,date_start,spend,impressions,inline_link_clicks,actions,action_values",
+            "fields": "campaign_id,campaign_name,date_start,spend,impressions,inline_link_clicks,actions,action_values",
             "limit": TAMANHO_DA_PAGINA,
         },
+        "filtering",
     ):
+        if nomes is not None and linha.get("campaign_id"):
+            nomes[str(linha["campaign_id"])] = str(linha.get("campaign_name") or "")
         dia = str(linha.get("date_start"))
         if dia not in por_dia:
             continue
@@ -215,3 +237,21 @@ def ler_gasto(chamar: Chamada, external_id: str, marca: str, janela: Janela) -> 
             }
         )
     return por_dia
+
+
+def campanhas_que_faltam(external_id: str, marca: str, conhecidas: set[str], nomes: dict[str, str]) -> list[dict]:
+    """Campanha que aparece no gasto e não veio na lista (apagada ou arquivada, lida sem o filtro): entra encerrada,
+    para o gasto dela não ser recusado."""
+    agora = _agora()
+    return [
+        {
+            "kind": "campaign",
+            "source": "meta_ads",
+            "brand": marca,
+            "key": {"external_id": cid},
+            "values": {"account_external_id": external_id, "name": nome or f"Campanha {cid}", "status": "ended"},
+            "fetched_at": agora,
+        }
+        for cid, nome in sorted(nomes.items())
+        if cid not in conhecidas
+    ]

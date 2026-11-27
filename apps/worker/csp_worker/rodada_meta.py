@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from .banco import ContaDeAnuncio
-from .meta import Chamada, ErroDaMeta, Janela, ler_campanhas, ler_conta, ler_gasto
+from .meta import Chamada, ErroDaMeta, Janela, campanhas_que_faltam, ler_campanhas, ler_conta, ler_gasto
 
 LIMITE_DO_LOTE = 1000  # o mesmo de private.ingest_batch
 log = logging.getLogger("csp_worker.meta")
@@ -79,7 +79,12 @@ def rodar(banco: BancoDaRodada, chamar: Chamada, janela: Janela, trabalho: str =
                 campanhas = ler_campanhas(chamar, conta.external_id, conta.marca)
                 for lote in _lotes(campanhas):
                     contar(banco.gravar(rodada, "upsert_campaigns", lote), len(lote))
-                por_dia = ler_gasto(chamar, conta.external_id, conta.marca, janela)
+                nomes: dict[str, str] = {}
+                por_dia = ler_gasto(chamar, conta.external_id, conta.marca, janela, nomes)
+                conhecidas = {str(c["key"]["external_id"]) for c in campanhas}
+                faltam = campanhas_que_faltam(conta.external_id, conta.marca, conhecidas, nomes)
+                for lote in _lotes(faltam) if faltam else []:
+                    contar(banco.gravar(rodada, "upsert_campaigns", lote), len(lote))
             except ErroDaMeta as erro:
                 log.warning("Meta %s (%s): %s", conta.marca, erro.codigo, erro)
                 falhou(conta, erro.codigo, str(erro))

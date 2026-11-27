@@ -91,8 +91,9 @@ def _etapa(url: str) -> str:
 def _motivo(erro: dict, token: str) -> str:
     """No parâmetro inválido, a mensagem da Meta diz qual parâmetro e o que ela aceita: sem dado pessoal nem token.
     Vai cortada e sem nada que pareça token, por garantia."""
-    mensagem = str(erro.get("message") or "").replace(token, "…")
-    mensagem = re.sub(r"[A-Za-z0-9_-]{40,}", "…", mensagem)[:200]
+    partes = [erro.get("message"), erro.get("error_user_title"), erro.get("error_user_msg")]
+    mensagem = " | ".join(str(p) for p in partes if p).replace(token, "…")
+    mensagem = re.sub(r"[A-Za-z0-9_-]{40,}", "…", mensagem)[:300]
     return f": {mensagem}" if mensagem else ""
 
 
