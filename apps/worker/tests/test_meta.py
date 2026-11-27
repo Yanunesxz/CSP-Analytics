@@ -257,3 +257,33 @@ def test_objeto_que_nao_existe_e_not_found():
     with pytest.raises(ErroDaMeta) as erro:
         chamar("/act_9", {"fields": "name"})
     assert erro.value.codigo == "NOT_FOUND"
+
+
+def test_campanhas_sem_o_filtro_quando_a_meta_recusa():
+    feitas = []
+
+    def chamar(caminho, parametros):
+        feitas.append(parametros)
+        if "effective_status" in parametros:
+            raise ErroDaMeta("BAD_REQUEST", "campaigns: a Meta recusou o pedido")
+        return CAMPANHAS
+
+    assert len(ler_campanhas(chamar, "9", "cs")) == 2
+    assert "effective_status" not in feitas[1]
+
+
+def test_gasto_de_campanha_fora_da_lista_cria_a_campanha_encerrada():
+    campanhas = []
+
+    class Banco(BancoFalso):
+        def gravar(self, rodada, funcao, linhas):
+            if funcao == "upsert_campaigns":
+                campanhas.extend(linhas)
+            return super().gravar(rodada, funcao, linhas)
+
+    banco = Banco([("9", "cs")])
+    chamar = chamada_falsa({"/act_9": CONTA, "/campaigns": {"data": [CAMPANHAS["data"][0]]}, "/insights": INSIGHTS})
+    r = rodar(banco, chamar, JANELA)
+    assert r.status == "succeeded"
+    estados = {(c["key"]["external_id"], c["values"]["status"]) for c in campanhas}
+    assert estados == {("111", "active"), ("222", "ended")}
