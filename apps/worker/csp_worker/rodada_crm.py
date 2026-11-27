@@ -70,6 +70,7 @@ def rodar(banco: BancoDaRodada, chamar: Chamada, conversor: Conversor, completa:
             r.recusadas += len(recusadas)
             if recusadas:
                 r.codigo = r.codigo or recusadas[0]
+        log.info("%s: %d enviadas", funcao, len(eventos))
 
     try:
         try:
@@ -102,6 +103,7 @@ def rodar(banco: BancoDaRodada, chamar: Chamada, conversor: Conversor, completa:
 def _ler_e_gravar(chamar: Chamada, conv: Conversor, completa: bool, hoje_utc: date, gravar, r: Resultado) -> None:
     def contar(view: str, linhas: list) -> list:
         r.lidas[view] = r.lidas.get(view, 0) + len(linhas)
+        log.info("lida %s: %d linhas", view, len(linhas))
         return linhas
 
     # Marcas, funis e usuários são poucos: vêm inteiros nas duas rodadas (o lead precisa do funil e do responsável).

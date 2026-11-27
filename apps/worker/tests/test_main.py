@@ -73,3 +73,21 @@ def test_api_desligada_diz_o_que_fazer():
     with pytest.raises(ErroDoGa4) as erro:
         chamada_http(Sessao())("https://x", {})
     assert "Data API" in str(erro.value)
+
+
+def test_sigterm_no_meio_da_rodada_vira_linha_no_log(monkeypatch, caplog, capsys):
+    import os
+    import signal
+
+    monkeypatch.setattr(entrada, "ESPERA_NO_FIM", 0)
+
+    def rodar_e_ser_parado(_argv):
+        os.kill(os.getpid(), signal.SIGTERM)
+        raise AssertionError("o SIGTERM devia ter parado antes")
+
+    monkeypatch.setattr(entrada, "_rodar", rodar_e_ser_parado)
+    try:
+        assert entrada.main(["crm-completa"]) == 1
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    assert "SIGTERM" in caplog.text + "".join(capsys.readouterr())

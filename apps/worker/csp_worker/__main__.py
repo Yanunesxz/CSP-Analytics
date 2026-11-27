@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import signal
 import sys
 import time
 from datetime import UTC, date, datetime, timedelta
@@ -28,6 +29,14 @@ LOG = logging.getLogger("csp_worker")
 # O Railway perde a saída de um contêiner que termina em menos de ~1 s (24/11/2026: só "Starting Container", sem
 # nenhuma linha). A espera no fim dá tempo de o coletor ler; 0 desliga (testes).
 ESPERA_NO_FIM = float(os.environ.get("WORKER_ESPERA_NO_FIM", "3"))
+
+
+class ParadoDeFora(Exception):  # noqa: N818 (o nome diz o que aconteceu)
+    """O Railway (ou alguém) mandou parar o contêiner no meio da rodada: um deploy novo, outro Run now."""
+
+
+def _ao_receber_sigterm(_sinal, _quadro) -> None:
+    raise ParadoDeFora("o contêiner recebeu SIGTERM no meio da rodada (deploy novo ou outro Run now)")
 
 
 def url_de_banco_valida(url: str) -> bool:
@@ -43,8 +52,13 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s", stream=sys.stdout, force=True
     )
+    # Sem isto, o SIGTERM mata o processo calado. Com ele, a rodada fecha como falha e o log diz o motivo.
+    signal.signal(signal.SIGTERM, _ao_receber_sigterm)
     try:
         return _rodar(argv)
+    except ParadoDeFora as erro:
+        LOG.error("%s", erro)
+        return 1
     except SystemExit:
         raise
     except BaseException:
