@@ -304,9 +304,12 @@ jobs:
         with:
           version: 3.3.0
 
+      # --include-all: dois PRs abertos juntos podem entrar fora da ordem do nome (27/11/2026: a
+      # 20261126120000 entrou depois da 20261126170000 e o push recusou tudo). Cada migração é
+      # independente e idempotente (seção 10 do padrão), então a que ficou para trás entra também.
       - name: Aplicar as migrações (supabase db push)
         run: |
-          supabase db push --yes --db-url "$SUPABASE_DB_URL_PRODUCAO"
+          supabase db push --yes --include-all --db-url "$SUPABASE_DB_URL_PRODUCAO"
           psql "$SUPABASE_DB_URL_PRODUCAO" -X -q -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
 
       - name: Senha dos papéis de serviço (verificador SCRAM; a senha não aparece)
