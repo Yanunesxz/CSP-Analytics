@@ -103,6 +103,7 @@ def test_campanhas_trazem_arquivadas_e_status_do_banco():
     assert "ARCHIVED" in chamar.feitas[0][1]["effective_status"]
     # CAMPAIGN_PAUSED é status de conjunto e de anúncio: no filtro de campanha a Meta recusa o pedido inteiro
     assert "CAMPAIGN_PAUSED" not in chamar.feitas[0][1]["effective_status"]
+    assert "DELETED" not in chamar.feitas[0][1]["effective_status"]
 
 
 def test_gasto_por_dia_com_todos_os_dias_da_janela():
