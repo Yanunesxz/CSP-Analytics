@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import time
 from typing import Any
 
@@ -64,7 +65,11 @@ def chamada_da_meta(token: str | None, segredo: str | None, sessao=None, dormir=
                     "sem permissão na conta: confira se o usuário do sistema tem a conta de anúncio e ads_read",
                 )
             if codigo == 100:
-                raise ErroDaMeta("NOT_FOUND", f"a Meta não achou o que foi pedido ({_texto(erro)})")
+                # 100 é "parâmetro inválido"; só o subcódigo 33 quer dizer que o objeto não existe ou não está visível.
+                if erro.get("error_subcode") == 33:
+                    raise ErroDaMeta("NOT_FOUND", f"{_etapa(url)}: a Meta não achou a conta ({_texto(erro)})")
+                motivo = _motivo(erro, token)
+                raise ErroDaMeta("BAD_REQUEST", f"{_etapa(url)}: a Meta recusou o pedido ({_texto(erro)}){motivo}")
             raise ErroDaMeta(f"HTTP_{resposta.status_code}", _texto(erro))
         raise ErroDaMeta("META_API", "sem resposta da Meta")
 
@@ -76,6 +81,19 @@ def _erro(resposta) -> dict:
         return resposta.json().get("error") or {}
     except ValueError:
         return {}
+
+
+def _etapa(url: str) -> str:
+    """O último pedaço do caminho (campaigns, insights, act_...): diz qual leitura falhou, sem token nem parâmetro."""
+    return url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or "?"
+
+
+def _motivo(erro: dict, token: str) -> str:
+    """No parâmetro inválido, a mensagem da Meta diz qual parâmetro e o que ela aceita: sem dado pessoal nem token.
+    Vai cortada e sem nada que pareça token, por garantia."""
+    mensagem = str(erro.get("message") or "").replace(token, "…")
+    mensagem = re.sub(r"[A-Za-z0-9_-]{40,}", "…", mensagem)[:200]
+    return f": {mensagem}" if mensagem else ""
 
 
 def _texto(erro: dict) -> str:

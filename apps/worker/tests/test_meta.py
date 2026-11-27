@@ -101,6 +101,8 @@ def test_campanhas_trazem_arquivadas_e_status_do_banco():
     assert eventos[0]["values"]["daily_budget_cents"] == 5000
     assert eventos[1]["values"]["daily_budget_cents"] is None
     assert "ARCHIVED" in chamar.feitas[0][1]["effective_status"]
+    # CAMPAIGN_PAUSED é status de conjunto e de anúncio: no filtro de campanha a Meta recusa o pedido inteiro
+    assert "CAMPAIGN_PAUSED" not in chamar.feitas[0][1]["effective_status"]
 
 
 def test_gasto_por_dia_com_todos_os_dias_da_janela():
@@ -236,3 +238,22 @@ def test_sem_token_diz_o_que_fazer():
     with pytest.raises(ErroDaMeta) as erro:
         chamada_da_meta(None, "s")
     assert erro.value.codigo == "AUTH"
+
+
+def test_parametro_invalido_diz_a_etapa_e_o_motivo_sem_o_token():
+    corpo = {"error": {"code": 100, "error_subcode": 1815001, "message": "(#100) effective_status[6] inválido SEGREDO"}}
+    sessao = SessaoFalsa([Resposta(400, corpo)])
+    chamar = chamada_da_meta("SEGREDO", "app", sessao=sessao, dormir=lambda s: None)
+    with pytest.raises(ErroDaMeta) as erro:
+        chamar("/act_9/campaigns", {"fields": "id"})
+    assert erro.value.codigo == "BAD_REQUEST"
+    assert "campaigns" in str(erro.value) and "effective_status" in str(erro.value)
+    assert "SEGREDO" not in str(erro.value)
+
+
+def test_objeto_que_nao_existe_e_not_found():
+    sessao = SessaoFalsa([Resposta(400, {"error": {"code": 100, "error_subcode": 33}})])
+    chamar = chamada_da_meta("t", "s", sessao=sessao, dormir=lambda s: None)
+    with pytest.raises(ErroDaMeta) as erro:
+        chamar("/act_9", {"fields": "name"})
+    assert erro.value.codigo == "NOT_FOUND"
