@@ -1,0 +1,196 @@
+{
+  "upsert_brands": [
+    {
+      "kind": "brand",
+      "source": "csp360",
+      "key": {
+        "external_id": "00000000-0000-0000-0000-0000000000c5"
+      },
+      "values": {
+        "name": "Corpo Sensual"
+      },
+      "brand": "cs"
+    },
+    {
+      "kind": "brand",
+      "source": "csp360",
+      "key": {
+        "external_id": "00000000-0000-0000-0000-0000000000b1"
+      },
+      "values": {
+        "name": "Plumene"
+      },
+      "brand": "plumene"
+    }
+  ],
+  "upsert_crm_funnels": [
+    {
+      "kind": "crm_funnel",
+      "source": "csp360",
+      "key": {
+        "external_id": "f0000000-0000-0000-0000-000000000001"
+      },
+      "values": {
+        "name": "Funil de Vendas",
+        "is_default": true
+      }
+    }
+  ],
+  "upsert_sales_reps": [
+    {
+      "kind": "sales_rep",
+      "source": "csp360",
+      "key": {
+        "external_id": "u0000000-0000-0000-0000-000000000001"
+      },
+      "values": {
+        "crm_role": "internal_seller",
+        "is_active": true
+      }
+    }
+  ],
+  "upsert_sales_rep_app_logins": [
+    {
+      "kind": "sales_rep_app_login",
+      "source": "csp360",
+      "key": {
+        "app_login_key": "b8574ea78649a08988b1a4754a13b6f6cdc7d088baf49028e658f787a7b88159"
+      },
+      "values": {
+        "sales_rep_external_id": "u0000000-0000-0000-0000-000000000001"
+      },
+      "brand": "cs"
+    }
+  ],
+  "upsert_crm_customers": [
+    {
+      "kind": "crm_customer",
+      "source": "csp360",
+      "key": {
+        "external_id": "c0000000-0000-0000-0000-000000000001"
+      },
+      "values": {
+        "code": "CLI-1",
+        "crm_status": "prospect",
+        "is_known_by_erp": false,
+        "has_app_owner": false,
+        "first_utm_source": "meta",
+        "first_utm_medium": "cpc",
+        "first_utm_campaign": "120200",
+        "source_created_at": "2026-11-20T12:00:00Z"
+      }
+    },
+    {
+      "kind": "crm_customer",
+      "source": "csp360",
+      "key": {
+        "external_id": "c0000000-0000-0000-0000-000000000002"
+      },
+      "values": {
+        "code": "CLI-2",
+        "crm_status": "active",
+        "is_known_by_erp": true,
+        "has_app_owner": true,
+        "first_utm_source": null,
+        "first_utm_medium": null,
+        "first_utm_campaign": null,
+        "source_created_at": "2026-09-01T00:00:00Z"
+      }
+    }
+  ],
+  "upsert_crm_customer_brands": [
+    {
+      "kind": "crm_customer_brand",
+      "source": "csp360",
+      "key": {
+        "customer_external_id": "c0000000-0000-0000-0000-000000000002"
+      },
+      "values": {
+        "erp_first_purchase_on": null,
+        "erp_last_purchase_on": "2025-03-10",
+        "erp_total_purchased_cents": 123457
+      },
+      "brand": "cs"
+    }
+  ],
+  "upsert_crm_customer_reps": [
+    {
+      "kind": "crm_customer_rep",
+      "source": "csp360",
+      "key": {
+        "customer_external_id": "c0000000-0000-0000-0000-000000000002",
+        "app_login_key": "b8574ea78649a08988b1a4754a13b6f6cdc7d088baf49028e658f787a7b88159"
+      },
+      "values": {},
+      "brand": "cs"
+    }
+  ],
+  "upsert_crm_leads": [
+    {
+      "kind": "crm_lead",
+      "source": "csp360",
+      "key": {
+        "kind": "deal",
+        "external_id": "n1"
+      },
+      "values": {
+        "code": "NEG-1",
+        "customer_external_id": "c0000000-0000-0000-0000-000000000001",
+        "funnel_external_id": "f0000000-0000-0000-0000-000000000001",
+        "origin": "meta",
+        "assigned_rep_external_id": "u0000000-0000-0000-0000-000000000001",
+        "source_created_at": "2026-11-26T10:00:00Z",
+        "source_updated_at": "2026-11-26T10:00:00Z"
+      },
+      "brand": "cs"
+    },
+    {
+      "kind": "crm_lead",
+      "source": "csp360",
+      "key": {
+        "kind": "sdr",
+        "external_id": "s1"
+      },
+      "values": {
+        "customer_external_id": "c0000000-0000-0000-0000-000000000002",
+        "source_created_at": "2026-11-26T11:00:00Z",
+        "source_updated_at": null
+      }
+    }
+  ],
+  "upsert_crm_orders": [
+    {
+      "kind": "crm_order",
+      "source": "csp360",
+      "key": {
+        "external_id": "p1"
+      },
+      "values": {
+        "customer_external_id": "c0000000-0000-0000-0000-000000000001",
+        "status": "sent",
+        "is_invoiced": true,
+        "total_cents": 3031,
+        "sales_rep_app_login_key": "b8574ea78649a08988b1a4754a13b6f6cdc7d088baf49028e658f787a7b88159",
+        "source_created_at": "2026-11-26T12:00:00Z",
+        "source_updated_at": "2026-11-26T12:00:00Z"
+      },
+      "brand": "cs"
+    }
+  ],
+  "upsert_crm_upstream_runs": [
+    {
+      "kind": "crm_upstream_run",
+      "source": "csp360",
+      "key": {
+        "external_id": "y1"
+      },
+      "values": {
+        "run_trigger": "cron",
+        "started_at": "2026-11-27T12:00:00Z",
+        "finished_at": "2026-11-27T12:00:05Z",
+        "is_ok": true
+      },
+      "brand": "cs"
+    }
+  ]
+}

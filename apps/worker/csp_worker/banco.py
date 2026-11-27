@@ -22,6 +22,22 @@ class ContaDeAnuncio:
     marca: str
 
 
+FUNCOES_DE_GRAVACAO = (
+    "upsert_ad_accounts",
+    "upsert_campaigns",
+    "upsert_brands",
+    "upsert_crm_funnels",
+    "upsert_sales_reps",
+    "upsert_sales_rep_app_logins",
+    "upsert_crm_customers",
+    "upsert_crm_customer_brands",
+    "upsert_crm_customer_reps",
+    "upsert_crm_leads",
+    "upsert_crm_orders",
+    "upsert_crm_upstream_runs",
+)
+
+
 class Banco:
     def __init__(self, conexao):
         self.conexao = conexao
@@ -54,7 +70,7 @@ class Banco:
 
     def gravar(self, rodada: str, funcao: str, linhas: list[dict[str, Any]]) -> list[str]:
         """Grava um lote por `ingest.upsert_<tabela>`. Devolve os códigos das linhas recusadas."""
-        if funcao not in ("upsert_ad_accounts", "upsert_campaigns"):
+        if funcao not in FUNCOES_DE_GRAVACAO:
             raise ValueError("função de gravação fora da lista")
         if not linhas:
             return []
@@ -81,6 +97,13 @@ class Banco:
                 (rodada, propriedade, dia, json.dumps(linhas)),
             )
             return [codigo for (codigo,) in cur.fetchall()]
+
+    def apagar_o_que_sumiu(self, tabela: str, rodada: str) -> tuple[int, str | None]:
+        """Passada completa: `ingest.delete_missing` apaga o que não apareceu (com a trava de 20% no banco)."""
+        with self.conexao.transaction(), self.conexao.cursor() as cur:
+            cur.execute("select deleted, code from ingest.delete_missing(%s, %s)", (tabela, rodada))
+            apagadas, codigo = cur.fetchone()
+            return int(apagadas or 0), codigo
 
     def fechar_rodada(self, rodada: str, status: str, codigo: str | None = None, mensagem: str | None = None) -> None:
         with self.conexao.cursor() as cur:
