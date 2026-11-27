@@ -161,7 +161,9 @@ def ler_campanhas(chamar: Chamada, external_id: str, marca: str) -> list[dict]:
         f"/{conta}/campaigns",
         {
             "fields": "id,name,effective_status,daily_budget,spend_cap,created_time",
-            "effective_status": str(STATUS_LIDOS).replace("'", '"'),
+            # DELETED não vale aqui: a Meta recusa o pedido inteiro ("objetos excluídos não são aceitos neste
+            # endpoint", 100/1815001, 27/11). A campanha apagada que teve gasto entra pelo `campanhas_que_faltam`.
+            "effective_status": str([s for s in STATUS_LIDOS if s != "DELETED"]).replace("'", '"'),
             "limit": TAMANHO_DA_PAGINA,
         },
         "effective_status",
