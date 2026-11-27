@@ -74,6 +74,7 @@ const GRUPOS: ReadonlyArray<[readonly PapelDoCatalogo[], readonly string[]]> = [
       'mkt.action_extra_spend_cents(uuid)',
       'mkt.ads_covered(uuid,mkt.platform)',
       'mkt.ai_source_of(text,text)',
+      'mkt.classify_lead_origin(text,text,text,text[])',
       'mkt.complete_through(mkt.connector_code)',
       'mkt.ga4_channel_of(text,text)',
       'mkt.list_rank(text,text)',

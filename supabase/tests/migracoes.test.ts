@@ -26,7 +26,7 @@ import {
 const migracoes = lerMigracoes();
 
 /**
- * Os comandos do "Como reverter" do cabeçalho de uma migração. Um comando começa na linha que abre com drop, alter,
+ * Os comandos do "Como reverter" do cabeçalho de uma migração. Um comando começa na linha que abre com reaplicar, drop, alter,
  * select, revoke ou grant e vai até o ";" fora de aspas; a linha de texto fora de um comando (a explicação da 09) fica
  * de fora, e o "-- …" no fim da linha é comentário.
  */
@@ -40,7 +40,7 @@ function comandosDeReverter(m: Migracao): string[] {
   let atual = '';
   for (const bruta of linhas.slice(inicio + 1, conferir < 0 ? linhas.length : conferir)) {
     const linha = bruta.replace(/^--\s?/, '');
-    if (!atual && !/^\s*(drop|alter|select|revoke|grant)\b/i.test(linha)) continue;
+    if (!atual && !/^\s*(drop|alter|select|revoke|grant|reaplicar)\b/i.test(linha)) continue;
     let aspas = false;
     for (let i = 0; i < linha.length; i += 1) {
       const c = linha.charAt(i);
@@ -65,10 +65,22 @@ function comandosDeReverter(m: Migracao): string[] {
  */
 async function expandir(consulta: Consulta, comando: string, domains: string[]): Promise<string[]> {
   if (comando.includes('<cada domain desta migração>')) return domains.map((d) => `drop domain ${d}`);
+  const reaplicar = /^reaplicar\s+([a-z_]+\.[a-z_]+)\s+de\s+(\d{14}_[a-z0-9_]+\.sql)$/i.exec(comando);
+  if (reaplicar) return [funcaoDaMigracao(reaplicar[2] ?? '', reaplicar[1] ?? '')];
   if (/^select\s+format\(/i.test(comando)) {
     return (await consulta<{ format: string }>(comando)).map((l) => l.format);
   }
   return [comando];
+}
+
+/** O "create or replace function" de `funcao` como a migração `nome` o criou, até o "end $$;". */
+function funcaoDaMigracao(nome: string, funcao: string): string {
+  const m = migracoes.find((x) => x.nome === nome);
+  if (!m) throw new Error(`reaplicar: a migração ${nome} não existe`);
+  const inicio = m.sql.indexOf(`create or replace function ${funcao}(`);
+  const fim = m.sql.indexOf('\nend $$;', inicio);
+  if (inicio < 0 || fim < 0) throw new Error(`reaplicar: ${funcao} não está em ${nome}`);
+  return m.sql.slice(inicio, fim + '\nend $$;'.length);
 }
 
 /** Os domains que aparecem no retrato depois da migração e não estavam no de antes dela. */

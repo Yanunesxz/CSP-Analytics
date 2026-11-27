@@ -21,6 +21,7 @@ const LISTA_DO_DOMAIN: Readonly<Record<string, string>> = {
  * um domain sem rótulo põe o nome aqui, com o motivo.
  */
 const SO_NO_BANCO: Readonly<Record<string, string>> = {
+  attribution_status: 'saída de mkt.v_leads (atribuído, ambíguo, sem campanha, sem UTM); a lista de leads mostra na fase 4',
   data_source: 'o sistema de onde veio a linha; só aparece na tela no "Arquivo CSV" de um snapshot',
   lead_kind: 'de qual tabela do CRM veio o lead (negócio do funil ou lead do SDR); nenhuma tela mostra',
   crm_customer_status: 'o clientes.status do CRM, que decide a etapa "Cadastro"; não é etiqueta de tela',

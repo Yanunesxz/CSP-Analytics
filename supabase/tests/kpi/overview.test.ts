@@ -11,6 +11,15 @@ const CAMPANHA = '00000000-0000-4000-8000-0000000007b1';
 const CAMPANHA_FUNDO = '00000000-0000-4000-8000-0000000007b2';
 
 type Metrica = { current: number | null; previous: number | null; variation: number | null };
+interface Linha {
+  brand?: string;
+  platform?: string;
+  investment: Metrica;
+  leads?: Metrica;
+  cost_per_lead?: Metrica;
+  new_customers?: Metrica;
+  cost_per_new_customer?: Metrica;
+}
 interface Resposta {
   has_data: boolean;
   coverage: { ads: boolean; csp360: boolean };
@@ -20,9 +29,12 @@ interface Resposta {
   leads: Metrica;
   new_customers: Metrica;
   cost_per_new_customer: Metrica;
-  by_brand: { brand: string; investment: Metrica }[];
-  by_platform: { platform: string; investment: Metrica }[];
-  daily: { metric_on: string; investment_cents: number | null }[];
+  attributed_new_customers: number | null;
+  leads_without_brand: number | null;
+  orders: { count: Metrica; total_cents: Metrica; invoiced_count: Metrica; invoiced_total_cents: Metrica };
+  by_brand: Linha[];
+  by_platform: Linha[];
+  daily: { metric_on: string; investment_cents: number | null; leads: number | null; new_customers: number | null }[];
   period: { start_on: string; compared_through_on: string | null };
 }
 
@@ -92,9 +104,9 @@ describe('api.kpi_overview: mídia', () => {
       await prepararMeta(s);
       await s.como(usuario(DONO));
       const r = await kpi(s, { period: 'last_7_days', compare: false });
-      expect(r.by_brand).toEqual([
-        { brand: 'cs', investment: { current: 32000, previous: null, variation: null } },
-        { brand: 'plumene', investment: { current: null, previous: null, variation: null } },
+      expect(r.by_brand.map((b) => [b.brand, b.investment])).toEqual([
+        ['cs', { current: 32000, previous: null, variation: null }],
+        ['plumene', { current: null, previous: null, variation: null }],
       ]);
       expect(r.by_platform.map((p) => [p.platform, p.investment.current])).toEqual([
         ['meta', 32000],
@@ -161,5 +173,101 @@ describe('api.kpi_overview: mídia', () => {
         expect(e.message).toBe('KPI-403');
       });
     }
+  });
+});
+
+/**
+ * O CSP 360 sobre a mídia de prepararMeta (hoje 20/11). Quatro clientes da Corpo Sensual:
+ *   A: lead do site com UTM da campanha 1201 em 15/11 e 1º pedido enviado em 17/11 (R$ 500,00): novo e atribuído;
+ *   B: lead sem UTM em 16/11 e 1º pedido enviado em 18/11 (R$ 200,00): novo, sem campanha;
+ *   C: lead do SDR, sem marca, em 19/11, sem pedido;
+ *   D: pedido enviado em 18/11 (R$ 100,00), mas o ERP já o via comprando a marca em janeiro: não é novo.
+ */
+async function prepararCrm(s: Sessao): Promise<void> {
+  await s.exec(`
+    update mkt.connectors set first_success_at = '2026-11-20 09:00:00-03', last_success_at = '2026-11-20 09:00:00-03'
+     where code = 'csp360';
+    insert into mkt.crm_customers (id, external_id, code, crm_status, source_created_at, last_seen_at)
+    values ('00000000-0000-4000-8000-0000000007c1', 'a', 'CLI-A', 'active', '2026-11-15 10:00:00-03', now()),
+           ('00000000-0000-4000-8000-0000000007c2', 'b', 'CLI-B', 'active', '2026-11-16 10:00:00-03', now()),
+           ('00000000-0000-4000-8000-0000000007c3', 'c', 'CLI-C', 'prospect', '2026-11-19 10:00:00-03', now()),
+           ('00000000-0000-4000-8000-0000000007c4', 'd', 'CLI-D', 'active', '2025-01-01 10:00:00-03', now());
+    insert into mkt.crm_leads (kind, external_id, code, brand_id, customer_id, utm_source, utm_medium, utm_campaign,
+                               source_created_at, last_seen_at)
+    select v.kind::mkt.lead_kind, v.ext, v.code, case when v.marca then b.id end, v.cli::uuid, v.src, v.med, v.camp,
+           v.em::timestamptz, now()
+      from mkt.brands b,
+           (values ('deal', 'n-a', 'NEG-A', true, '00000000-0000-4000-8000-0000000007c1', 'facebook', 'cpc', '1201',
+                    '2026-11-15 10:00:00-03'),
+                   ('deal', 'n-b', 'NEG-B', true, '00000000-0000-4000-8000-0000000007c2', null, null, null,
+                    '2026-11-16 10:00:00-03'),
+                   ('sdr', 's-c', 'SDR-C', false, '00000000-0000-4000-8000-0000000007c3', null, null, null,
+                    '2026-11-19 10:00:00-03'))
+             as v(kind, ext, code, marca, cli, src, med, camp, em)
+     where b.code = 'cs';
+    insert into mkt.crm_orders (external_id, brand_id, customer_id, status, total_cents, sent_at, source_created_at,
+                                last_seen_at)
+    select v.ext, b.id, v.cli::uuid, 'sent', v.total, v.em::timestamptz, v.em::timestamptz, now()
+      from mkt.brands b,
+           (values ('p-a', '00000000-0000-4000-8000-0000000007c1', 50000, '2026-11-17 10:00:00-03'),
+                   ('p-b', '00000000-0000-4000-8000-0000000007c2', 20000, '2026-11-18 10:00:00-03'),
+                   ('p-d', '00000000-0000-4000-8000-0000000007c4', 10000, '2026-11-18 11:00:00-03'))
+             as v(ext, cli, total, em)
+     where b.code = 'cs';
+    insert into mkt.crm_customer_brands (customer_id, brand_id, erp_earliest_purchase_on, last_seen_at)
+    select '00000000-0000-4000-8000-0000000007c4', b.id, '2026-01-10', now() from mkt.brands b where b.code = 'cs';`);
+}
+
+describe('api.kpi_overview: CSP 360', () => {
+  it('conta leads, clientes novos e pedidos, e o custo por cliente novo é o investimento ÷ os que vieram de campanha', async () => {
+    await caso(db, postgres, async (s) => {
+      await prepararMeta(s);
+      await prepararCrm(s);
+      await s.como(usuario(DONO));
+      const r = await kpi(s, { period: 'last_7_days', compare: false });
+      expect(r.coverage).toEqual({ ads: true, csp360: true });
+      expect(r.leads.current).toBe(3);
+      expect(r.leads_without_brand).toBe(1);
+      expect(r.new_customers.current).toBe(2);
+      expect(r.attributed_new_customers).toBe(1);
+      expect(r.cost_per_new_customer.current).toBe(32000);
+      expect(r.orders.count.current).toBe(3);
+      expect(r.orders.total_cents.current).toBe(80000);
+      expect(r.orders.invoiced_total_cents.current).toBeNull();
+
+      const cs = r.by_brand.find((b) => b.brand === 'cs');
+      expect(cs?.leads?.current).toBe(3); // o lead sem marca entra em toda marca
+      expect(cs?.new_customers?.current).toBe(2);
+      expect(cs?.cost_per_new_customer?.current).toBe(32000);
+      expect(cs?.cost_per_lead?.current).toBe(32000);
+      const meta = r.by_platform.find((p) => p.platform === 'meta');
+      expect(meta?.leads?.current).toBe(1);
+      expect(meta?.new_customers?.current).toBe(1);
+      expect(r.daily.find((d) => d.metric_on === '2026-11-17')?.new_customers).toBe(1);
+    });
+  });
+
+  it('com a marca Plumene, sem pedido dela: 0 com base, nunca "Sem dados"', async () => {
+    await caso(db, postgres, async (s) => {
+      await prepararMeta(s);
+      await prepararCrm(s);
+      await s.como(usuario(DONO));
+      const r = await kpi(s, { period: 'last_7_days', brand: 'plumene', compare: false });
+      expect(r.new_customers.current).toBe(0);
+      expect(r.orders.count.current).toBe(0);
+      expect(r.leads.current).toBe(1); // o do SDR, sem marca
+      expect(r.cost_per_new_customer.current).toBeNull();
+    });
+  });
+
+  it('o filtro de canal não recorta pedido: pedidos ficam "Sem dados"', async () => {
+    await caso(db, postgres, async (s) => {
+      await prepararMeta(s);
+      await prepararCrm(s);
+      await s.como(usuario(DONO));
+      const r = await kpi(s, { period: 'last_7_days', platform: 'meta', compare: false });
+      expect(r.orders.count.current).toBeNull();
+      expect(r.new_customers.current).toBe(1);
+    });
   });
 });
