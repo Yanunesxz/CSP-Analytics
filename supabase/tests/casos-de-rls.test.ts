@@ -404,8 +404,11 @@ describe('o catálogo (RLS-24, 27 e 29)', () => {
         'api.v_traffic_actions',
         'api.v_traffic_log',
         'mkt.v_account_month',
+        'mkt.v_first_orders',
         'mkt.v_ga4_ai_daily',
         'mkt.v_ga4_channel_daily',
+        'mkt.v_leads',
+        'mkt.v_new_customers',
       ]);
       for (const v of views) expect(v.opcoes ?? [], v.view).toContain('security_invoker=true');
     });

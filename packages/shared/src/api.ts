@@ -61,6 +61,16 @@ export interface ApiKpiSeoGeo {
  * `api.kpi_overview`: por enquanto, só a mídia (VG4, VG12 e VG13 na coluna do investimento). Leads, clientes novos,
  * custo por cliente novo, pedidos e Instagram vêm nulos até o CSP 360 chegar (`coverage.csp360`).
  */
+/** Uma linha da Visão geral por marca ou por canal (VG12 e VG13). */
+export interface ApiKpiOverviewLine {
+  investment: ApiMetric;
+  leads: ApiMetric;
+  cost_per_lead: ApiMetric;
+  new_customers: ApiMetric;
+  cost_per_new_customer: ApiMetric;
+  attributed_new_customers: number | null;
+}
+
 export interface ApiKpiOverview {
   period: ApiPeriod;
   coverage: { ads: boolean; csp360: boolean };
@@ -74,8 +84,16 @@ export interface ApiKpiOverview {
   cost_per_new_customer: ApiMetric;
   attributed_new_customers: number | null;
   leads_without_brand: number | null;
-  by_brand: Array<{ brand: Brand; investment: ApiMetric }>;
-  by_platform: Array<{ platform: Platform; investment: ApiMetric }>;
+  /** Pedidos enviados do CSP 360; só a marca recorta (com canal, campanha, operador, origem ou representante: nulos). */
+  orders: {
+    count: ApiMetric;
+    total_cents: ApiMetric;
+    invoiced_count: ApiMetric;
+    /** Sempre nulo até o Control abrir o canal (N5). */
+    invoiced_total_cents: ApiMetric;
+  };
+  by_brand: Array<ApiKpiOverviewLine & { brand: Brand; cross_brand_new_customers: number | null }>;
+  by_platform: Array<ApiKpiOverviewLine & { platform: Platform }>;
   daily: Array<{
     metric_on: string;
     investment_cents: number | null;
