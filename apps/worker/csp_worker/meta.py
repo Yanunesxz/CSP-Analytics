@@ -146,7 +146,7 @@ def ler_campanhas(chamar: Chamada, external_id: str, marca: str) -> list[dict]:
         f"/{conta}/campaigns",
         {
             "fields": "id,name,effective_status,daily_budget,spend_cap,created_time",
-            "effective_status": str(STATUS_LIDOS + ["CAMPAIGN_PAUSED"]).replace("'", '"'),
+            "effective_status": str(STATUS_LIDOS).replace("'", '"'),
             "limit": TAMANHO_DA_PAGINA,
         },
     ):
