@@ -1,5 +1,6 @@
 """Adaptador e rodada do CSP 360 com respostas inventadas no formato da API de dados do CRM (sem rede)."""
 
+import base64
 import json
 from datetime import date
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from csp_worker.crm import Conversor, centavos, resumo_do_login
-from csp_worker.crm_http import VIEWS, ErroDoCrm, chamada_do_crm, por_chave, por_ids
+from csp_worker.crm_http import VIEWS, ErroDoCrm, chamada_do_crm, diagnostico_do_token, por_chave, por_ids
 from csp_worker.rodada_crm import inicio_da_janela, rodar
 
 CHAVE = b"k" * 32
@@ -353,3 +354,34 @@ def test_eventos_iguais_ao_contrato_do_banco():
     banco = BancoFalso()
     rodar(banco, chamada_falsa(dados()), Conversor(CHAVE), True, date(2026, 11, 27))
     assert banco.gravado == json.loads(CONTRATO.read_text(encoding="utf-8"))
+
+
+def _token(claims, alg="HS256"):
+    def parte(d):
+        return base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")
+
+    return f"{parte({'alg': alg, 'typ': 'JWT'})}.{parte(claims)}.assinatura-secreta"
+
+
+def test_token_colado_com_aspas_e_espaco_vai_limpo():
+    sessao = Sessao([Resposta(200, [])])
+    url = ' "https://abc.supabase.co" '
+    chamar = chamada_do_crm(url, "'anon'\n", ' "tok" \n', sessao=sessao, dormir=lambda s: None)
+    chamar("marcas", {"select": "id"})
+    url, _, cabecalhos = sessao.pedidos[0]
+    assert url == "https://abc.supabase.co/rest/v1/marcas"
+    assert cabecalhos["apikey"] == "anon" and cabecalhos["Authorization"] == "Bearer tok"
+
+
+def test_token_recusado_diz_o_que_e_sem_mostrar_a_assinatura():
+    token = _token({"role": "csp_mkt_api_abc12345", "exp": 2_000_000_000})
+    assert diagnostico_do_token(token, agora=1_900_000_000) == "token HS256, papel csp_mkt_api_abc12345, no prazo"
+    assert "vencido" in diagnostico_do_token(token, agora=2_100_000_000)
+    assert "outro papel" in diagnostico_do_token(_token({"role": "service_role"}))
+    assert "2 partes" in diagnostico_do_token("abc.def")
+
+    sessao = Sessao([Resposta(401, {"code": "PGRST301"})])
+    chamar = chamada_do_crm("https://abc.supabase.co", "anon", token, sessao=sessao, dormir=lambda s: None)
+    with pytest.raises(ErroDoCrm) as e:
+        chamar("marcas", {"select": "id"})
+    assert "papel csp_mkt_api_abc12345" in str(e.value) and "assinatura" not in str(e.value)
